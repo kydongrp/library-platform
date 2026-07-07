@@ -2,7 +2,12 @@ import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+// Prefer the direct (non-pooled) connection for DDL/bulk writes; the pooled
+// connection (via pgBouncer) can choke on prepared statements. Falls back to
+// DATABASE_URL for local dev where only that is set.
+const connectionString =
+  process.env.POSTGRES_URL_NON_POOLING || process.env.DATABASE_URL;
+const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -423,6 +428,16 @@ const MEMBERS = [
 ];
 
 async function main() {
+  // When invoked from the build (SEED_IF_EMPTY=1), only seed a fresh database
+  // so redeploys never wipe existing data.
+  if (process.env.SEED_IF_EMPTY === "1") {
+    const existing = await prisma.resource.count();
+    if (existing > 0) {
+      console.log(`Database already has ${existing} resources — skipping seed.`);
+      return;
+    }
+  }
+
   console.log("Clearing existing data...");
   await prisma.loan.deleteMany();
   await prisma.reservation.deleteMany();

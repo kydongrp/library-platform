@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Prefer the direct (non-pooled) connection for CLI operations like
+    // `db push`; pooled connections can fail on DDL/prepared statements.
+    url: process.env["POSTGRES_URL_NON_POOLING"] || process.env["DATABASE_URL"],
   },
 });
