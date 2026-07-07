@@ -1,0 +1,90 @@
+// Library Platform — data model for the core loop MVP.
+// SQLite has no native enums, so status/type fields are strings with the
+// allowed values documented inline next to each field.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// A bibliographic record in the catalogue (the "title").
+model Resource {
+  id            String        @id @default(cuid())
+  title         String
+  subtitle      String?
+  author        String
+  isbn          String?
+  type          String // BOOK, EBOOK, AUDIOBOOK, JOURNAL, DVD
+  category      String // Area of Interest: Technology, Business, Science, Arts, Fiction, History, Health
+  publisher     String?
+  publishedYear Int?
+  language      String        @default("English")
+  description   String?
+  coverColor    String        @default("#4F46E5") // used to render a placeholder cover
+  digital       Boolean       @default(false) // digital titles grant instant access, no physical copy
+  digitalUrl    String? // direct access link (e.g. an IEEE Xplore article URL)
+  provider      String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  copies        Copy[]
+  loans         Loan[]
+  reservations  Reservation[]
+}
+
+/// A physical (or digital seat) holding of a Resource that can be loaned out.
+model Copy {
+  id         String   @id @default(cuid())
+  barcode    String   @unique
+  status     String   @default("AVAILABLE") // AVAILABLE, ON_LOAN, RESERVED, LOST, MAINTENANCE
+  location   String   @default("Main Shelf")
+  createdAt  DateTime @default(now())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  loans      Loan[]
+}
+
+/// A library patron who can borrow and reserve resources.
+model Member {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  memberType   String        @default("STUDENT") // STAFF, STUDENT, EXTERNAL
+  status       String        @default("ACTIVE") // ACTIVE, SUSPENDED
+  maxLoans     Int           @default(5)
+  joinedAt     DateTime      @default(now())
+  loans        Loan[]
+  reservations Reservation[]
+}
+
+/// A single borrowing transaction. Physical loans reference a Copy; digital
+/// loans reference only the Resource (copyId is null).
+model Loan {
+  id         String    @id @default(cuid())
+  borrowedAt DateTime  @default(now())
+  dueAt      DateTime
+  returnedAt DateTime?
+  status     String    @default("ACTIVE") // ACTIVE, RETURNED
+  renewals   Int       @default(0)
+  copyId     String?
+  copy       Copy?     @relation(fields: [copyId], references: [id])
+  resourceId String
+  resource   Resource  @relation(fields: [resourceId], references: [id])
+  memberId   String
+  member     Member    @relation(fields: [memberId], references: [id])
+}
+
+/// A hold placed on a Resource when no copy is currently available.
+model Reservation {
+  id         String    @id @default(cuid())
+  reservedAt DateTime  @default(now())
+  status     String    @default("PENDING") // PENDING, READY, FULFILLED, CANCELLED, EXPIRED
+  readyAt    DateTime?
+  resourceId String
+  resource   Resource  @relation(fields: [resourceId], references: [id])
+  memberId   String
+  member     Member    @relation(fields: [memberId], references: [id])
+}

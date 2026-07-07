@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
+/*
+  Design language: a calm "reading room" aesthetic.
+  Warm paper background, deep teal primary, amber accent, serif display type.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf8f4;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --muted: #f3f0ea;
+  --muted-foreground: #78716c;
+  --border: #e7e1d7;
+  --primary: #0f766e;
+  --primary-hover: #115e57;
+  --primary-foreground: #ffffff;
+  --accent: #b45309;
+  --accent-soft: #fef3e2;
+  --danger: #b91c1c;
+  --success: #15803d;
+  --ring: #0f766e;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-serif: Georgia, "Times New Roman", serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--border);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+.font-display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+/* Subtle paper texture via layered radial gradients on the landing hero. */
+.hero-paper {
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(15, 118, 110, 0.06), transparent 40%),
+    radial-gradient(circle at 85% 30%, rgba(180, 83, 9, 0.05), transparent 45%);
+}
+
+::selection {
+  background: var(--primary);
+  color: #fff;
 }

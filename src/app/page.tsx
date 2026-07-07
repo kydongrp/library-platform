@@ -1,65 +1,129 @@
-import Image from "next/image";
+import Link from "next/link";
+import { prisma } from "@/lib/db";
+import { ButtonLink } from "@/components/ui";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function LandingPage() {
+  const [resources, copies, members, activeLoans] = await Promise.all([
+    prisma.resource.count(),
+    prisma.copy.count(),
+    prisma.member.count(),
+    prisma.loan.count({ where: { status: "ACTIVE" } }),
+  ]);
+
+  const stats = [
+    { label: "Titles in catalogue", value: resources },
+    { label: "Physical copies", value: copies },
+    { label: "Registered members", value: members },
+    { label: "Active loans", value: activeLoans },
+  ];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="flex-1">
+      <section className="hero-paper border-b border-border">
+        <div className="mx-auto max-w-5xl px-6 py-20 text-center">
+          <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-accent">
+            Library Management Platform
           </p>
+          <h1 className="font-display text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
+            Athenaeum
+          </h1>
+          <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
+            One platform, two front doors — a discovery portal for learners and a
+            back-office for library staff. Catalogue, circulate, reserve, and keep
+            track of every title under one roof.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <ButtonLink href="/portal" variant="primary" className="px-6 py-3 text-base">
+              Enter Learner Portal
+            </ButtonLink>
+            <ButtonLink href="/admin" variant="outline" className="px-6 py-3 text-base">
+              Open Admin Panel
+            </ButtonLink>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+
+      <section className="mx-auto max-w-5xl px-6 py-12">
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className="rounded-xl border border-border bg-card p-5 text-center shadow-sm"
+            >
+              <dt className="text-sm text-muted-foreground">{s.label}</dt>
+              <dd className="mt-1 font-display text-3xl font-semibold text-primary">
+                {s.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section className="mx-auto grid max-w-5xl gap-6 px-6 pb-20 sm:grid-cols-2">
+        <PortalCard
+          href="/portal"
+          eyebrow="For learners"
+          title="Learner Portal"
+          description="Search and browse the collection, borrow digital titles instantly, reserve what's out, and track your loans."
+          points={["Search & advanced filters", "Borrow & reserve", "My loans & reservations"]}
+          tone="primary"
+        />
+        <PortalCard
+          href="/admin"
+          eyebrow="For staff"
+          title="Admin Panel"
+          description="Manage the catalogue and members, check items in and out, and keep an eye on loans, holds, and overdues."
+          points={["Catalogue & members", "Check-out / check-in", "Dashboard & reservations"]}
+          tone="accent"
+        />
+      </section>
+    </main>
+  );
+}
+
+function PortalCard({
+  href,
+  eyebrow,
+  title,
+  description,
+  points,
+  tone,
+}: {
+  href: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  points: string[];
+  tone: "primary" | "accent";
+}) {
+  const accentBar = tone === "primary" ? "bg-primary" : "bg-accent";
+  return (
+    <Link
+      href={href}
+      className="group relative overflow-hidden rounded-2xl border border-border bg-card p-7 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <span className={`absolute inset-x-0 top-0 h-1 ${accentBar}`} />
+      <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        {eyebrow}
+      </p>
+      <h3 className="mt-2 font-display text-2xl font-semibold text-foreground">
+        {title}
+      </h3>
+      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+      <ul className="mt-4 space-y-1.5">
+        {points.map((p) => (
+          <li key={p} className="flex items-center gap-2 text-sm text-foreground">
+            <span className={`h-1.5 w-1.5 rounded-full ${accentBar}`} />
+            {p}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:gap-2 transition-all">
+        Enter
+        <span aria-hidden>→</span>
+      </p>
+    </Link>
   );
 }

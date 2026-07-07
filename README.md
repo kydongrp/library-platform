@@ -1,36 +1,144 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Athenaeum — Library Management Platform
 
-## Getting Started
+A modern library system with **two front doors** built as a single Next.js app:
 
-First, run the development server:
+- **Learner Portal** (`/portal`) — a discovery experience for patrons: search & browse,
+  borrow digital titles instantly, reserve titles that are out, and track loans & holds.
+- **Admin Panel** (`/admin`) — a back-office for staff: manage the catalogue and members,
+  run the circulation desk (check-out / check-in), and watch loans, holds, and overdues.
+
+It's a from-scratch variation on the reference functional specs (Admin Panel + Learner
+Portal), scoped to the **core loop**: Catalogue → Members → Circulation (loans, returns,
+renewals, reservations) → Search & discovery.
+
+---
+
+## Tech stack
+
+| Layer     | Choice                                              |
+| --------- | --------------------------------------------------- |
+| Framework | Next.js 16 (App Router, React 19, Server Actions)   |
+| Language  | TypeScript                                          |
+| Database  | Postgres via Prisma 7 (node-postgres adapter); Neon in production |
+| Styling   | Tailwind CSS v4, hand-built component set           |
+
+There is no separate backend — pages read the database directly in Server Components, and
+all mutations go through type-safe **Server Actions** in `src/app/actions/`.
+
+---
+
+## Getting started
+
+You need a Postgres database. The quickest free option is [Neon](https://neon.tech).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+# put your Postgres connection string in .env (see .env.example):
+#   DATABASE_URL="postgresql://user:pass@host/db?sslmode=require"
+npm run db:push     # create the tables
+npm run db:seed     # load demo catalogue, members, loans, holds
+npm run dev         # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open **/** for the landing page, then enter either portal.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+> To reset the database back to the demo state: `npm run db:reset`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploy to Vercel
 
-## Learn More
+1. **Create a Postgres database** at [neon.tech](https://neon.tech) (free tier) and copy the
+   **pooled** connection string.
+2. **Deploy the code** — either import the repo on [vercel.com/new](https://vercel.com/new),
+   or from this folder run `npx vercel` (then `npx vercel --prod`).
+3. In the Vercel project, add an environment variable **`DATABASE_URL`** = your Neon string.
+4. The build runs `prisma db push`, so the schema is created on first deploy.
+5. **Seed once**: locally set `DATABASE_URL` to the same Neon string and run `npm run db:seed`
+   (or run it from Vercel's build once). Your live URL now has the demo data.
 
-To learn more about Next.js, take a look at the following resources:
+### Useful scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command             | What it does                                  |
+| ------------------- | --------------------------------------------- |
+| `npm run dev`       | Start the dev server                          |
+| `npm run build`     | Production build (also type-checks)           |
+| `npm run db:seed`   | Reset demo data to a known state              |
+| `npm run db:reset`  | Drop & re-create the database from migrations |
+| `npx prisma studio` | Browse/edit the database in a GUI             |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## How to drive the demo
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**As staff (`/admin`):**
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Circulation Desk** — pick a member, paste one of the listed *available barcodes*
+   (e.g. `LIB-001004`) into **Check out**. Return it via **Check in** with the same barcode.
+2. **Catalogue** — search/filter, open a title to edit it, add/remove copies, mark a copy
+   lost/maintenance, or add a brand-new title (with a live cover preview).
+3. **Members** — add members, see each member's active loans/holds, renew or return for them.
+4. **Current Loans / Reservations** — renew, return, or cancel holds; overdue items are flagged.
+
+**As a learner (`/portal`):**
+
+1. **Sign in** — pick an account to act as (no real auth in this MVP).
+2. **Browse / search** — filter by category, format, and availability; sort results.
+3. **Open a title** — borrow a digital title instantly, borrow an available physical copy,
+   or **place a hold** when everything is out. The action adapts to live availability.
+4. **My Loans / My Holds** — renew, return digital loans, or cancel holds.
+
+The two portals share one database, so a checkout at the admin desk immediately changes a
+title's availability in the learner portal, and a learner's hold shows up in the staff
+reservations queue.
+
+---
+
+## Domain model
+
+```
+Resource  ──< Copy            a catalogue title and its physical holdings
+Resource  ──< Loan            a borrowing transaction (digital loans have no Copy)
+Resource  ──< Reservation     a hold placed when no copy is available
+Member    ──< Loan, Reservation
+```
+
+Business rules live in `src/app/actions/circulation.ts`:
+
+- Loan periods by member type (Student 14d, Staff 30d, External 7d); digital 14d.
+- Loan limits per member; suspended members can't borrow.
+- Returns auto-promote the next hold in the queue to **Ready for pickup**.
+- Renewals are blocked when someone else is waiting (max 2 renewals).
+
+See `src/lib/constants.ts` for the tunable vocabulary and policies.
+
+---
+
+## Project layout
+
+```
+prisma/
+  schema.prisma        data model
+  seed.ts              demo data
+src/
+  app/
+    page.tsx           landing gateway
+    admin/             Admin Panel (dashboard, circulation, catalogue, members, loans, reservations)
+    portal/            Learner Portal (home, search, resource, my-loans, my-reservations, signin)
+    actions/           server actions: circulation, catalogue, members, session
+  components/          UI primitives, forms, toasts, nav, cards
+  lib/                 db client, constants, formatting, availability, session
+```
+
+---
+
+## What's MVP vs. later
+
+**Built:** catalogue & copy management, members, full circulation (check-out/in, renew,
+reserve, hold queue), search with filters/sort, dashboards, and a polished two-portal UI.
+Also supports **externally-subscribed content** — IEEE Xplore journals, transactions,
+conference papers, and standards (plus ACM / JSTOR) — catalogued with a `provider` and
+access URL. These are accessed via the provider (a "Read on IEEE Xplore" link) rather than
+loaned, and staff can filter the catalogue by source.
+
+**Deliberately deferred** (natural next steps, mirroring the reference spec):
+real authentication (Azure AD / email sign-up), reviews & ratings, notifications &
+email templates, acquisitions & serials modules, fines/payments, and richer reporting.
