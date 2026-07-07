@@ -5,4 +5,6 @@ import "dotenv/config";
 process.env.SEED_IF_EMPTY = "1";
 
 // Dynamic import so the flag is set before seed.ts runs its main().
-await import("./seed");
+// Not awaited at top level (tsx compiles to CJS, which forbids top-level await);
+// seed.ts drives its own async main() and keeps the process alive until done.
+void import("./seed");
