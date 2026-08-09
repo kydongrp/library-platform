@@ -29,11 +29,13 @@ model Resource {
   digitalUrl    String? // direct access link (e.g. an IEEE Xplore article URL)
   provider      String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
   licenseSeats  Int? // concurrent-user limit for digital titles; null = unlimited (contract FR 8.2)
+  editorsPick   Boolean       @default(false) // staff-curated highlight (live system: "editorspick" rail)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   copies        Copy[]
   loans         Loan[]
   reservations  Reservation[]
+  reviews       Review[]
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -62,6 +64,24 @@ model Member {
   reservations Reservation[]
   notifications Notification[]
   requests     ResourceRequest[]
+  reviews      Review[]
+}
+
+/// A member's star rating + optional text for a resource (live-system
+/// /Loans/review; contract FR 8.1 ratings/reviews). One review per member
+/// per resource, editable and deletable by its author.
+model Review {
+  id         String   @id @default(cuid())
+  rating     Int // 1..5
+  text       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, memberId])
 }
 
 /// A single borrowing transaction. Physical loans reference a Copy; digital

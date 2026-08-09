@@ -47,9 +47,21 @@ export default async function SearchPage({
   const orderBy =
     sort === "newest" ? { createdAt: "desc" as const }
     : sort === "author" ? { author: "asc" as const }
+    : sort === "provider" ? { provider: "asc" as const }
     : { title: "asc" as const };
 
-  const resources = await prisma.resource.findMany({ where, orderBy, select: cardSelect });
+  let resources = await prisma.resource.findMany({ where, orderBy, select: cardSelect });
+
+  // Rating sort needs the review aggregate (contract FR 8.1: sortable by rating).
+  if (sort === "rating" && resources.length > 0) {
+    const groups = await prisma.review.groupBy({
+      by: ["resourceId"],
+      where: { resourceId: { in: resources.map((r) => r.id) } },
+      _avg: { rating: true },
+    });
+    const avg = new Map(groups.map((g) => [g.resourceId, g._avg.rating ?? 0]));
+    resources = [...resources].sort((a, b) => (avg.get(b.id) ?? 0) - (avg.get(a.id) ?? 0));
+  }
 
   const heading = q ? `Results for “${q}”` : category ? `${category}` : "Browse the collection";
 
@@ -81,6 +93,8 @@ export default async function SearchPage({
           <option value="relevance">Sort: Title</option>
           <option value="author">Sort: Author</option>
           <option value="newest">Sort: Newest</option>
+          <option value="rating">Sort: Rating</option>
+          <option value="provider">Sort: Provider</option>
         </select>
         <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover">
           Apply

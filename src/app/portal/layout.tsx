@@ -16,11 +16,15 @@ export default async function PortalLayout({
 
   let loanCount = 0;
   let holdCount = 0;
+  let unreadCount = 0;
   if (member) {
-    [loanCount, holdCount] = await Promise.all([
+    [loanCount, holdCount, unreadCount] = await Promise.all([
       prisma.loan.count({ where: { memberId: member.id, status: "ACTIVE" } }),
       prisma.reservation.count({
         where: { memberId: member.id, status: { in: ["PENDING", "READY"] } },
+      }),
+      prisma.notification.count({
+        where: { memberId: member.id, readAt: null },
       }),
     ]);
   }
@@ -49,9 +53,24 @@ export default async function PortalLayout({
                   { href: "/portal", label: "Browse" },
                   { href: "/portal/my-loans", label: "My Loans", badge: loanCount },
                   { href: "/portal/my-reservations", label: "Holds", badge: holdCount },
+                  { href: "/portal/my-reviews", label: "Reviews" },
                   { href: "/portal/requests", label: "Requests" },
                 ]}
               />
+              {member && (
+                <Link
+                  href="/portal/notifications"
+                  title="Notification Centre"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-full text-lg hover:bg-muted"
+                >
+                  🔔
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[11px] font-semibold text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </Link>
+              )}
               {member ? (
                 <form action={signOut} className="flex items-center gap-2 pl-1">
                   <span

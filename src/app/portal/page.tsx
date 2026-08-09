@@ -14,7 +14,7 @@ const cardSelect = {
 export default async function PortalHome() {
   const member = await getCurrentMember();
 
-  const [newest, digital, external, available] = await Promise.all([
+  const [newest, digital, external, available, topRated] = await Promise.all([
     prisma.resource.findMany({ orderBy: { createdAt: "desc" }, take: 6, select: cardSelect }),
     prisma.resource.findMany({ where: { digital: true, provider: null }, take: 6, select: cardSelect }),
     prisma.resource.findMany({ where: { provider: { not: null } }, take: 6, select: cardSelect }),
@@ -23,6 +23,28 @@ export default async function PortalHome() {
       take: 6,
       select: cardSelect,
     }),
+    // Highly rated (contract FR 8.1): best average rating among reviewed titles.
+    prisma.review
+      .groupBy({
+        by: ["resourceId"],
+        _avg: { rating: true },
+        _count: { _all: true },
+        orderBy: [{ _avg: { rating: "desc" } }, { _count: { resourceId: "desc" } }],
+        take: 6,
+      })
+      .then((groups) =>
+        groups.length
+          ? prisma.resource
+              .findMany({
+                where: { id: { in: groups.map((g) => g.resourceId) } },
+                select: cardSelect,
+              })
+              .then((rs) => {
+                const order = new Map(groups.map((g, i) => [g.resourceId, i]));
+                return rs.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+              })
+          : [],
+      ),
   ]);
 
   return (
@@ -69,6 +91,7 @@ export default async function PortalHome() {
 
       <div className="mx-auto max-w-6xl space-y-12 px-5 py-12">
         <Shelf title="Available right now" href="/portal/search?availability=available" resources={available} />
+        <Shelf title="Highly rated" href="/portal/search?sort=rating" resources={topRated} />
         <Shelf title="Research databases & journals" href="/portal/search?availability=external" resources={external} />
         <Shelf title="Instant digital access" href="/portal/search?availability=digital" resources={digital} />
         <Shelf title="New to the shelves" href="/portal/search?sort=newest" resources={newest} />

@@ -442,6 +442,7 @@ async function main() {
   }
 
   console.log("Clearing existing data...");
+  await prisma.review.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.mailQueue.deleteMany();
   await prisma.batchRun.deleteMany();
@@ -570,6 +571,38 @@ async function main() {
       readyAt: new Date(Date.now() - 1 * DAY),
     },
   });
+
+  console.log("Seeding reviews...");
+  // (memberIdx, resourceIdx, rating, text?)
+  const reviewPlan: [number, number, number, string?][] = [
+    [0, 0, 5, "The book that made me care about craftsmanship. Still relevant."],
+    [1, 0, 4, "A little dated in places but the principles hold up."],
+    [2, 2, 5, "The single best systems book I've read. Dense but worth it."],
+    [3, 2, 5, "Essential for anyone touching distributed systems."],
+    [4, 2, 4],
+    [0, 4, 5, "Sweeping and provocative. Read it with a critical eye."],
+    [5, 4, 4],
+    [1, 13, 5, "The world-building is unmatched. A slow burn that pays off."],
+    [6, 13, 4],
+    [7, 16, 5, "Changed how I plan my week. Tiny habits, big results."],
+    [2, 16, 4, "Practical and readable, if a bit repetitive."],
+    [4, 9, 4, "Norman's door examples will ruin doors for you forever."],
+    [6, 11, 3, "Interesting science, alarmist tone."],
+  ];
+  for (const [mi, ri, rating, text] of reviewPlan) {
+    const m = members[mi];
+    const r = resources[ri];
+    if (!m || !r) continue;
+    await prisma.review.create({
+      data: {
+        memberId: m.id,
+        resourceId: r.id,
+        rating,
+        text: text ?? null,
+        createdAt: new Date(Date.now() - Math.floor(5 + Math.random() * 120) * DAY),
+      },
+    });
+  }
 
   console.log("Seeding admin groups, users, policies, templates...");
   const { DEFAULT_TEMPLATES } = await import("../src/lib/template-defs");

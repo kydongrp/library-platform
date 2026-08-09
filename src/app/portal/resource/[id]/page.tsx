@@ -7,6 +7,9 @@ import { checkout, reserve, checkin, cancelReservation } from "@/app/actions/cir
 import { getCurrentMember } from "@/lib/session";
 import { availability, isDigital, isExternal } from "@/lib/availability";
 import { TermsGate } from "./terms-gate";
+import { ReviewForm } from "./reviews";
+import { Stars } from "@/components/stars";
+import { initials } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS } from "@/lib/constants";
 import { formatDate, dueLabel, isOverdue } from "@/lib/format";
 
@@ -51,6 +54,23 @@ export default async function ResourceDetailPage({
   // Contract FR 8.1: T&Cs must be accepted before accessing digital resources.
   const needsTerms = (digital || external) && !!member && !member.tcAcceptedAt;
 
+  const [reviews, ratingAgg] = await Promise.all([
+    prisma.review.findMany({
+      where: { resourceId: id },
+      include: { member: { select: { name: true } } },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+    }),
+    prisma.review.aggregate({
+      where: { resourceId: id },
+      _avg: { rating: true },
+      _count: { _all: true },
+    }),
+  ]);
+  const myReview = member ? reviews.find((r) => r.memberId === member.id) ?? null : null;
+  const avgRating = ratingAgg._avg.rating ?? 0;
+  const reviewCount = ratingAgg._count._all;
+
   return (
     <div className="mx-auto max-w-4xl px-5 py-8">
       <Link href="/portal" className="text-sm text-muted-foreground hover:text-foreground">
@@ -72,6 +92,12 @@ export default async function ResourceDetailPage({
           <h1 className="mt-2 font-display text-3xl font-semibold">{resource.title}</h1>
           {resource.subtitle && <p className="text-lg text-muted-foreground">{resource.subtitle}</p>}
           <p className="mt-1 text-lg text-foreground/80">{resource.author}</p>
+          {reviewCount > 0 && (
+            <p className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground">
+              <Stars rating={avgRating} />
+              {avgRating.toFixed(1)} · {reviewCount} review{reviewCount === 1 ? "" : "s"}
+            </p>
+          )}
 
           <div className="mt-4">
             <Badge tone={avail.state === "unavailable" ? "danger" : avail.state === "available" ? "success" : "primary"}>
@@ -173,6 +199,46 @@ export default async function ResourceDetailPage({
           </dl>
         </div>
       </div>
+
+      {/* Reviews */}
+      <section className="mt-12 max-w-3xl">
+        <h2 className="mb-4 font-display text-2xl font-semibold">
+          Reviews {reviewCount > 0 && <span className="text-base font-normal text-muted-foreground">({reviewCount})</span>}
+        </h2>
+
+        {member ? (
+          <ReviewForm
+            resourceId={resource.id}
+            existing={myReview ? { id: myReview.id, rating: myReview.rating, text: myReview.text } : null}
+          />
+        ) : (
+          <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
+            <Link href="/portal/signin" className="text-primary hover:underline">Sign in</Link> to rate and review this title.
+          </p>
+        )}
+
+        {reviews.filter((r) => r.id !== myReview?.id).length > 0 && (
+          <ul className="mt-5 space-y-4">
+            {reviews
+              .filter((r) => r.id !== myReview?.id)
+              .map((r) => (
+                <li key={r.id} className="flex gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    {initials(r.member.name)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="font-medium">{r.member.name}</span>
+                      <Stars rating={r.rating} size="text-sm" />
+                      <span className="text-xs text-muted-foreground">{formatDate(r.updatedAt)}</span>
+                    </p>
+                    {r.text && <p className="mt-1 text-sm text-foreground/80">{r.text}</p>}
+                  </div>
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
