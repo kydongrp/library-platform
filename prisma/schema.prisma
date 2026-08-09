@@ -28,6 +28,7 @@ model Resource {
   digital       Boolean       @default(false) // digital titles grant instant access, no physical copy
   digitalUrl    String? // direct access link (e.g. an IEEE Xplore article URL)
   provider      String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
+  licenseSeats  Int? // concurrent-user limit for digital titles; null = unlimited (contract FR 8.2)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   copies        Copy[]
@@ -56,9 +57,11 @@ model Member {
   status       String        @default("ACTIVE") // ACTIVE, SUSPENDED
   maxLoans     Int           @default(5)
   joinedAt     DateTime      @default(now())
+  tcAcceptedAt DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)
   loans        Loan[]
   reservations Reservation[]
   notifications Notification[]
+  requests     ResourceRequest[]
 }
 
 /// A single borrowing transaction. Physical loans reference a Copy; digital
@@ -70,6 +73,7 @@ model Loan {
   returnedAt DateTime?
   status     String    @default("ACTIVE") // ACTIVE, RETURNED
   renewals   Int       @default(0)
+  recalledAt DateTime? // staff recall (contract FR 8.2) — due date shortened, member notified
   copyId     String?
   copy       Copy?     @relation(fields: [copyId], references: [id])
   resourceId String
@@ -183,4 +187,33 @@ model BatchRun {
   summary    String
   ranAt      DateTime @default(now())
   ranBy      String?
+}
+
+/// A learner's request for a resource the library doesn't hold (contract FR
+/// 8.1 "Information Resource Requests" — built natively instead of the
+/// permitted FormSG placeholder).
+model ResourceRequest {
+  id        String   @id @default(cuid())
+  title     String
+  author    String?
+  details   String? // why it's needed, edition, URL, etc.
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED, ACQUIRED
+  staffNote String?
+  decidedBy String? // admin name
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+/// Result of the most recent broken-link scan for a resource's access URL
+/// (contract FR 8.2 "broken-link detection and administrator alerting").
+model LinkCheck {
+  id         String   @id @default(cuid())
+  resourceId String   @unique
+  url        String
+  ok         Boolean
+  statusCode Int?
+  error      String?
+  checkedAt  DateTime @default(now())
 }

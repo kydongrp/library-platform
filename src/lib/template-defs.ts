@@ -18,6 +18,9 @@ export const TEMPLATE_PLACEHOLDERS: Record<string, string[]> = {
   RESERVATION_CANCELLED: ["memberName", "resourceTitle"],
   BORROW: ["memberName", "resourceTitle", "dueDate"],
   RETURN: ["memberName", "resourceTitle"],
+  RECALL: ["memberName", "resourceTitle", "newDueDate"],
+  DIGITAL_AVAILABLE: ["memberName", "resourceTitle"],
+  REQUEST_UPDATE: ["memberName", "requestTitle", "requestStatus"],
 };
 
 export const DEFAULT_TEMPLATES: {
@@ -77,5 +80,25 @@ export const DEFAULT_TEMPLATES: {
     name: "Return confirmation",
     subject: "Returned: “{{resourceTitle}}”",
     body: "Hi {{memberName}},\n\nThanks — “{{resourceTitle}}” has been returned.",
+  },
+  {
+    code: "RECALL",
+    name: "Loan recall",
+    subject: "Recall: please return “{{resourceTitle}}” by {{newDueDate}}",
+    body: "Hi {{memberName}},\n\nThe library has recalled “{{resourceTitle}}”. Your new due date is {{newDueDate}}. Please return it by then — thank you for understanding.",
+    emailEnabled: true,
+  },
+  {
+    code: "DIGITAL_AVAILABLE",
+    name: "Digital seat available",
+    subject: "Now available: “{{resourceTitle}}”",
+    body: "Hi {{memberName}},\n\nA licence for “{{resourceTitle}}” has become available. Borrow it from the portal — seats are first come, first served.",
+    emailEnabled: true,
+  },
+  {
+    code: "REQUEST_UPDATE",
+    name: "Resource request update",
+    subject: "Your request “{{requestTitle}}” is {{requestStatus}}",
+    body: "Hi {{memberName}},\n\nYour information resource request “{{requestTitle}}” has been updated to: {{requestStatus}}.",
   },
 ];

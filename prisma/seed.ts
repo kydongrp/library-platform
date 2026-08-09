@@ -26,6 +26,7 @@ type Seed = {
   digital?: boolean;
   provider?: string; // external subscription source (e.g. "IEEE Xplore")
   digitalUrl?: string;
+  licenseSeats?: number; // concurrent-user cap for digital titles
   copies: number; // physical copies (digital titles use 0)
 };
 
@@ -70,6 +71,7 @@ const RESOURCES: Seed[] = [
       "The big ideas behind reliable, scalable, and maintainable systems — storage engines, replication, and distributed data.",
     coverColor: "#9a3412",
     digital: true,
+    licenseSeats: 1, // demo: single concurrent-user licence → exercises the digital queue
     copies: 0,
   },
   {
@@ -234,6 +236,7 @@ const RESOURCES: Seed[] = [
       "First contact, hard science, and civilizational stakes in an award-winning Chinese science fiction trilogy opener.",
     coverColor: "#155e75",
     digital: true,
+    licenseSeats: 2,
     copies: 0,
   },
   {
@@ -573,7 +576,7 @@ async function main() {
 
   const AREAS = [
     "DASHBOARD", "CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS",
-    "RESERVATIONS", "POLICIES", "TEMPLATES", "REPORTS", "BATCH", "ADMIN",
+    "RESERVATIONS", "REQUESTS", "POLICIES", "TEMPLATES", "REPORTS", "BATCH", "ADMIN",
   ];
   const groupDefs: { name: string; description: string; view: string[]; edit: string[] }[] = [
     {
@@ -585,8 +588,8 @@ async function main() {
     {
       name: "Librarians",
       description: "Day-to-day library operations; no system settings.",
-      view: ["DASHBOARD", "CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS", "RESERVATIONS", "REPORTS"],
-      edit: ["CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS", "RESERVATIONS"],
+      view: ["DASHBOARD", "CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS", "RESERVATIONS", "REQUESTS", "REPORTS"],
+      edit: ["CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS", "RESERVATIONS", "REQUESTS"],
     },
     {
       name: "Reports Only",

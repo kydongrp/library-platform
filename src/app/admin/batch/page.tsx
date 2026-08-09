@@ -1,9 +1,10 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
+import Link from "next/link";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
-import { runEodProcess } from "@/app/actions/batch";
+import { runEodProcess, runLinkCheck } from "@/app/actions/batch";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export default async function BatchPage() {
   const admin = await requireAdminView("BATCH");
   const editable = canEdit(admin, "BATCH");
 
-  const [runs, outbox, notifications] = await Promise.all([
+  const [runs, outbox, notifications, brokenLinks, lastLinkRun] = await Promise.all([
     prisma.batchRun.findMany({ orderBy: { ranAt: "desc" }, take: 10 }),
     prisma.mailQueue.findMany({ orderBy: { createdAt: "desc" }, take: 15 }),
     prisma.notification.findMany({
@@ -20,7 +21,16 @@ export default async function BatchPage() {
       take: 15,
       include: { member: true },
     }),
+    prisma.linkCheck.findMany({ where: { ok: false }, orderBy: { checkedAt: "desc" } }),
+    prisma.batchRun.findFirst({ where: { process: "LINKCHECK" }, orderBy: { ranAt: "desc" } }),
   ]);
+  const brokenResources = brokenLinks.length
+    ? await prisma.resource.findMany({
+        where: { id: { in: brokenLinks.map((b) => b.resourceId) } },
+        select: { id: true, title: true },
+      })
+    : [];
+  const titleById = new Map(brokenResources.map((r) => [r.id, r.title]));
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -35,11 +45,45 @@ export default async function BatchPage() {
           </p>
         </div>
         {editable && (
-          <ActionButton action={runEodProcess} fields={{}} pendingLabel="Running…">
-            ▶ Run EodProcess now
-          </ActionButton>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton action={runEodProcess} fields={{}} pendingLabel="Running…">
+              ▶ Run EodProcess now
+            </ActionButton>
+            <ActionButton action={runLinkCheck} fields={{}} variant="outline" pendingLabel="Checking links…">
+              ⛓ Check external links
+            </ActionButton>
+          </div>
         )}
       </div>
+
+      {/* Broken links (contract FR: broken-link detection + admin alerting) */}
+      <Card className="mb-6 border-amber-200 p-5">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="font-display text-lg font-semibold">Broken links</h2>
+          {lastLinkRun && <Badge tone="muted">Last scan {formatDate(lastLinkRun.ranAt)}</Badge>}
+        </div>
+        {!lastLinkRun ? (
+          <p className="py-3 text-sm text-muted-foreground">
+            No scan yet — run “Check external links” to test every access URL in the catalogue.
+          </p>
+        ) : brokenLinks.length === 0 ? (
+          <p className="py-3 text-sm text-green-700">All external access links are healthy. ✓</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {brokenLinks.map((b) => (
+              <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <Link href={`/admin/catalogue/${b.resourceId}`} className="truncate text-sm font-medium hover:underline">
+                    {titleById.get(b.resourceId) ?? b.resourceId}
+                  </Link>
+                  <p className="truncate text-xs text-muted-foreground">{b.url}</p>
+                </div>
+                <Badge tone="danger">{b.error ?? `HTTP ${b.statusCode}`}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Run history */}

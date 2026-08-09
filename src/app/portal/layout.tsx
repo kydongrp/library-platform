@@ -49,6 +49,7 @@ export default async function PortalLayout({
                   { href: "/portal", label: "Browse" },
                   { href: "/portal/my-loans", label: "My Loans", badge: loanCount },
                   { href: "/portal/my-reservations", label: "Holds", badge: holdCount },
+                  { href: "/portal/requests", label: "Requests" },
                 ]}
               />
               {member ? (

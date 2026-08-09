@@ -6,6 +6,7 @@ import { ActionButton } from "@/components/forms";
 import { checkout, reserve, checkin, cancelReservation } from "@/app/actions/circulation";
 import { getCurrentMember } from "@/lib/session";
 import { availability, isDigital, isExternal } from "@/lib/availability";
+import { TermsGate } from "./terms-gate";
 import { RESOURCE_TYPE_LABELS } from "@/lib/constants";
 import { formatDate, dueLabel, isOverdue } from "@/lib/format";
 
@@ -39,6 +40,17 @@ export default async function ResourceDetailPage({
       ])
     : [null, null, 0];
 
+  // Concurrent access management for seat-limited digital titles.
+  const seatsInUse =
+    digital && resource.licenseSeats != null
+      ? await prisma.loan.count({ where: { resourceId: id, status: "ACTIVE" } })
+      : 0;
+  const seatFree =
+    !digital || resource.licenseSeats == null || seatsInUse < resource.licenseSeats;
+
+  // Contract FR 8.1: T&Cs must be accepted before accessing digital resources.
+  const needsTerms = (digital || external) && !!member && !member.tcAcceptedAt;
+
   return (
     <div className="mx-auto max-w-4xl px-5 py-8">
       <Link href="/portal" className="text-sm text-muted-foreground hover:text-foreground">
@@ -65,16 +77,32 @@ export default async function ResourceDetailPage({
             <Badge tone={avail.state === "unavailable" ? "danger" : avail.state === "available" ? "success" : "primary"}>
               {avail.label}
             </Badge>
-            {!digital && waiting > 0 && (
+            {digital && resource.licenseSeats != null && (
               <span className="ml-2 text-sm text-muted-foreground">
-                {waiting} {waiting === 1 ? "person" : "people"} waiting
+                {seatsInUse} of {resource.licenseSeats} licence seat{resource.licenseSeats === 1 ? "" : "s"} in use
+              </span>
+            )}
+            {waiting > 0 && (
+              <span className="ml-2 text-sm text-muted-foreground">
+                · {waiting} {waiting === 1 ? "person" : "people"} waiting
               </span>
             )}
           </div>
 
           {/* Action panel */}
           <div className="mt-5">
-            {external ? (
+            {!member && (digital || external) ? (
+              <div className="flex flex-col gap-2">
+                <ButtonLink href="/portal/signin">
+                  {external ? `Sign in to access via ${resource.provider}` : "Sign in to borrow"}
+                </ButtonLink>
+                <p className="text-xs text-muted-foreground">
+                  Digital resources require sign-in and acceptance of the usage terms.
+                </p>
+              </div>
+            ) : needsTerms ? (
+              <TermsGate provider={resource.provider} />
+            ) : external ? (
               <div className="flex flex-col gap-2">
                 <a
                   href={resource.digitalUrl || "#"}
@@ -113,14 +141,22 @@ export default async function ResourceDetailPage({
                   Cancel hold
                 </ActionButton>
               </Card>
-            ) : digital || avail.state === "available" ? (
+            ) : (digital && seatFree) || avail.state === "available" ? (
               <ActionButton action={checkout} fields={{ memberId: member.id, resourceId: resource.id }} pendingLabel="Borrowing…">
                 {digital ? "Borrow — instant access" : "Borrow this title"}
               </ActionButton>
             ) : (
-              <ActionButton action={reserve} fields={{ memberId: member.id, resourceId: resource.id }} variant="accent" pendingLabel="Placing hold…">
-                Place a hold
-              </ActionButton>
+              <div className="flex flex-col gap-2">
+                <ActionButton action={reserve} fields={{ memberId: member.id, resourceId: resource.id }} variant="accent" pendingLabel="Placing hold…">
+                  Place a hold
+                </ActionButton>
+                {digital && !seatFree && (
+                  <p className="text-xs text-muted-foreground">
+                    All {resource.licenseSeats} licence seat{resource.licenseSeats === 1 ? " is" : "s are"} in
+                    use. You&apos;ll be notified when one frees up.
+                  </p>
+                )}
+              </div>
             )}
           </div>
 

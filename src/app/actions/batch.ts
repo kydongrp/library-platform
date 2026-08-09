@@ -83,6 +83,25 @@ export async function runEodProcess(
     });
     counts.cancelled++;
 
+    // Digital hold expired: offer the seat to the next in line.
+    if (hold.resource.copies.length === 0) {
+      const next = await prisma.reservation.findFirst({
+        where: { resourceId: hold.resourceId, status: "PENDING" },
+        orderBy: { reservedAt: "asc" },
+        include: { member: true },
+      });
+      if (next) {
+        await prisma.reservation.update({
+          where: { id: next.id },
+          data: { status: "READY", readyAt: now },
+        });
+        await notify("DIGITAL_AVAILABLE", next.member, {
+          resourceTitle: hold.resource.title,
+        });
+      }
+      continue;
+    }
+
     // Pass the held copy to the next in line, or shelve it.
     const heldCopy = hold.resource.copies.find((c) => c.status === "RESERVED");
     if (heldCopy) {
@@ -151,4 +170,73 @@ function renderKey(subjectTemplate: string, vars: Record<string, string>, member
   return subjectTemplate.replace(/\{\{(\w+)\}\}/g, (m, k) =>
     k === "memberName" ? memberName : vars[k] ?? m,
   );
+}
+
+const LINK_TIMEOUT_MS = 5000;
+
+/**
+ * Broken-link scan (contract FR 8.2): checks every resource access URL and
+ * records the result per resource, so administrators see failures on the
+ * Batch Processes page.
+ */
+export async function runLinkCheck(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "BATCH"))
+    return { ok: false, message: "You don't have permission to run batch processes." };
+
+  const resources = await prisma.resource.findMany({
+    where: { digitalUrl: { not: null } },
+    select: { id: true, title: true, digitalUrl: true },
+  });
+
+  let broken = 0;
+  // Small concurrency to keep the total under serverless time limits.
+  const CHUNK = 6;
+  for (let i = 0; i < resources.length; i += CHUNK) {
+    await Promise.all(
+      resources.slice(i, i + CHUNK).map(async (r) => {
+        const result = await checkUrl(r.digitalUrl!);
+        if (!result.ok) broken++;
+        await prisma.linkCheck.upsert({
+          where: { resourceId: r.id },
+          update: { url: r.digitalUrl!, ...result, checkedAt: new Date() },
+          create: { resourceId: r.id, url: r.digitalUrl!, ...result },
+        });
+      }),
+    );
+  }
+
+  const summary = `Checked ${resources.length} link${resources.length === 1 ? "" : "s"} · ${broken} broken`;
+  await prisma.batchRun.create({
+    data: { process: "LINKCHECK", summary, ranBy: admin?.name ?? "system" },
+  });
+
+  revalidatePath("/admin/batch");
+  return { ok: true, message: `Link check complete — ${summary}.` };
+}
+
+async function checkUrl(url: string): Promise<{ ok: boolean; statusCode: number | null; error: string | null }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LINK_TIMEOUT_MS);
+  try {
+    // GET, not HEAD — several providers (incl. IEEE) reject HEAD requests.
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: { "User-Agent": "AthenaeumLinkCheck/1.0" },
+    });
+    // Auth walls (401/403) mean the link resolves but needs the subscription —
+    // that's not "broken" for an externally licensed resource.
+    const ok = res.status < 500 && res.status !== 404 && res.status !== 410;
+    return { ok, statusCode: res.status, error: ok ? null : `HTTP ${res.status}` };
+  } catch (e) {
+    const msg = e instanceof Error ? (e.name === "AbortError" ? "Timed out" : e.message) : "Fetch failed";
+    return { ok: false, statusCode: null, error: msg };
+  } finally {
+    clearTimeout(timer);
+  }
 }

@@ -7,6 +7,7 @@ import { isDigital } from "@/lib/availability";
 import { policyFor } from "@/lib/policies";
 import { notify } from "@/lib/templates";
 import { formatDate } from "@/lib/format";
+import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -79,9 +80,27 @@ export async function checkout(
     });
     if (existing)
       return { ok: false, message: "Already on loan to this member." };
+
+    // Concurrent access management: respect the licence seat cap.
+    if (resource.licenseSeats != null) {
+      const seatsInUse = await prisma.loan.count({
+        where: { resourceId: resource.id, status: "ACTIVE" },
+      });
+      if (seatsInUse >= resource.licenseSeats)
+        return {
+          ok: false,
+          message: `All ${resource.licenseSeats} licence seat${resource.licenseSeats === 1 ? " is" : "s are"} in use — place a hold to be notified.`,
+        };
+    }
+
     const dueAt = new Date(Date.now() + policy.digitalDays * DAY);
     await prisma.loan.create({
       data: { memberId, resourceId: resource.id, dueAt },
+    });
+    // Borrowing consumes any ready hold this member had on the title.
+    await prisma.reservation.updateMany({
+      where: { memberId, resourceId: resource.id, status: { in: ["READY", "PENDING"] } },
+      data: { status: "FULFILLED" },
     });
     await notify("BORROW", member, {
       resourceTitle: resource.title,
@@ -154,6 +173,25 @@ export async function checkin(
   await notify("RETURN", loan.member, { resourceTitle: loan.resource.title });
 
   let message = `"${loan.resource.title}" returned.`;
+
+  // Digital return: a licence seat freed up — notify the next in queue.
+  if (!loan.copyId) {
+    const nextHold = await prisma.reservation.findFirst({
+      where: { resourceId: loan.resourceId, status: "PENDING" },
+      orderBy: { reservedAt: "asc" },
+      include: { member: true },
+    });
+    if (nextHold) {
+      await prisma.reservation.update({
+        where: { id: nextHold.id },
+        data: { status: "READY", readyAt: new Date() },
+      });
+      await notify("DIGITAL_AVAILABLE", nextHold.member, {
+        resourceTitle: loan.resource.title,
+      });
+      message += ` Seat offered to ${nextHold.member.name} (next in queue).`;
+    }
+  }
 
   if (loan.copyId) {
     // If someone is waiting, hold the copy for them; otherwise shelve it.
@@ -237,12 +275,21 @@ export async function reserve(
     include: { copies: true },
   });
   if (!resource) return { ok: false, message: "Resource not found." };
-  if (isDigital(resource))
-    return { ok: false, message: "Digital titles don't need a reservation." };
 
-  const available = resource.copies.some((c) => c.status === "AVAILABLE");
-  if (available)
-    return { ok: false, message: "Copies are available — borrow it instead." };
+  if (isDigital(resource)) {
+    // Digital holds only make sense for seat-limited titles with all seats taken.
+    if (resource.licenseSeats == null)
+      return { ok: false, message: "This digital title has unlimited access — borrow it directly." };
+    const seatsInUse = await prisma.loan.count({
+      where: { resourceId, status: "ACTIVE" },
+    });
+    if (seatsInUse < resource.licenseSeats)
+      return { ok: false, message: "A licence seat is free — borrow it instead." };
+  } else {
+    const available = resource.copies.some((c) => c.status === "AVAILABLE");
+    if (available)
+      return { ok: false, message: "Copies are available — borrow it instead." };
+  }
 
   const existing = await prisma.reservation.findFirst({
     where: {
@@ -305,4 +352,48 @@ export async function cancelReservation(
 
   revalidateAll();
   return { ok: true, message: "Reservation cancelled." };
+}
+
+const RECALL_NOTICE_DAYS = 2;
+
+/**
+ * Staff recall of an active loan (contract FR 8.2): shortens the due date to
+ * a short notice period and notifies the member. Requires LOANS edit rights.
+ */
+export async function recallLoan(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "LOANS"))
+    return { ok: false, message: "You don't have permission to recall loans." };
+
+  const loanId = String(formData.get("loanId") ?? "");
+  const loan = await prisma.loan.findUnique({
+    where: { id: loanId },
+    include: { resource: true, member: true },
+  });
+  if (!loan || loan.status !== "ACTIVE")
+    return { ok: false, message: "Loan not found." };
+  if (loan.recalledAt)
+    return { ok: false, message: "This loan has already been recalled." };
+
+  const noticeDue = new Date(Date.now() + RECALL_NOTICE_DAYS * DAY);
+  // Never extend: keep the earlier of the current due date and the notice.
+  const dueAt = loan.dueAt < noticeDue ? loan.dueAt : noticeDue;
+
+  await prisma.loan.update({
+    where: { id: loan.id },
+    data: { dueAt, recalledAt: new Date() },
+  });
+  await notify("RECALL", loan.member, {
+    resourceTitle: loan.resource.title,
+    newDueDate: formatDate(dueAt),
+  });
+
+  revalidateAll();
+  return {
+    ok: true,
+    message: `"${loan.resource.title}" recalled — ${loan.member.name} notified, due ${formatDate(dueAt)}.`,
+  };
 }

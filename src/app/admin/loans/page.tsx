@@ -3,7 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
-import { checkin, renewLoan } from "@/app/actions/circulation";
+import { checkin, renewLoan, recallLoan } from "@/app/actions/circulation";
 import { formatDate, dueLabel, isOverdue } from "@/lib/format";
 
 type SearchParams = Promise<{ filter?: string }>;
@@ -75,8 +75,12 @@ export default async function LoansPage({
                   {l.copy ? ` · ${l.copy.barcode}` : " · digital"} · borrowed {formatDate(l.borrowedAt)}
                 </p>
               </div>
+              {l.recalledAt && <Badge tone="accent">Recalled</Badge>}
               <Badge tone={isOverdue(l.dueAt) ? "danger" : "muted"}>{dueLabel(l.dueAt)}</Badge>
               <div className="flex items-center gap-2">
+                {!l.recalledAt && (
+                  <ActionButton action={recallLoan} fields={{ loanId: l.id }} variant="outline" className="!px-3 !py-1.5 text-xs" confirm="Recall this loan? The member will be notified and the due date shortened." pendingLabel="…">Recall</ActionButton>
+                )}
                 <ActionButton action={renewLoan} fields={{ loanId: l.id }} variant="outline" className="!px-3 !py-1.5 text-xs" pendingLabel="…">Renew</ActionButton>
                 <ActionButton action={checkin} fields={{ loanId: l.id }} variant="primary" className="!px-3 !py-1.5 text-xs" pendingLabel="…">Return</ActionButton>
               </div>
