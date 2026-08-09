@@ -71,12 +71,26 @@ Open **/** for the landing page, then enter either portal.
 
 **As staff (`/admin`):**
 
+Staff sign in via an act-as switcher (Azure AD is stubbed). Three seeded accounts
+demonstrate the **user access matrix**: Sarah Admin (Administrators — everything),
+Liam Librarian (operations only), Rita Reports (read-only dashboards/reports).
+
 1. **Circulation Desk** — pick a member, paste one of the listed *available barcodes*
    (e.g. `LIB-001004`) into **Check out**. Return it via **Check in** with the same barcode.
 2. **Catalogue** — search/filter, open a title to edit it, add/remove copies, mark a copy
    lost/maintenance, or add a brand-new title (with a live cover preview).
 3. **Members** — add members, see each member's active loans/holds, renew or return for them.
 4. **Current Loans / Reservations** — renew, return, or cancel holds; overdue items are flagged.
+5. **Loan Policies** — edit circulation rules per member type (loan days, limits, renewals,
+   hold pickup window); checkout/renewal reads these live.
+6. **Email Templates** — edit the 8 system notices with `{{placeholder}}` substitution;
+   toggle in-app vs email per template.
+7. **Batch Processes** — run the **EodProcess** (predue/overdue reminders, expiry of
+   uncollected holds with queue promotion, welcome/inactive nudges) and inspect the
+   run history, mail outbox, and in-app notification feed.
+8. **Reports** — five standard reports with criteria and Excel-compatible CSV export.
+9. **Admin Settings** — manage staff accounts, admin groups, and the per-module
+   view/edit access matrix (enforced server-side on every page).
 
 **As a learner (`/portal`):**
 
