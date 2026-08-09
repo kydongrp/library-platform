@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { StatefulForm, SubmitButton } from "@/components/forms";
-import { MEMBER_TYPES, MEMBER_TYPE_LABELS, LOAN_PERIOD_DAYS } from "@/lib/constants";
+import { MEMBER_TYPES, MEMBER_TYPE_LABELS } from "@/lib/constants";
 import type { ActionState } from "@/lib/types";
 
 type Defaults = {
@@ -55,7 +55,7 @@ export function MemberForm({
                 ))}
               </select>
               <p className="mt-1 text-xs text-muted-foreground">
-                Loan period: {LOAN_PERIOD_DAYS[memberType]} days
+                Loan period set by Loan Policies for this member type
               </p>
             </div>
             <div>

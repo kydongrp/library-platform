@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -28,6 +29,8 @@ export default async function ResourceDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
+  await requireAdminView("CATALOGUE");
+
   const { id } = await params;
   const { error } = await searchParams;
 

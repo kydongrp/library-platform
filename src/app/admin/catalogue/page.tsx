@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, Badge, ButtonLink, BookCover, EmptyState } from "@/components/ui";
@@ -18,6 +19,8 @@ export default async function CataloguePage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireAdminView("CATALOGUE");
+
   const { q = "", category = "", type = "", source = "" } = await searchParams;
 
   const where: Record<string, unknown> = {};

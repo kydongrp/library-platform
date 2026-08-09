@@ -57,16 +57,8 @@ export const MEMBER_TYPE_LABELS: Record<string, string> = {
   EXTERNAL: "External",
 };
 
-// Loan period (in days) by member type, applied at checkout.
-export const LOAN_PERIOD_DAYS: Record<string, number> = {
-  STUDENT: 14,
-  STAFF: 30,
-  EXTERNAL: 7,
-};
-
-export const DIGITAL_LOAN_PERIOD_DAYS = 14;
-export const MAX_RENEWALS = 2;
-export const RENEWAL_DAYS = 14;
+// Circulation rules now live in the LoanPolicy table (see src/lib/policies.ts),
+// editable from Admin → Loan Policies.
 
 export const COPY_STATUSES = [
   "AVAILABLE",

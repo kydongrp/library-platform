@@ -1,0 +1,154 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/db";
+import type { ActionState } from "@/lib/types";
+import { policyFor } from "@/lib/policies";
+import { notify } from "@/lib/templates";
+import { formatDate, daysUntil } from "@/lib/format";
+import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
+
+const DAY = 24 * 60 * 60 * 1000;
+const PREDUE_DAYS = 2; // notify when a loan is due within this many days
+const INACTIVE_MONTHS = 6;
+
+/**
+ * End-of-day batch (SDD: EodProcess). Generates templated notifications:
+ * predue, overdue, cancel expired READY reservations, welcome, inactive.
+ * Idempotent per day — a notification of the same type for the same subject
+ * is not repeated within 24h.
+ */
+export async function runEodProcess(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "BATCH"))
+    return { ok: false, message: "You don't have permission to run batch processes." };
+
+  const since = new Date(Date.now() - 1 * DAY);
+  const recent = await prisma.notification.findMany({
+    where: { createdAt: { gte: since } },
+    select: { type: true, memberId: true, title: true },
+  });
+  const alreadySent = new Set(recent.map((n) => `${n.type}:${n.memberId}:${n.title}`));
+  const counts = { predue: 0, overdue: 0, cancelled: 0, welcome: 0, inactive: 0 };
+  const now = new Date();
+
+  // 1. Predue + overdue on active loans.
+  const activeLoans = await prisma.loan.findMany({
+    where: { status: "ACTIVE" },
+    include: { member: true, resource: true },
+  });
+  for (const loan of activeLoans) {
+    const d = daysUntil(loan.dueAt);
+    const vars = {
+      resourceTitle: loan.resource.title,
+      dueDate: formatDate(loan.dueAt),
+      daysOverdue: String(Math.abs(d)),
+    };
+    if (d < 0) {
+      const template = await prisma.emailTemplate.findUnique({ where: { code: "OVERDUE" } });
+      const key = `OVERDUE:${loan.memberId}:${template ? renderKey(template.subject, vars, loan.member.name) : ""}`;
+      if (!alreadySent.has(key)) {
+        await notify("OVERDUE", loan.member, vars);
+        counts.overdue++;
+      }
+    } else if (d <= PREDUE_DAYS) {
+      const template = await prisma.emailTemplate.findUnique({ where: { code: "PREDUE" } });
+      const key = `PREDUE:${loan.memberId}:${template ? renderKey(template.subject, vars, loan.member.name) : ""}`;
+      if (!alreadySent.has(key)) {
+        await notify("PREDUE", loan.member, vars);
+        counts.predue++;
+      }
+    }
+  }
+
+  // 2. Cancel READY reservations past their pickup window; promote next in queue.
+  const readyHolds = await prisma.reservation.findMany({
+    where: { status: "READY" },
+    include: { member: true, resource: { include: { copies: true } } },
+  });
+  for (const hold of readyHolds) {
+    const policy = await policyFor(hold.member.memberType);
+    const expiry = new Date((hold.readyAt ?? hold.reservedAt).getTime() + policy.holdPickupDays * DAY);
+    if (expiry > now) continue;
+
+    await prisma.reservation.update({
+      where: { id: hold.id },
+      data: { status: "EXPIRED" },
+    });
+    await notify("RESERVATION_CANCELLED", hold.member, {
+      resourceTitle: hold.resource.title,
+    });
+    counts.cancelled++;
+
+    // Pass the held copy to the next in line, or shelve it.
+    const heldCopy = hold.resource.copies.find((c) => c.status === "RESERVED");
+    if (heldCopy) {
+      const next = await prisma.reservation.findFirst({
+        where: { resourceId: hold.resourceId, status: "PENDING" },
+        orderBy: { reservedAt: "asc" },
+        include: { member: true },
+      });
+      if (next) {
+        const nextPolicy = await policyFor(next.member.memberType);
+        await prisma.reservation.update({
+          where: { id: next.id },
+          data: { status: "READY", readyAt: now },
+        });
+        await notify("RESERVATION_READY", next.member, {
+          resourceTitle: hold.resource.title,
+          expiryDate: formatDate(new Date(now.getTime() + nextPolicy.holdPickupDays * DAY)),
+        });
+      } else {
+        await prisma.copy.update({
+          where: { id: heldCopy.id },
+          data: { status: "AVAILABLE" },
+        });
+      }
+    }
+  }
+
+  // 3. Welcome new members (joined in the last day).
+  const newMembers = await prisma.member.findMany({
+    where: { joinedAt: { gte: since }, status: "ACTIVE" },
+  });
+  for (const m of newMembers) {
+    if (alreadySent.has(`WELCOME:${m.id}:`) || recent.some((n) => n.type === "WELCOME" && n.memberId === m.id)) continue;
+    await notify("WELCOME", m, {});
+    counts.welcome++;
+  }
+
+  // 4. Inactive members: no loan activity for N months.
+  const cutoff = new Date(Date.now() - INACTIVE_MONTHS * 30 * DAY);
+  const members = await prisma.member.findMany({
+    where: { status: "ACTIVE" },
+    include: { loans: { orderBy: { borrowedAt: "desc" }, take: 1 } },
+  });
+  for (const m of members) {
+    const last = m.loans[0]?.borrowedAt ?? m.joinedAt;
+    if (last > cutoff) continue;
+    if (recent.some((n) => n.type === "INACTIVE" && n.memberId === m.id)) continue;
+    await notify("INACTIVE", m, {
+      monthsInactive: String(Math.floor((Date.now() - last.getTime()) / (30 * DAY))),
+    });
+    counts.inactive++;
+  }
+
+  const summary = `Predue: ${counts.predue} · Overdue: ${counts.overdue} · Holds expired: ${counts.cancelled} · Welcome: ${counts.welcome} · Inactive: ${counts.inactive}`;
+  await prisma.batchRun.create({
+    data: { process: "EOD", summary, ranBy: admin?.name ?? "system" },
+  });
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/portal", "layout");
+  return { ok: true, message: `EodProcess complete — ${summary}` };
+}
+
+// Dedup key mirrors how notify() renders the subject line.
+function renderKey(subjectTemplate: string, vars: Record<string, string>, memberName: string): string {
+  return subjectTemplate.replace(/\{\{(\w+)\}\}/g, (m, k) =>
+    k === "memberName" ? memberName : vars[k] ?? m,
+  );
+}

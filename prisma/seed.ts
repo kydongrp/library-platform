@@ -439,11 +439,18 @@ async function main() {
   }
 
   console.log("Clearing existing data...");
+  await prisma.notification.deleteMany();
+  await prisma.mailQueue.deleteMany();
+  await prisma.batchRun.deleteMany();
   await prisma.loan.deleteMany();
   await prisma.reservation.deleteMany();
   await prisma.copy.deleteMany();
   await prisma.member.deleteMany();
   await prisma.resource.deleteMany();
+  await prisma.adminUser.deleteMany();
+  await prisma.adminGroup.deleteMany();
+  await prisma.loanPolicy.deleteMany();
+  await prisma.emailTemplate.deleteMany();
 
   console.log("Seeding members...");
   const members = [];
@@ -561,12 +568,90 @@ async function main() {
     },
   });
 
+  console.log("Seeding admin groups, users, policies, templates...");
+  const { DEFAULT_TEMPLATES } = await import("../src/lib/template-defs");
+
+  const AREAS = [
+    "DASHBOARD", "CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS",
+    "RESERVATIONS", "POLICIES", "TEMPLATES", "REPORTS", "BATCH", "ADMIN",
+  ];
+  const groupDefs: { name: string; description: string; view: string[]; edit: string[] }[] = [
+    {
+      name: "Administrators",
+      description: "Full access to every module including settings.",
+      view: AREAS,
+      edit: AREAS,
+    },
+    {
+      name: "Librarians",
+      description: "Day-to-day library operations; no system settings.",
+      view: ["DASHBOARD", "CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS", "RESERVATIONS", "REPORTS"],
+      edit: ["CIRCULATION", "CATALOGUE", "MEMBERS", "LOANS", "RESERVATIONS"],
+    },
+    {
+      name: "Reports Only",
+      description: "Read-only access to dashboards and reports.",
+      view: ["DASHBOARD", "REPORTS"],
+      edit: [],
+    },
+  ];
+  const groups: Record<string, string> = {};
+  for (const g of groupDefs) {
+    const created = await prisma.adminGroup.create({
+      data: {
+        name: g.name,
+        description: g.description,
+        permissions: {
+          create: AREAS.map((area) => ({
+            area,
+            canView: g.view.includes(area) || g.edit.includes(area),
+            canEdit: g.edit.includes(area),
+          })),
+        },
+      },
+    });
+    groups[g.name] = created.id;
+  }
+
+  await prisma.adminUser.createMany({
+    data: [
+      { name: "Sarah Admin", email: "sarah.admin@example.edu", groupId: groups["Administrators"] },
+      { name: "Liam Librarian", email: "liam.librarian@example.edu", groupId: groups["Librarians"] },
+      { name: "Rita Reports", email: "rita.reports@example.edu", groupId: groups["Reports Only"] },
+    ],
+  });
+
+  await prisma.loanPolicy.createMany({
+    data: [
+      { memberType: "DEFAULT", loanDays: 14, maxLoans: 5, maxRenewals: 2, renewalDays: 14, digitalDays: 14, holdPickupDays: 3 },
+      { memberType: "STUDENT", loanDays: 14, maxLoans: 5, maxRenewals: 2, renewalDays: 14, digitalDays: 14, holdPickupDays: 3 },
+      { memberType: "STAFF", loanDays: 30, maxLoans: 10, maxRenewals: 3, renewalDays: 30, digitalDays: 21, holdPickupDays: 5 },
+      { memberType: "EXTERNAL", loanDays: 7, maxLoans: 3, maxRenewals: 1, renewalDays: 7, digitalDays: 7, holdPickupDays: 3 },
+    ],
+  });
+
+  for (const t of DEFAULT_TEMPLATES) {
+    await prisma.emailTemplate.create({
+      data: {
+        code: t.code,
+        name: t.name,
+        subject: t.subject,
+        body: t.body,
+        inAppEnabled: true,
+        emailEnabled: t.emailEnabled ?? false,
+      },
+    });
+  }
+
   const counts = {
     resources: await prisma.resource.count(),
     copies: await prisma.copy.count(),
     members: await prisma.member.count(),
     loans: await prisma.loan.count(),
     reservations: await prisma.reservation.count(),
+    adminUsers: await prisma.adminUser.count(),
+    policies: await prisma.loanPolicy.count(),
+    templates: await prisma.emailTemplate.count(),
   };
   console.log("Done:", counts);
 }

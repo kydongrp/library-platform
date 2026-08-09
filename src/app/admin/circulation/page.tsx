@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
 import { Card, Badge } from "@/components/ui";
 import { CirculationDesk } from "./desk";
@@ -6,6 +7,8 @@ import { formatDate } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function CirculationPage() {
+  await requireAdminView("CIRCULATION");
+
   const [members, recent, availableSample] = await Promise.all([
     prisma.member.findMany({
       where: { status: "ACTIVE" },

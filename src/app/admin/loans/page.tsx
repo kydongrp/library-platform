@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
@@ -12,6 +13,8 @@ export default async function LoansPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireAdminView("LOANS");
+
   const { filter = "all" } = await searchParams;
   const now = new Date();
 

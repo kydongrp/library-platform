@@ -1,8 +1,11 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { ResourceForm } from "@/components/resource-form";
 import { createResource } from "@/app/actions/catalogue";
 
-export default function NewResourcePage() {
+export default async function NewResourcePage() {
+  await requireAdminView("CATALOGUE");
+
   return (
     <div className="mx-auto max-w-4xl">
       <Link href="/admin/catalogue" className="text-sm text-muted-foreground hover:text-foreground">

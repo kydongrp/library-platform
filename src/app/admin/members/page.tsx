@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, Badge, ButtonLink, EmptyState } from "@/components/ui";
@@ -11,6 +12,8 @@ export default async function MembersPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireAdminView("MEMBERS");
+
   const { q = "" } = await searchParams;
 
   const members = await prisma.member.findMany({

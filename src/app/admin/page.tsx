@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, Badge } from "@/components/ui";
@@ -7,6 +8,8 @@ import { CATEGORIES } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
+  await requireAdminView("DASHBOARD");
+
   const now = new Date();
 
   const [

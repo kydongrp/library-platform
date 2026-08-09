@@ -58,6 +58,7 @@ model Member {
   joinedAt     DateTime      @default(now())
   loans        Loan[]
   reservations Reservation[]
+  notifications Notification[]
 }
 
 /// A single borrowing transaction. Physical loans reference a Copy; digital
@@ -87,4 +88,99 @@ model Reservation {
   resource   Resource  @relation(fields: [resourceId], references: [id])
   memberId   String
   member     Member    @relation(fields: [memberId], references: [id])
+}
+
+/// A staff account for the Admin Panel (SDD: AdminAccount). Authentication is
+/// stubbed (act-as switcher); authorisation is enforced via the group matrix.
+model AdminUser {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  status    String     @default("ACTIVE") // ACTIVE, SUSPENDED
+  createdAt DateTime   @default(now())
+  groupId   String
+  group     AdminGroup @relation(fields: [groupId], references: [id])
+}
+
+/// A staff role (SDD: AdminGroups) holding per-area permissions.
+model AdminGroup {
+  id          String                @id @default(cuid())
+  name        String                @unique
+  description String?
+  createdAt   DateTime              @default(now())
+  users       AdminUser[]
+  permissions AdminGroupPermission[]
+}
+
+/// One row per (group, area) — the user access matrix (SDD: AdminGroupArea).
+model AdminGroupPermission {
+  id      String     @id @default(cuid())
+  area    String // DASHBOARD, CIRCULATION, CATALOGUE, MEMBERS, LOANS, RESERVATIONS, POLICIES, TEMPLATES, REPORTS, BATCH, ADMIN
+  canView Boolean    @default(false)
+  canEdit Boolean    @default(false)
+  groupId String
+  group   AdminGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, area])
+}
+
+/// Configurable circulation rules (SDD: LoansPolicies). One row per member
+/// type; the DEFAULT row backstops anything unmatched.
+model LoanPolicy {
+  id            String   @id @default(cuid())
+  memberType    String   @unique // STUDENT, STAFF, EXTERNAL, DEFAULT
+  loanDays      Int      @default(14)
+  maxLoans      Int      @default(5)
+  maxRenewals   Int      @default(2)
+  renewalDays   Int      @default(14)
+  digitalDays   Int      @default(14)
+  holdPickupDays Int     @default(3) // READY reservations expire after this many days
+  updatedAt     DateTime @updatedAt
+}
+
+/// Editable notification templates (SDD: SystemEmailTemplates). Placeholders
+/// like {{memberName}}, {{resourceTitle}}, {{dueDate}} are substituted at send.
+model EmailTemplate {
+  id           String   @id @default(cuid())
+  code         String   @unique // PREDUE, OVERDUE, WELCOME, INACTIVE, RESERVATION_READY, RESERVATION_CANCELLED, BORROW, RETURN
+  name         String
+  subject      String
+  body         String
+  inAppEnabled Boolean  @default(true)
+  emailEnabled Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+}
+
+/// In-app notification for a member (SDD: Notification Centre feed).
+model Notification {
+  id        String    @id @default(cuid())
+  type      String // template code
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  memberId  String
+  member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+/// Outbound email queue (SDD: MailQ). No SMTP in the prototype — rows are
+/// visible in the admin outbox as proof of the notification flow.
+model MailQueue {
+  id        String   @id @default(cuid())
+  toEmail   String
+  toName    String
+  subject   String
+  body      String
+  template  String
+  status    String   @default("QUEUED") // QUEUED, SENT (simulated)
+  createdAt DateTime @default(now())
+}
+
+/// One row per EodProcess execution, with a summary of what was generated.
+model BatchRun {
+  id         String   @id @default(cuid())
+  process    String   @default("EOD")
+  summary    String
+  ranAt      DateTime @default(now())
+  ranBy      String?
 }

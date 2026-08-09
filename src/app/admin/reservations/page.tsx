@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
@@ -8,6 +9,8 @@ import { formatDate } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function ReservationsPage() {
+  await requireAdminView("RESERVATIONS");
+
   const reservations = await prisma.reservation.findMany({
     where: { status: { in: ["PENDING", "READY"] } },
     include: { member: true, resource: true },

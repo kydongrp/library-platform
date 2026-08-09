@@ -1,3 +1,4 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -14,6 +15,8 @@ export default async function MemberDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdminView("MEMBERS");
+
   const { id } = await params;
 
   const member = await prisma.member.findUnique({

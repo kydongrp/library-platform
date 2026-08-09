@@ -3,13 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
-import {
-  LOAN_PERIOD_DAYS,
-  DIGITAL_LOAN_PERIOD_DAYS,
-  MAX_RENEWALS,
-  RENEWAL_DAYS,
-} from "@/lib/constants";
 import { isDigital } from "@/lib/availability";
+import { policyFor } from "@/lib/policies";
+import { notify } from "@/lib/templates";
+import { formatDate } from "@/lib/format";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -38,13 +35,17 @@ export async function checkout(
   if (member.status !== "ACTIVE")
     return { ok: false, message: `${member.name}'s account is suspended.` };
 
+  const policy = await policyFor(member.memberType);
+  // Member-specific override wins when set higher/lower than the policy.
+  const maxLoans = member.maxLoans || policy.maxLoans;
+
   const activeLoans = await prisma.loan.count({
     where: { memberId, status: "ACTIVE" },
   });
-  if (activeLoans >= member.maxLoans)
+  if (activeLoans >= maxLoans)
     return {
       ok: false,
-      message: `Loan limit reached (${member.maxLoans} active loans).`,
+      message: `Loan limit reached (${maxLoans} active loans).`,
     };
 
   // Resolve the resource either from a barcode or a resourceId.
@@ -78,9 +79,13 @@ export async function checkout(
     });
     if (existing)
       return { ok: false, message: "Already on loan to this member." };
-    const dueAt = new Date(Date.now() + DIGITAL_LOAN_PERIOD_DAYS * DAY);
+    const dueAt = new Date(Date.now() + policy.digitalDays * DAY);
     await prisma.loan.create({
       data: { memberId, resourceId: resource.id, dueAt },
+    });
+    await notify("BORROW", member, {
+      resourceTitle: resource.title,
+      dueDate: formatDate(dueAt),
     });
     revalidateAll();
     return { ok: true, message: `"${resource.title}" loaned (digital access).` };
@@ -95,8 +100,7 @@ export async function checkout(
   }
   if (!copy) return { ok: false, message: "No copies available to loan." };
 
-  const period = LOAN_PERIOD_DAYS[member.memberType] ?? 14;
-  const dueAt = new Date(Date.now() + period * DAY);
+  const dueAt = new Date(Date.now() + policy.loanDays * DAY);
 
   await prisma.$transaction([
     prisma.loan.create({
@@ -104,6 +108,10 @@ export async function checkout(
     }),
     prisma.copy.update({ where: { id: copy.id }, data: { status: "ON_LOAN" } }),
   ]);
+  await notify("BORROW", member, {
+    resourceTitle: resource.title,
+    dueDate: formatDate(dueAt),
+  });
 
   revalidateAll();
   return {
@@ -124,14 +132,14 @@ export async function checkin(
   if (loanId) {
     loan = await prisma.loan.findUnique({
       where: { id: loanId },
-      include: { copy: true, resource: true },
+      include: { copy: true, resource: true, member: true },
     });
   } else if (barcode) {
     const copy = await prisma.copy.findUnique({ where: { barcode } });
     if (!copy) return { ok: false, message: `No copy with barcode ${barcode}.` };
     loan = await prisma.loan.findFirst({
       where: { copyId: copy.id, status: "ACTIVE" },
-      include: { copy: true, resource: true },
+      include: { copy: true, resource: true, member: true },
     });
   }
 
@@ -143,6 +151,7 @@ export async function checkin(
     where: { id: loan.id },
     data: { status: "RETURNED", returnedAt: new Date() },
   });
+  await notify("RETURN", loan.member, { resourceTitle: loan.resource.title });
 
   let message = `"${loan.resource.title}" returned.`;
 
@@ -161,6 +170,11 @@ export async function checkin(
           data: { status: "READY", readyAt: new Date() },
         }),
       ]);
+      const holdPolicy = await policyFor(nextHold.member.memberType);
+      await notify("RESERVATION_READY", nextHold.member, {
+        resourceTitle: loan.resource.title,
+        expiryDate: formatDate(new Date(Date.now() + holdPolicy.holdPickupDays * DAY)),
+      });
       message += ` Held for ${nextHold.member.name} (next in queue).`;
     } else {
       await prisma.copy.update({
@@ -182,11 +196,13 @@ export async function renewLoan(
   const loanId = String(formData.get("loanId") ?? "");
   const loan = await prisma.loan.findUnique({
     where: { id: loanId },
-    include: { resource: true },
+    include: { resource: true, member: true },
   });
   if (!loan || loan.status !== "ACTIVE")
     return { ok: false, message: "Loan not found." };
-  if (loan.renewals >= MAX_RENEWALS)
+
+  const policy = await policyFor(loan.member.memberType);
+  if (loan.renewals >= policy.maxRenewals)
     return { ok: false, message: "Renewal limit reached." };
 
   const waiting = await prisma.reservation.count({
@@ -195,7 +211,7 @@ export async function renewLoan(
   if (waiting > 0)
     return { ok: false, message: "Cannot renew — another member has reserved this title." };
 
-  const dueAt = new Date(loan.dueAt.getTime() + RENEWAL_DAYS * DAY);
+  const dueAt = new Date(loan.dueAt.getTime() + policy.renewalDays * DAY);
   await prisma.loan.update({
     where: { id: loan.id },
     data: { dueAt, renewals: loan.renewals + 1 },

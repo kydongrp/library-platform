@@ -1,8 +1,11 @@
+import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { MemberForm } from "@/components/member-form";
 import { createMember } from "@/app/actions/members";
 
-export default function NewMemberPage() {
+export default async function NewMemberPage() {
+  await requireAdminView("MEMBERS");
+
   return (
     <div className="mx-auto max-w-4xl">
       <Link href="/admin/members" className="text-sm text-muted-foreground hover:text-foreground">
