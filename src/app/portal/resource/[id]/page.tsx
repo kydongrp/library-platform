@@ -8,6 +8,7 @@ import { getCurrentMember } from "@/lib/session";
 import { availability, isDigital, isExternal } from "@/lib/availability";
 import { TermsGate } from "./terms-gate";
 import { ReviewForm } from "./reviews";
+import { BookmarkButton } from "./bookmark";
 import { Stars } from "@/components/stars";
 import { initials } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS } from "@/lib/constants";
@@ -70,6 +71,30 @@ export default async function ResourceDetailPage({
   const myReview = member ? reviews.find((r) => r.memberId === member.id) ?? null : null;
   const avgRating = ratingAgg._avg.rating ?? 0;
   const reviewCount = ratingAgg._count._all;
+
+  // Favourites state for the bookmark control.
+  const folders = member
+    ? (
+        await prisma.favouriteFolder.findMany({
+          where: { memberId: member.id },
+          include: { items: { where: { resourceId: id }, select: { id: true } } },
+          orderBy: { createdAt: "asc" },
+        })
+      ).map((f) => ({ id: f.id, name: f.name, contains: f.items.length > 0 }))
+    : [];
+  if (member && folders.length === 0) {
+    // The default folder is created lazily on first save; show it as an option.
+    folders.push({ id: "", name: "My Favourites", contains: false });
+  }
+
+  // Record browsing history (SDD: My Browsing History) — re-views bump the timestamp.
+  if (member) {
+    await prisma.browsingHistory.upsert({
+      where: { memberId_resourceId: { memberId: member.id, resourceId: id } },
+      update: { viewedAt: new Date() },
+      create: { memberId: member.id, resourceId: id },
+    });
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8">
@@ -185,6 +210,12 @@ export default async function ResourceDetailPage({
               </div>
             )}
           </div>
+
+          {member && (
+            <div className="mt-3">
+              <BookmarkButton resourceId={resource.id} folders={folders} />
+            </div>
+          )}
 
           {resource.description && (
             <p className="mt-6 leading-relaxed text-foreground/80">{resource.description}</p>

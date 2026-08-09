@@ -33,6 +33,7 @@ function parseResourceForm(formData: FormData) {
     coverColor: String(formData.get("coverColor") ?? "#0f766e"),
     provider,
     digitalUrl: String(formData.get("digitalUrl") ?? "").trim() || null,
+    editorsPick: formData.get("editorsPick") === "on",
     // External-provider and digital-format titles have no physical copies.
     digital: DIGITAL_TYPES.has(type) || !!provider,
   };

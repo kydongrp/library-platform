@@ -36,6 +36,8 @@ model Resource {
   loans         Loan[]
   reservations  Reservation[]
   reviews       Review[]
+  favouritedIn  FavouriteItem[]
+  browsedBy     BrowsingHistory[]
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -60,11 +62,61 @@ model Member {
   maxLoans     Int           @default(5)
   joinedAt     DateTime      @default(now())
   tcAcceptedAt DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)
+  interests    String[] @default([]) // Areas of Interest (categories) driving recommendations
   loans        Loan[]
   reservations Reservation[]
   notifications Notification[]
   requests     ResourceRequest[]
   reviews      Review[]
+  folders      FavouriteFolder[]
+  browsing     BrowsingHistory[]
+  searches     SearchHistory[]
+}
+
+/// A member-named collection of favourite titles (live system: bookmark
+/// folders; SDD: My Favourites organised in folders).
+model FavouriteFolder {
+  id        String          @id @default(cuid())
+  name      String
+  createdAt DateTime        @default(now())
+  memberId  String
+  member    Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  items     FavouriteItem[]
+
+  @@unique([memberId, name])
+}
+
+model FavouriteItem {
+  id         String          @id @default(cuid())
+  addedAt    DateTime        @default(now())
+  folderId   String
+  folder     FavouriteFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  resourceId String
+  resource   Resource        @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, resourceId])
+}
+
+/// Titles a member has opened (SDD: My Browsing History). One row per
+/// member+resource, re-viewing bumps viewedAt.
+model BrowsingHistory {
+  id         String   @id @default(cuid())
+  viewedAt   DateTime @default(now())
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, resourceId])
+}
+
+/// Search terms a member has run — feeds "based on past searches".
+model SearchHistory {
+  id         String   @id @default(cuid())
+  query      String
+  searchedAt DateTime @default(now())
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }
 
 /// A member's star rating + optional text for a resource (live-system

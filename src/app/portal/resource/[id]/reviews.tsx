@@ -54,22 +54,23 @@ export function ReviewForm({
           placeholder="What did you think? (optional)"
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
-        <div className="flex items-center gap-2">
-          <SubmitButton pendingLabel="Saving…">{existing ? "Update review" : "Post review"}</SubmitButton>
-          {existing && (
-            <ActionButton
-              action={deleteReview}
-              fields={{ reviewId: existing.id }}
-              variant="ghost"
-              className="text-xs text-red-600"
-              confirm="Delete your review?"
-              pendingLabel="…"
-            >
-              Delete
-            </ActionButton>
-          )}
-        </div>
+        <SubmitButton pendingLabel="Saving…">{existing ? "Update review" : "Post review"}</SubmitButton>
       </StatefulForm>
+      {/* Sibling of the form, not a child — forms can't nest. */}
+      {existing && (
+        <div className="mt-2">
+          <ActionButton
+            action={deleteReview}
+            fields={{ reviewId: existing.id }}
+            variant="ghost"
+            className="text-xs text-red-600"
+            confirm="Delete your review?"
+            pendingLabel="…"
+          >
+            Delete review
+          </ActionButton>
+        </div>
+      )}
     </Card>
   );
 }

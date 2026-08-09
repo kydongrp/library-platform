@@ -32,6 +32,7 @@ type Defaults = {
   coverColor?: string;
   provider?: string | null;
   digitalUrl?: string | null;
+  editorsPick?: boolean;
 };
 
 const labelCls = "block text-sm font-medium text-foreground mb-1.5";
@@ -140,6 +141,12 @@ export function ResourceForm({
               <textarea id="description" name="description" rows={4}
                 defaultValue={defaults.description ?? ""} className={inputCls} />
             </div>
+
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" name="editorsPick" defaultChecked={defaults.editorsPick ?? false}
+                className="h-4 w-4 rounded border-border accent-[var(--primary)]" />
+              Editor&apos;s Pick — feature on the Learner Portal homepage
+            </label>
 
             {!defaults.id && (
               <div>

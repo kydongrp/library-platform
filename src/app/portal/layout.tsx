@@ -4,7 +4,6 @@ import { ToastProvider } from "@/components/toast";
 import { PortalSearch } from "@/components/portal-search";
 import { PortalNav } from "@/components/portal-nav";
 import { getCurrentMember } from "@/lib/session";
-import { signOut } from "@/app/actions/session";
 import { initials } from "@/lib/format";
 
 export default async function PortalLayout({
@@ -53,8 +52,6 @@ export default async function PortalLayout({
                   { href: "/portal", label: "Browse" },
                   { href: "/portal/my-loans", label: "My Loans", badge: loanCount },
                   { href: "/portal/my-reservations", label: "Holds", badge: holdCount },
-                  { href: "/portal/my-reviews", label: "Reviews" },
-                  { href: "/portal/requests", label: "Requests" },
                 ]}
               />
               {member && (
@@ -72,20 +69,13 @@ export default async function PortalLayout({
                 </Link>
               )}
               {member ? (
-                <form action={signOut} className="flex items-center gap-2 pl-1">
-                  <span
-                    title={member.name}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15 text-sm font-semibold text-accent"
-                  >
-                    {initials(member.name)}
-                  </span>
-                  <button
-                    type="submit"
-                    className="hidden rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted sm:block"
-                  >
-                    Sign out
-                  </button>
-                </form>
+                <Link
+                  href="/portal/profile"
+                  title={`${member.name} — Profile`}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15 text-sm font-semibold text-accent ring-offset-2 transition-shadow hover:ring-2 hover:ring-accent"
+                >
+                  {initials(member.name)}
+                </Link>
               ) : (
                 <Link
                   href="/portal/signin"

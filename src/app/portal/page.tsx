@@ -11,6 +11,81 @@ const cardSelect = {
   copies: { select: { status: true } },
 } as const;
 
+type CardData = Parameters<typeof ResourceCard>[0]["resource"];
+
+/** Personalised rails (live system: editorspick / areaofinterestprofile /
+ *  recommendpastloans / recommendpastsearches). Rule-based equivalents. */
+async function personalRails(member: { id: string; interests: string[] }) {
+  const [editorsPick, myLoans, mySearches] = await Promise.all([
+    prisma.resource.findMany({ where: { editorsPick: true }, take: 6, select: cardSelect }),
+    prisma.loan.findMany({
+      where: { memberId: member.id },
+      include: { resource: { select: { category: true, author: true } } },
+      orderBy: { borrowedAt: "desc" },
+      take: 10,
+    }),
+    prisma.searchHistory.findMany({
+      where: { memberId: member.id },
+      orderBy: { searchedAt: "desc" },
+      take: 5,
+    }),
+  ]);
+
+  const loanedIds = new Set(
+    (await prisma.loan.findMany({ where: { memberId: member.id }, select: { resourceId: true } })).map(
+      (l) => l.resourceId,
+    ),
+  );
+
+  // For your interests: titles in the member's chosen AOI categories.
+  const interests: CardData[] = member.interests.length
+    ? (
+        await prisma.resource.findMany({
+          where: { category: { in: member.interests } },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+          select: cardSelect,
+        })
+      )
+        .filter((r) => !loanedIds.has(r.id))
+        .slice(0, 6)
+    : [];
+
+  // Based on past loans: same categories as recent loans, minus already-borrowed.
+  const loanCategories = [...new Set(myLoans.map((l) => l.resource.category))];
+  const pastLoans: CardData[] = loanCategories.length
+    ? (
+        await prisma.resource.findMany({
+          where: { category: { in: loanCategories } },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+          select: cardSelect,
+        })
+      )
+        .filter((r) => !loanedIds.has(r.id))
+        .slice(0, 6)
+    : [];
+
+  // Based on past searches: title/author contains any recent search term.
+  const terms = [...new Set(mySearches.map((s) => s.query.trim()).filter((t) => t.length >= 3))];
+  const pastSearches: CardData[] = terms.length
+    ? (
+        await prisma.resource.findMany({
+          where: {
+            OR: terms.flatMap((t) => [
+              { title: { contains: t, mode: "insensitive" as const } },
+              { author: { contains: t, mode: "insensitive" as const } },
+            ]),
+          },
+          take: 6,
+          select: cardSelect,
+        })
+      ).slice(0, 6)
+    : [];
+
+  return { editorsPick, interests, pastLoans, pastSearches };
+}
+
 export default async function PortalHome() {
   const member = await getCurrentMember();
 
@@ -46,6 +121,10 @@ export default async function PortalHome() {
           : [],
       ),
   ]);
+
+  const rails = member
+    ? await personalRails({ id: member.id, interests: member.interests })
+    : null;
 
   return (
     <div>
@@ -90,6 +169,23 @@ export default async function PortalHome() {
       )}
 
       <div className="mx-auto max-w-6xl space-y-12 px-5 py-12">
+        {rails && (
+          <>
+            {member && member.interests.length === 0 && (
+              <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 px-5 py-4 text-sm">
+                <span className="font-medium text-primary">Make this page yours:</span>{" "}
+                <Link href="/portal/preferences" className="text-primary underline">
+                  pick your areas of interest
+                </Link>{" "}
+                and we&apos;ll recommend titles that match.
+              </div>
+            )}
+            <Shelf title="Editor's Pick" href="/portal/search" resources={rails.editorsPick} />
+            <Shelf title="For your interests" href="/portal/preferences" resources={rails.interests} />
+            <Shelf title="Based on your past loans" href="/portal/my-loans" resources={rails.pastLoans} />
+            <Shelf title="Based on your past searches" href="/portal/history" resources={rails.pastSearches} />
+          </>
+        )}
         <Shelf title="Available right now" href="/portal/search?availability=available" resources={available} />
         <Shelf title="Highly rated" href="/portal/search?sort=rating" resources={topRated} />
         <Shelf title="Research databases & journals" href="/portal/search?availability=external" resources={external} />

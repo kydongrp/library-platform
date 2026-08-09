@@ -572,6 +572,12 @@ async function main() {
     },
   });
 
+  console.log("Marking editor's picks...");
+  await prisma.resource.updateMany({
+    where: { title: { in: ["The Pragmatic Programmer", "Designing Data-Intensive Applications", "Sapiens", "Project Hail Mary"] } },
+    data: { editorsPick: true },
+  });
+
   console.log("Seeding reviews...");
   // (memberIdx, resourceIdx, rating, text?)
   const reviewPlan: [number, number, number, string?][] = [

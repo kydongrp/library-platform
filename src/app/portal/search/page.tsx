@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ResourceCard } from "@/components/resource-card";
 import { EmptyState } from "@/components/ui";
 import { CATEGORIES, RESOURCE_TYPES, RESOURCE_TYPE_LABELS } from "@/lib/constants";
+import { getCurrentMember } from "@/lib/session";
 
 type SearchParams = Promise<{
   q?: string;
@@ -28,6 +29,21 @@ export default async function SearchPage({
 }) {
   const { q = "", category = "", type = "", availability = "", sort = "relevance" } =
     await searchParams;
+
+  // Record search history (feeds "based on past searches" recommendations).
+  if (q) {
+    const member = await getCurrentMember();
+    if (member) {
+      const recent = await prisma.searchHistory.findFirst({
+        where: { memberId: member.id, query: q },
+        orderBy: { searchedAt: "desc" },
+      });
+      // Don't spam identical back-to-back searches (page reloads, filters).
+      if (!recent || Date.now() - recent.searchedAt.getTime() > 60 * 60 * 1000) {
+        await prisma.searchHistory.create({ data: { memberId: member.id, query: q } });
+      }
+    }
+  }
 
   const where: Record<string, unknown> = {};
   if (q) {
