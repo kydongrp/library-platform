@@ -42,6 +42,11 @@ export const SOURCES = [
     name: "Manual entry (Janes & others)",
     description: "Add an article by hand for subscription sources with no search API, e.g. Janes, Knovel, IHS.",
   },
+  {
+    key: "bulk",
+    name: "Bulk file import",
+    description: "Upload a whole Janes/Knovel batch at once — CSV, JSON or XML — and import every record in one go.",
+  },
 ] as const;
 export type SourceKey = (typeof SOURCES)[number]["key"];
 

@@ -4,7 +4,7 @@ import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { SOURCES, searchScholarly, xploreConfigured, MANUAL_PROVIDERS, type ScholarlyRecord, type SourceKey } from "@/lib/scholarly";
-import { ImportButton, ImportAllBar, ManualArticleForm } from "./widgets";
+import { ImportButton, ImportAllBar, ManualArticleForm, BulkImportForm } from "./widgets";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +17,12 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
   const { source = "ieee", q = "" } = await searchParams;
   const sourceKey = (SOURCES.some((s) => s.key === source) ? source : "ieee") as SourceKey;
   const isManual = sourceKey === "manual";
+  const isBulk = sourceKey === "bulk";
+  const isSearch = !isManual && !isBulk;
 
   let records: ScholarlyRecord[] = [];
   let searchError: string | null = null;
-  if (q && !isManual) {
+  if (q && isSearch) {
     try {
       records = await searchScholarly(sourceKey, q);
     } catch (e) {
@@ -60,7 +62,7 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
       </div>
 
       {/* Source picker */}
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {SOURCES.map((s) => {
           const disabled = s.key === "xplore" && !xploreConfigured();
           const card = (
@@ -87,11 +89,13 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
         })}
       </div>
 
-      {isManual ? (
-        editable ? (
-          <ManualArticleForm providers={MANUAL_PROVIDERS} />
-        ) : (
+      {isManual || isBulk ? (
+        !editable ? (
           <EmptyState title="Read-only access" description="Your group can view the catalogue but not add to it." />
+        ) : isBulk ? (
+          <BulkImportForm providers={MANUAL_PROVIDERS} />
+        ) : (
+          <ManualArticleForm providers={MANUAL_PROVIDERS} />
         )
       ) : (
       <>

@@ -6,6 +6,7 @@ import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
+import { parseBulk } from "@/lib/bulk-import";
 
 // Deterministic cover colour per venue/publisher so imports look organised.
 const COVER_COLORS = [
@@ -165,4 +166,93 @@ export async function addManualArticle(
 
   revalidatePath("/admin/catalogue");
   return { ok: true, message: `Added "${title}" (${provider}).` };
+}
+
+/**
+ * Bulk-import a batch file (Janes XML, an Excel/CSV export, or JSON) as digital
+ * link-out resources tagged with a single provider. Reuses the same dedup and
+ * creation path as the search-based importer. Rows missing a title or a valid
+ * URL are skipped and reported rather than silently dropped.
+ */
+export async function bulkImportArticles(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "CATALOGUE"))
+    return { ok: false, message: "You don't have permission to import into the catalogue." };
+
+  // Provider for the whole batch (a known one, or a custom value).
+  const rawProvider = String(formData.get("provider") ?? "").trim();
+  const customProvider = String(formData.get("customProvider") ?? "").trim();
+  const provider = rawProvider === "__custom__" ? customProvider : rawProvider;
+  if (!provider) return { ok: false, message: "Choose or enter a provider for the batch." };
+
+  const rawCategory = String(formData.get("category") ?? "");
+  const defaultCategory = (CATEGORIES as readonly string[]).includes(rawCategory)
+    ? rawCategory
+    : "Technology";
+  const rawType = String(formData.get("type") ?? "JOURNAL");
+  const defaultType = (RESOURCE_TYPES as readonly string[]).includes(rawType) ? rawType : "JOURNAL";
+
+  // Content: an uploaded file wins; otherwise fall back to pasted text.
+  const file = formData.get("file");
+  let content = "";
+  let filename: string | undefined;
+  if (file && typeof file === "object" && "text" in file && (file as File).size > 0) {
+    content = await (file as File).text();
+    filename = (file as File).name;
+  } else {
+    content = String(formData.get("pasted") ?? "");
+  }
+  if (!content.trim())
+    return { ok: false, message: "Upload a file or paste records to import." };
+
+  const { format, rows, errors } = parseBulk(content, filename);
+  if (rows.length === 0)
+    return { ok: false, message: errors[0] ?? "No records found — check the file format (CSV, JSON, or XML)." };
+
+  let imported = 0;
+  let duplicates = 0;
+  let skipped = 0;
+  const skipReasons: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row.title) {
+      skipped++;
+      if (skipReasons.length < 5) skipReasons.push(`record ${i + 1}: missing title`);
+      continue;
+    }
+    if (!/^https?:\/\//i.test(row.url)) {
+      skipped++;
+      if (skipReasons.length < 5) skipReasons.push(`record ${i + 1}: missing/invalid URL`);
+      continue;
+    }
+    const record: ScholarlyRecord = {
+      source: "manual",
+      externalId: row.url.toLowerCase(),
+      title: row.title,
+      authors: row.authors ?? "Unknown",
+      year: row.year,
+      publisher: provider,
+      venue: row.venue,
+      type: row.type ?? defaultType,
+      url: row.url,
+      oaUrl: null,
+      abstract: row.abstract,
+    };
+    const result = await importOne(record, row.category ?? defaultCategory);
+    if (result === "imported") imported++;
+    else duplicates++;
+  }
+
+  revalidatePath("/admin/catalogue");
+
+  const parts = [`${imported} imported`];
+  if (duplicates > 0) parts.push(`${duplicates} already in catalogue`);
+  if (skipped > 0) parts.push(`${skipped} skipped`);
+  let message = `${provider} batch (${format.toUpperCase()}): ${parts.join(" · ")}.`;
+  const notes = [...errors, ...skipReasons];
+  if (notes.length) message += ` — ${notes.slice(0, 6).join("; ")}`;
+  return { ok: imported > 0, message };
 }
