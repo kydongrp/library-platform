@@ -33,7 +33,6 @@ function parseResourceForm(formData: FormData) {
     coverColor: String(formData.get("coverColor") ?? "#0f766e"),
     provider,
     digitalUrl: String(formData.get("digitalUrl") ?? "").trim() || null,
-    editorsPick: formData.get("editorsPick") === "on",
     // External-provider and digital-format titles have no physical copies.
     digital: DIGITAL_TYPES.has(type) || !!provider,
   };
@@ -60,7 +59,6 @@ export async function createResource(
   });
 
   revalidatePath("/admin/catalogue");
-  revalidatePath("/portal", "layout");
   redirect(`/admin/catalogue/${resource.id}`);
 }
 
@@ -77,7 +75,6 @@ export async function updateResource(
   await prisma.resource.update({ where: { id }, data });
   revalidatePath(`/admin/catalogue/${id}`);
   revalidatePath("/admin/catalogue");
-  revalidatePath("/portal", "layout");
   return { ok: true, message: "Saved." };
 }
 
@@ -95,7 +92,6 @@ export async function deleteResource(formData: FormData): Promise<void> {
   await prisma.reservation.deleteMany({ where: { resourceId: id } });
   await prisma.resource.delete({ where: { id } });
   revalidatePath("/admin/catalogue");
-  revalidatePath("/portal", "layout");
   redirect("/admin/catalogue");
 }
 
@@ -113,7 +109,6 @@ export async function addCopies(
     data: barcodes.map((barcode) => ({ resourceId, barcode, location })),
   });
   revalidatePath(`/admin/catalogue/${resourceId}`);
-  revalidatePath("/portal", "layout");
   return { ok: true, message: `Added ${count} cop${count === 1 ? "y" : "ies"}.` };
 }
 
@@ -128,7 +123,6 @@ export async function setCopyStatus(formData: FormData): Promise<void> {
     await prisma.copy.update({ where: { id: copyId }, data: { status } });
   }
   revalidatePath(`/admin/catalogue/${resourceId}`);
-  revalidatePath("/portal", "layout");
 }
 
 export async function deleteCopy(formData: FormData): Promise<void> {
@@ -140,5 +134,4 @@ export async function deleteCopy(formData: FormData): Promise<void> {
     await prisma.copy.delete({ where: { id: copyId } });
   }
   revalidatePath(`/admin/catalogue/${resourceId}`);
-  revalidatePath("/portal", "layout");
 }

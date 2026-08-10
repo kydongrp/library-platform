@@ -90,7 +90,6 @@ export async function importScholarly(
   }
 
   revalidatePath("/admin/catalogue");
-  revalidatePath("/portal", "layout");
 
   const parts = [`${imported} imported`];
   if (duplicates > 0) parts.push(`${duplicates} already in catalogue`);

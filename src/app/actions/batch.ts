@@ -161,7 +161,6 @@ export async function runEodProcess(
   });
 
   revalidatePath("/admin", "layout");
-  revalidatePath("/portal", "layout");
   return { ok: true, message: `EodProcess complete — ${summary}` };
 }
 
