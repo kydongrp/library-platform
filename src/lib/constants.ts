@@ -46,7 +46,7 @@ export const DIGITAL_TYPES = new Set([
 ]);
 
 // Known external subscription providers, offered as quick-pick options.
-export const PROVIDERS = ["IEEE Xplore", "ScienceDirect", "JSTOR", "ACM Digital Library"];
+export const PROVIDERS = ["IEEE Xplore", "Janes", "Knovel", "IHS Markit", "ScienceDirect", "JSTOR", "ACM Digital Library", "ProQuest", "SPIE Digital Library"];
 
 export const MEMBER_TYPES = ["STUDENT", "STAFF", "EXTERNAL"] as const;
 export type MemberType = (typeof MEMBER_TYPES)[number];

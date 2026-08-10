@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
-import { CATEGORIES } from "@/lib/constants";
+import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 
 // Deterministic cover colour per venue/publisher so imports look organised.
 const COVER_COLORS = [
@@ -94,4 +94,75 @@ export async function importScholarly(
   const parts = [`${imported} imported`];
   if (duplicates > 0) parts.push(`${duplicates} already in catalogue`);
   return { ok: imported > 0 || duplicates > 0, message: parts.join(" · ") + "." };
+}
+
+/**
+ * Add a single scholarly article by hand — for subscription sources with no
+ * search API (Janes, Knovel, IHS, etc.). Creates a digital, link-out resource
+ * tagged with the chosen provider.
+ */
+export async function addManualArticle(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "CATALOGUE"))
+    return { ok: false, message: "You don't have permission to add to the catalogue." };
+
+  const title = String(formData.get("title") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  if (!title) return { ok: false, message: "Title is required." };
+  if (!/^https?:\/\//i.test(url))
+    return { ok: false, message: "A valid access URL (https://…) is required." };
+
+  // Provider: a known one, or a custom value the admin typed.
+  const rawProvider = String(formData.get("provider") ?? "").trim();
+  const customProvider = String(formData.get("customProvider") ?? "").trim();
+  const provider =
+    rawProvider === "__custom__" ? customProvider : rawProvider;
+  if (!provider) return { ok: false, message: "Choose or enter a provider." };
+
+  const type = String(formData.get("type") ?? "JOURNAL");
+  const rawType = (RESOURCE_TYPES as readonly string[]).includes(type) ? type : "JOURNAL";
+  const rawCategory = String(formData.get("category") ?? "");
+  const category = (CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : "Technology";
+  const yearRaw = String(formData.get("year") ?? "").trim();
+  const year = yearRaw ? parseInt(yearRaw, 10) : null;
+
+  const record: ScholarlyRecord = {
+    source: "manual",
+    externalId: url.toLowerCase(),
+    title,
+    authors: String(formData.get("authors") ?? "").trim() || "Unknown",
+    year: Number.isFinite(year as number) ? year : null,
+    publisher: provider,
+    venue: String(formData.get("venue") ?? "").trim() || null,
+    type: rawType,
+    url,
+    oaUrl: null,
+    abstract: String(formData.get("abstract") ?? "").trim() || null,
+  };
+
+  if (await alreadyImported(record))
+    return { ok: false, message: "That article (same URL or title) is already in the catalogue." };
+
+  await prisma.resource.create({
+    data: {
+      title: record.title,
+      author: record.authors,
+      type: record.type,
+      category,
+      publisher: provider,
+      publishedYear: record.year,
+      description: record.abstract,
+      coverColor: coverColorFor(provider + title),
+      digital: true,
+      digitalUrl: url,
+      provider, // exact provider chosen (Janes, etc.) — bypasses providerFor mapping
+      subtitle: record.venue,
+    },
+  });
+
+  revalidatePath("/admin/catalogue");
+  return { ok: true, message: `Added "${title}" (${provider}).` };
 }

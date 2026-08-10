@@ -3,8 +3,8 @@ import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
-import { SOURCES, searchScholarly, xploreConfigured, type ScholarlyRecord, type SourceKey } from "@/lib/scholarly";
-import { ImportButton, ImportAllBar } from "./widgets";
+import { SOURCES, searchScholarly, xploreConfigured, MANUAL_PROVIDERS, type ScholarlyRecord, type SourceKey } from "@/lib/scholarly";
+import { ImportButton, ImportAllBar, ManualArticleForm } from "./widgets";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,11 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
 
   const { source = "ieee", q = "" } = await searchParams;
   const sourceKey = (SOURCES.some((s) => s.key === source) ? source : "ieee") as SourceKey;
+  const isManual = sourceKey === "manual";
 
   let records: ScholarlyRecord[] = [];
   let searchError: string | null = null;
-  if (q) {
+  if (q && !isManual) {
     try {
       records = await searchScholarly(sourceKey, q);
     } catch (e) {
@@ -59,7 +60,7 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
       </div>
 
       {/* Source picker */}
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {SOURCES.map((s) => {
           const disabled = s.key === "xplore" && !xploreConfigured();
           const card = (
@@ -86,6 +87,14 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
         })}
       </div>
 
+      {isManual ? (
+        editable ? (
+          <ManualArticleForm providers={MANUAL_PROVIDERS} />
+        ) : (
+          <EmptyState title="Read-only access" description="Your group can view the catalogue but not add to it." />
+        )
+      ) : (
+      <>
       {/* Search */}
       <form className="mb-6 flex flex-wrap gap-2">
         <input type="hidden" name="source" value={sourceKey} />
@@ -147,6 +156,8 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
             })}
           </Card>
         </>
+      )}
+      </>
       )}
     </div>
   );

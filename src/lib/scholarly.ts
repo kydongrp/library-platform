@@ -37,8 +37,34 @@ export const SOURCES = [
     name: "IEEE Xplore API",
     description: "IEEE's official metadata API — requires IEEE_API_KEY.",
   },
+  {
+    key: "manual",
+    name: "Manual entry (Janes & others)",
+    description: "Add an article by hand for subscription sources with no search API, e.g. Janes, Knovel, IHS.",
+  },
 ] as const;
 export type SourceKey = (typeof SOURCES)[number]["key"];
+
+// Providers offered in the manual-entry form (and the catalogue source filter).
+// Janes/Knovel/IHS have no public metadata API, so admins add them by hand.
+export const MANUAL_PROVIDERS = [
+  "IEEE Xplore",
+  "Janes",
+  "Knovel",
+  "IHS Markit",
+  "ScienceDirect",
+  "JSTOR",
+  "ACM Digital Library",
+  "ProQuest",
+  "SPIE Digital Library",
+] as const;
+
+// Sensible default resource type per provider for the manual form.
+export const PROVIDER_DEFAULT_TYPE: Record<string, string> = {
+  Janes: "JOURNAL",
+  Knovel: "EBOOK",
+  "IHS Markit": "STANDARD",
+};
 
 const TIMEOUT_MS = 10_000;
 const IEEE_CROSSREF_MEMBER = "263"; // Crossref member id for IEEE
