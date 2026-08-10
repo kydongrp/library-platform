@@ -289,3 +289,18 @@ model LinkCheck {
   error      String?
   checkedAt  DateTime @default(now())
 }
+
+/// A batch metadata file already ingested by the scheduled import service
+/// (SDD: Metadata Import Service — vendor XML dropped via SFTP). Gives the
+/// re-fetch job idempotency: a filename is imported once per source.
+model ImportedFile {
+  id                String   @id @default(cuid())
+  source            String // e.g. "sftp"
+  filename          String
+  resourcesImported Int      @default(0)
+  status            String   @default("OK") // OK, PARSE_ERROR
+  detail            String?
+  fetchedAt         DateTime @default(now())
+
+  @@unique([source, filename])
+}

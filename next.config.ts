@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
     // in small row-chunks; this gives those Server Action calls headroom.
     serverActions: { bodySizeLimit: "4mb" },
   },
+  // ssh2-sftp-client (and its ssh2 dep) has native/optional bits — keep it out
+  // of the bundler and require it at runtime on the server instead.
+  serverExternalPackages: ["ssh2", "ssh2-sftp-client"],
 };
 
 export default nextConfig;

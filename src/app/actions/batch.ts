@@ -7,6 +7,7 @@ import { policyFor } from "@/lib/policies";
 import { notify } from "@/lib/templates";
 import { formatDate, daysUntil } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
+import { runSftpFetch } from "@/lib/ingest";
 
 const DAY = 24 * 60 * 60 * 1000;
 const PREDUE_DAYS = 2; // notify when a loan is due within this many days
@@ -215,6 +216,24 @@ export async function runLinkCheck(
 
   revalidatePath("/admin/batch");
   return { ok: true, message: `Link check complete — ${summary}.` };
+}
+
+/**
+ * Manually trigger the scheduled SFTP metadata re-fetch (SDD: Metadata Import
+ * Service). The same job runs unattended via Vercel Cron; this lets an admin
+ * pull now. Reports imported / duplicate / skipped, or that the source is not
+ * yet configured.
+ */
+export async function triggerSftpFetch(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "BATCH"))
+    return { ok: false, message: "You don't have permission to run batch processes." };
+
+  const summary = await runSftpFetch("manual");
+  return { ok: summary.status !== "error", message: summary.message };
 }
 
 async function checkUrl(url: string): Promise<{ ok: boolean; statusCode: number | null; error: string | null }> {

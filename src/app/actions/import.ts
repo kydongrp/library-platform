@@ -7,18 +7,7 @@ import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 import type { BulkRow } from "@/lib/bulk-import";
-import type { Prisma } from "@/generated/prisma/client";
-
-// Deterministic cover colour per venue/publisher so imports look organised.
-const COVER_COLORS = [
-  "#00629b", "#1e3a8a", "#0f766e", "#9a3412", "#6d28d9",
-  "#155e75", "#7c2d12", "#1d4044", "#b45309", "#312e81",
-];
-function coverColorFor(seed: string): string {
-  let h = 0;
-  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) | 0;
-  return COVER_COLORS[Math.abs(h) % COVER_COLORS.length];
-}
+import { coverColorFor, importResourceRowsCore } from "@/lib/ingest";
 
 type DedupKey = Pick<ScholarlyRecord, "url" | "oaUrl" | "title" | "authors">;
 
@@ -215,77 +204,11 @@ export async function importResourceRows(
   if (rows.length > MAX_CHUNK_ROWS)
     return { ...zero, error: `Too many rows in one request (max ${MAX_CHUNK_ROWS}).` };
 
-  const defaultType = (RESOURCE_TYPES as readonly string[]).includes(opts?.defaultType)
-    ? opts.defaultType
-    : "JOURNAL";
-  const defaultCategory = (CATEGORIES as readonly string[]).includes(opts?.defaultCategory)
-    ? opts.defaultCategory
-    : "Technology";
-
-  // Validate + partition rows.
-  let skipped = 0;
-  const skipReasons: string[] = [];
-  const valid: BulkRow[] = [];
-  rows.forEach((row, i) => {
-    if (!row?.title || !String(row.title).trim()) {
-      skipped++;
-      if (skipReasons.length < 5) skipReasons.push(`row ${i + 1}: missing title`);
-      return;
-    }
-    if (!/^https?:\/\//i.test(String(row.url ?? ""))) {
-      skipped++;
-      if (skipReasons.length < 5) skipReasons.push(`row ${i + 1}: missing/invalid URL`);
-      return;
-    }
-    valid.push(row);
+  const r = await importResourceRowsCore(rows, {
+    provider,
+    defaultType: opts.defaultType,
+    defaultCategory: opts.defaultCategory,
   });
-
-  if (valid.length === 0)
-    return { ok: true, imported: 0, duplicates: 0, skipped, skipReasons };
-
-  // Dedup on access URL — one query for every candidate URL in the chunk.
-  const urls = Array.from(new Set(valid.map((r) => r.url)));
-  const existing = await prisma.resource.findMany({
-    where: { digitalUrl: { in: urls } },
-    select: { digitalUrl: true },
-  });
-  const seen = new Set(existing.map((e) => e.digitalUrl));
-
-  let duplicates = 0;
-  const toCreate: Prisma.ResourceCreateManyInput[] = [];
-  for (const row of valid) {
-    if (seen.has(row.url)) {
-      duplicates++;
-      continue;
-    }
-    seen.add(row.url); // also collapses repeats within the same chunk
-    const type =
-      row.type && (RESOURCE_TYPES as readonly string[]).includes(row.type) ? row.type : defaultType;
-    const category =
-      row.category && (CATEGORIES as readonly string[]).includes(row.category)
-        ? row.category
-        : defaultCategory;
-    toCreate.push({
-      title: String(row.title).trim(),
-      subtitle: row.venue ?? null,
-      author: row.authors ?? "Unknown",
-      isbn: row.isbn ?? null,
-      type,
-      category,
-      publisher: row.publisher ?? null,
-      publishedYear: typeof row.year === "number" ? row.year : null,
-      description: row.abstract ?? null,
-      coverColor: coverColorFor(provider + row.title),
-      digital: true,
-      digitalUrl: row.url,
-      provider,
-    });
-  }
-
-  if (toCreate.length > 0) {
-    await prisma.resource.createMany({ data: toCreate });
-    revalidatePath("/admin/catalogue");
-  }
-
-  return { ok: true, imported: toCreate.length, duplicates, skipped, skipReasons };
+  if (r.imported > 0) revalidatePath("/admin/catalogue");
+  return { ok: true, ...r };
 }

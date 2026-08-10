@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import Link from "next/link";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
-import { runEodProcess, runLinkCheck } from "@/app/actions/batch";
+import { runEodProcess, runLinkCheck, triggerSftpFetch } from "@/app/actions/batch";
+import { sftpSourceInfo } from "@/lib/sftp";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -13,17 +14,21 @@ export default async function BatchPage() {
   const admin = await requireAdminView("BATCH");
   const editable = canEdit(admin, "BATCH");
 
-  const [runs, outbox, notifications, brokenLinks, lastLinkRun] = await Promise.all([
-    prisma.batchRun.findMany({ orderBy: { ranAt: "desc" }, take: 10 }),
-    prisma.mailQueue.findMany({ orderBy: { createdAt: "desc" }, take: 15 }),
-    prisma.notification.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 15,
-      include: { member: true },
-    }),
-    prisma.linkCheck.findMany({ where: { ok: false }, orderBy: { checkedAt: "desc" } }),
-    prisma.batchRun.findFirst({ where: { process: "LINKCHECK" }, orderBy: { ranAt: "desc" } }),
-  ]);
+  const [runs, outbox, notifications, brokenLinks, lastLinkRun, sftpRuns, importedFiles] =
+    await Promise.all([
+      prisma.batchRun.findMany({ orderBy: { ranAt: "desc" }, take: 10 }),
+      prisma.mailQueue.findMany({ orderBy: { createdAt: "desc" }, take: 15 }),
+      prisma.notification.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 15,
+        include: { member: true },
+      }),
+      prisma.linkCheck.findMany({ where: { ok: false }, orderBy: { checkedAt: "desc" } }),
+      prisma.batchRun.findFirst({ where: { process: "LINKCHECK" }, orderBy: { ranAt: "desc" } }),
+      prisma.batchRun.findMany({ where: { process: "SFTP_FETCH" }, orderBy: { ranAt: "desc" }, take: 5 }),
+      prisma.importedFile.findMany({ orderBy: { fetchedAt: "desc" }, take: 12 }),
+    ]);
+  const sftpInfo = sftpSourceInfo();
   const brokenResources = brokenLinks.length
     ? await prisma.resource.findMany({
         where: { id: { in: brokenLinks.map((b) => b.resourceId) } },
@@ -82,6 +87,67 @@ export default async function BatchPage() {
               </li>
             ))}
           </ul>
+        )}
+      </Card>
+
+      {/* Scheduled metadata import (SDD: Metadata Import Service via SFTP) */}
+      <Card className="mb-6 p-5">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-semibold">Scheduled metadata import (SFTP)</h2>
+          {editable && (
+            <ActionButton action={triggerSftpFetch} fields={{}} variant="outline" pendingLabel="Fetching…">
+              ⟳ Fetch now
+            </ActionButton>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Vendor batch files (e.g. Janes / Knovel XML) are pulled from an SFTP drop folder
+          on a daily schedule and imported automatically through the same pipeline as manual
+          uploads. Files already ingested are skipped, so each run only adds new drops.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {sftpInfo ? (
+            <>
+              <Badge tone="success">Configured</Badge>
+              <Badge tone="neutral">{sftpInfo.host}:{sftpInfo.port} {sftpInfo.remoteDir}</Badge>
+              <Badge tone="muted">provider: {sftpInfo.provider}</Badge>
+              <Badge tone="muted">auth: {sftpInfo.auth}</Badge>
+            </>
+          ) : (
+            <Badge tone="accent">
+              Not configured — set SFTP_HOST, SFTP_USER, credentials, SFTP_PROVIDER (and CRON_SECRET) in the environment.
+            </Badge>
+          )}
+          <Badge tone="muted">schedule: daily 03:00 UTC</Badge>
+        </div>
+
+        {sftpRuns.length > 0 && (
+          <ul className="mt-4 divide-y divide-border">
+            {sftpRuns.map((r) => (
+              <li key={r.id} className="py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(r.ranAt)} · {r.ranAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                  <Badge tone="muted">{r.ranBy}</Badge>
+                </div>
+                <p className="mt-0.5 text-sm">{r.summary}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {importedFiles.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Recently ingested files</p>
+            <div className="flex flex-wrap gap-1.5">
+              {importedFiles.map((f) => (
+                <Badge key={f.id} tone={f.status === "OK" ? "primary" : "danger"}>
+                  {f.filename} · {f.resourcesImported}
+                </Badge>
+              ))}
+            </div>
+          </div>
         )}
       </Card>
 

@@ -1,3 +1,9 @@
 {
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/sftp-fetch",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }
