@@ -286,9 +286,10 @@ function marcRecordToRow(rec: MarcRecord): BulkRow {
     f856.find((d) => String(d.ind2) === "0") ?? f856.find((d) => String(d.ind2) === "1") ?? f856[0];
   const url = (sub(pick856, "u") ?? "").trim();
 
-  // 520: summary/abstract.
+  // 520: summary/abstract (length-bounded to keep chunk payloads small).
   const f520 = first("520");
-  const abstract = f520 ? [sub(f520, "a"), sub(f520, "b")].filter(Boolean).join(" ") || null : null;
+  const abstractRaw = f520 ? [sub(f520, "a"), sub(f520, "b")].filter(Boolean).join(" ") : "";
+  const abstract = abstractRaw ? abstractRaw.slice(0, 4000) : null;
 
   // 020 $a: ISBN. 020 is repeatable — an e-book record usually carries both
   // the print and the electronic ISBN — so scan every 020 and prefer the
@@ -370,7 +371,7 @@ function detectFormat(content: string, filename?: string): "csv" | "json" | "xml
   return "unknown";
 }
 
-const MAX_ROWS = 1000;
+const MAX_ROWS = 50000;
 
 export function parseBulk(content: string, filename?: string): BulkParseResult {
   const detected = detectFormat(content, filename);

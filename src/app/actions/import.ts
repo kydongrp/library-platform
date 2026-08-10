@@ -6,7 +6,8 @@ import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
-import { parseBulk } from "@/lib/bulk-import";
+import type { BulkRow } from "@/lib/bulk-import";
+import type { Prisma } from "@/generated/prisma/client";
 
 // Deterministic cover colour per venue/publisher so imports look organised.
 const COVER_COLORS = [
@@ -171,109 +172,120 @@ export async function addManualArticle(
   return { ok: true, message: `Added "${title}" (${provider}).` };
 }
 
+export type BulkImportOptions = {
+  provider: string; // already resolved (custom provider substituted client-side)
+  defaultType: string;
+  defaultCategory: string;
+};
+
+export type BulkImportChunkResult = {
+  ok: boolean;
+  imported: number;
+  duplicates: number;
+  skipped: number;
+  skipReasons: string[];
+  error?: string; // set only on a hard failure (permission, bad payload)
+};
+
+// Server guard: the client sends far smaller chunks, but bound the payload.
+const MAX_CHUNK_ROWS = 500;
+
 /**
- * Bulk-import a batch file (Janes XML, an Excel/CSV export, or JSON) as digital
- * link-out resources tagged with a single provider. Reuses the same dedup and
- * creation path as the search-based importer. Rows missing a title or a valid
- * URL are skipped and reported rather than silently dropped.
+ * Import a chunk of already-parsed rows as digital link-out resources under a
+ * single provider. The batch file is parsed in the browser and streamed here
+ * in small chunks, so upload size is unbounded. Dedups against the catalogue on
+ * the access URL (one query per chunk) and bulk-inserts with createMany. The
+ * batch provider tag stays independent of each row's real publisher; ISBN and
+ * subtitle (e.g. from MARCXML) are preserved. Rows lacking a title or a valid
+ * URL are skipped and reported, never silently dropped.
  */
-export async function bulkImportArticles(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
+export async function importResourceRows(
+  rows: BulkRow[],
+  opts: BulkImportOptions,
+): Promise<BulkImportChunkResult> {
+  const zero = { ok: false, imported: 0, duplicates: 0, skipped: 0, skipReasons: [] as string[] };
+
   const admin = await getCurrentAdmin();
   if (!canEdit(admin, "CATALOGUE"))
-    return { ok: false, message: "You don't have permission to import into the catalogue." };
+    return { ...zero, error: "You don't have permission to import into the catalogue." };
 
-  // Provider for the whole batch (a known one, or a custom value).
-  const rawProvider = String(formData.get("provider") ?? "").trim();
-  const customProvider = String(formData.get("customProvider") ?? "").trim();
-  const provider = rawProvider === "__custom__" ? customProvider : rawProvider;
-  if (!provider) return { ok: false, message: "Choose or enter a provider for the batch." };
+  const provider = String(opts?.provider ?? "").trim();
+  if (!provider) return { ...zero, error: "Choose or enter a provider for the batch." };
+  if (!Array.isArray(rows)) return { ...zero, error: "Malformed import payload." };
+  if (rows.length > MAX_CHUNK_ROWS)
+    return { ...zero, error: `Too many rows in one request (max ${MAX_CHUNK_ROWS}).` };
 
-  const rawCategory = String(formData.get("category") ?? "");
-  const defaultCategory = (CATEGORIES as readonly string[]).includes(rawCategory)
-    ? rawCategory
+  const defaultType = (RESOURCE_TYPES as readonly string[]).includes(opts?.defaultType)
+    ? opts.defaultType
+    : "JOURNAL";
+  const defaultCategory = (CATEGORIES as readonly string[]).includes(opts?.defaultCategory)
+    ? opts.defaultCategory
     : "Technology";
-  const rawType = String(formData.get("type") ?? "JOURNAL");
-  const defaultType = (RESOURCE_TYPES as readonly string[]).includes(rawType) ? rawType : "JOURNAL";
 
-  // Content: an uploaded file wins; otherwise fall back to pasted text.
-  const file = formData.get("file");
-  let content = "";
-  let filename: string | undefined;
-  if (file && typeof file === "object" && "text" in file && (file as File).size > 0) {
-    content = await (file as File).text();
-    filename = (file as File).name;
-  } else {
-    content = String(formData.get("pasted") ?? "");
-  }
-  if (!content.trim())
-    return { ok: false, message: "Upload a file or paste records to import." };
-
-  const { format, rows, errors } = parseBulk(content, filename);
-  if (rows.length === 0)
-    return { ok: false, message: errors[0] ?? "No records found — check the file format (CSV, JSON, XML, or MARCXML)." };
-
-  let imported = 0;
-  let duplicates = 0;
+  // Validate + partition rows.
   let skipped = 0;
   const skipReasons: string[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row.title) {
+  const valid: BulkRow[] = [];
+  rows.forEach((row, i) => {
+    if (!row?.title || !String(row.title).trim()) {
       skipped++;
-      if (skipReasons.length < 5) skipReasons.push(`record ${i + 1}: missing title`);
-      continue;
+      if (skipReasons.length < 5) skipReasons.push(`row ${i + 1}: missing title`);
+      return;
     }
-    if (!/^https?:\/\//i.test(row.url)) {
+    if (!/^https?:\/\//i.test(String(row.url ?? ""))) {
       skipped++;
-      if (skipReasons.length < 5) skipReasons.push(`record ${i + 1}: missing/invalid URL`);
-      continue;
+      if (skipReasons.length < 5) skipReasons.push(`row ${i + 1}: missing/invalid URL`);
+      return;
     }
-    const authors = row.authors ?? "Unknown";
-    // Dedup on the access URL only: for link-out resources the URL is the
-    // identity. Matching on title+author would wrongly collapse distinct
-    // records that share a title (e.g. multi-volume sets, unnamed serials).
-    const existing = await prisma.resource.findFirst({
-      where: { digitalUrl: row.url },
-      select: { id: true },
-    });
-    if (existing) {
+    valid.push(row);
+  });
+
+  if (valid.length === 0)
+    return { ok: true, imported: 0, duplicates: 0, skipped, skipReasons };
+
+  // Dedup on access URL — one query for every candidate URL in the chunk.
+  const urls = Array.from(new Set(valid.map((r) => r.url)));
+  const existing = await prisma.resource.findMany({
+    where: { digitalUrl: { in: urls } },
+    select: { digitalUrl: true },
+  });
+  const seen = new Set(existing.map((e) => e.digitalUrl));
+
+  let duplicates = 0;
+  const toCreate: Prisma.ResourceCreateManyInput[] = [];
+  for (const row of valid) {
+    if (seen.has(row.url)) {
       duplicates++;
       continue;
     }
-    // Create directly (not via importOne) so the batch's provider tag stays
-    // independent of the record's real bibliographic publisher, and ISBN /
-    // subtitle from MARCXML are preserved.
-    await prisma.resource.create({
-      data: {
-        title: row.title,
-        subtitle: row.venue,
-        author: authors,
-        isbn: row.isbn,
-        type: row.type ?? defaultType,
-        category: row.category ?? defaultCategory,
-        publisher: row.publisher,
-        publishedYear: row.year,
-        description: row.abstract,
-        coverColor: coverColorFor(provider + row.title),
-        digital: true,
-        digitalUrl: row.url,
-        provider,
-      },
+    seen.add(row.url); // also collapses repeats within the same chunk
+    const type =
+      row.type && (RESOURCE_TYPES as readonly string[]).includes(row.type) ? row.type : defaultType;
+    const category =
+      row.category && (CATEGORIES as readonly string[]).includes(row.category)
+        ? row.category
+        : defaultCategory;
+    toCreate.push({
+      title: String(row.title).trim(),
+      subtitle: row.venue ?? null,
+      author: row.authors ?? "Unknown",
+      isbn: row.isbn ?? null,
+      type,
+      category,
+      publisher: row.publisher ?? null,
+      publishedYear: typeof row.year === "number" ? row.year : null,
+      description: row.abstract ?? null,
+      coverColor: coverColorFor(provider + row.title),
+      digital: true,
+      digitalUrl: row.url,
+      provider,
     });
-    imported++;
   }
 
-  revalidatePath("/admin/catalogue");
+  if (toCreate.length > 0) {
+    await prisma.resource.createMany({ data: toCreate });
+    revalidatePath("/admin/catalogue");
+  }
 
-  const parts = [`${imported} imported`];
-  if (duplicates > 0) parts.push(`${duplicates} already in catalogue`);
-  if (skipped > 0) parts.push(`${skipped} skipped`);
-  let message = `${provider} batch (${format.toUpperCase()}): ${parts.join(" · ")}.`;
-  const notes = [...errors, ...skipReasons];
-  if (notes.length) message += ` — ${notes.slice(0, 6).join("; ")}`;
-  // An all-duplicate batch is a successful no-op, not an error (matches importScholarly).
-  return { ok: imported > 0 || duplicates > 0, message };
+  return { ok: true, imported: toCreate.length, duplicates, skipped, skipReasons };
 }
