@@ -6,7 +6,11 @@
 import path from "node:path";
 
 const SUPPORTED = /\.(xml|marcxml|mrcx|csv|tsv|json)$/i;
-const READY_TIMEOUT_MS = 15_000;
+const READY_TIMEOUT_MS = 15_000; // connect/handshake
+const LIST_TIMEOUT_MS = 15_000; // directory listing
+const GET_TIMEOUT_MS = 30_000; // per-file download
+const MAX_FILE_BYTES = 40 * 1024 * 1024; // skip any single file larger than this
+const MAX_TOTAL_BYTES = 120 * 1024 * 1024; // stop the run once this much is buffered
 
 export type SftpSourceInfo = {
   host: string;
@@ -14,6 +18,7 @@ export type SftpSourceInfo = {
   remoteDir: string;
   provider: string;
   defaultCategory: string;
+  defaultType: string;
   auth: "key" | "password";
 };
 
@@ -21,10 +26,7 @@ export type SftpSourceInfo = {
 export function sftpConfigured(): boolean {
   const e = process.env;
   return Boolean(
-    e.SFTP_HOST &&
-      e.SFTP_USER &&
-      (e.SFTP_PASSWORD || e.SFTP_PRIVATE_KEY) &&
-      e.SFTP_PROVIDER,
+    e.SFTP_HOST && e.SFTP_USER && (e.SFTP_PASSWORD || e.SFTP_PRIVATE_KEY) && e.SFTP_PROVIDER,
   );
 }
 
@@ -38,6 +40,7 @@ export function sftpSourceInfo(): SftpSourceInfo | null {
     remoteDir: e.SFTP_REMOTE_DIR || ".",
     provider: e.SFTP_PROVIDER!,
     defaultCategory: e.SFTP_DEFAULT_CATEGORY || "Technology",
+    defaultType: e.SFTP_DEFAULT_TYPE || "EBOOK",
     auth: e.SFTP_PRIVATE_KEY ? "key" : "password",
   };
 }
@@ -72,21 +75,34 @@ function connectConfig(): ConnectConfig {
   return cfg;
 }
 
-export type SftpFile = { filename: string; content: string };
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`SFTP ${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
+export type ProcessedInfo = Map<string, { mtime: number | null; size: number | null }>;
+
+export type SftpFile = { filename: string; content: string; mtime: number | null; size: number | null };
 
 export type SftpFetchResult = {
-  files: SftpFile[]; // new files downloaded this run (capped)
-  totalNew: number; // total new files seen before the cap
+  files: SftpFile[]; // new/changed files downloaded this run (within caps)
+  totalNew: number; // new/changed files seen before the file/byte caps
+  oversize: { filename: string; size: number | null; mtime: number | null }[]; // skipped for exceeding MAX_FILE_BYTES
 };
 
 /**
- * Connect, list the remote directory, and download every supported file whose
- * name we have not already processed — up to `maxFiles`. Filenames are taken
- * from the server listing and reduced to their basename to avoid any path
- * traversal when re-joining to the remote directory.
+ * Connect, list the remote directory, and download every supported file that
+ * is new — or whose size/mtime changed since we last processed it — up to
+ * `maxFiles` and a cumulative byte budget. Filenames are reduced to their
+ * basename to prevent path traversal when re-joining to the remote directory.
+ * A file larger than MAX_FILE_BYTES is never downloaded (returned in
+ * `oversize` so the caller can record it and avoid re-fetching it every run).
  */
 export async function fetchNewSftpFiles(
-  processed: Set<string>,
+  processed: ProcessedInfo,
   maxFiles: number,
 ): Promise<SftpFetchResult> {
   const { default: SftpClient } = await import("ssh2-sftp-client");
@@ -95,21 +111,46 @@ export async function fetchNewSftpFiles(
 
   await sftp.connect(connectConfig());
   try {
-    const listing = await sftp.list(dir);
-    const candidates = listing
-      .filter((entry) => entry.type === "-") // regular files only
-      .map((entry) => path.posix.basename(entry.name)) // strip any directory part
-      .filter((name) => SUPPORTED.test(name) && !name.includes("/") && !name.includes(".."))
-      .filter((name) => !processed.has(name))
-      .sort();
+    const listing = await withTimeout(sftp.list(dir), LIST_TIMEOUT_MS, "list");
 
-    const chosen = candidates.slice(0, maxFiles);
+    const changed = listing
+      .filter((entry) => entry.type === "-") // regular files only
+      .map((entry) => ({
+        name: path.posix.basename(entry.name), // strip any directory part
+        size: typeof entry.size === "number" ? entry.size : null,
+        mtime: typeof entry.modifyTime === "number" ? entry.modifyTime : null,
+      }))
+      .filter((e) => SUPPORTED.test(e.name) && !e.name.includes("/") && !e.name.includes(".."))
+      .filter((e) => {
+        const prev = processed.get(e.name);
+        if (!prev) return true; // never seen
+        return prev.mtime !== e.mtime || prev.size !== e.size; // content refreshed under same name
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const oversize: SftpFetchResult["oversize"] = [];
     const files: SftpFile[] = [];
-    for (const name of chosen) {
-      const buf = (await sftp.get(path.posix.join(dir, name))) as Buffer;
-      files.push({ filename: name, content: buf.toString("utf8") });
+    let totalBytes = 0;
+    let picked = 0;
+    for (const e of changed) {
+      if (picked >= maxFiles) break;
+      if (e.size != null && e.size > MAX_FILE_BYTES) {
+        oversize.push({ filename: e.name, size: e.size, mtime: e.mtime });
+        picked++; // counts against the run so we make progress and record it
+        continue;
+      }
+      if (e.size != null && totalBytes + e.size > MAX_TOTAL_BYTES && files.length > 0) break;
+      const buf = (await withTimeout(
+        sftp.get(path.posix.join(dir, e.name)),
+        GET_TIMEOUT_MS,
+        `download ${e.name}`,
+      )) as Buffer;
+      totalBytes += buf.length;
+      files.push({ filename: e.name, content: buf.toString("utf8"), mtime: e.mtime, size: e.size });
+      picked++;
     }
-    return { files, totalNew: candidates.length };
+
+    return { files, totalNew: changed.length, oversize };
   } finally {
     await sftp.end().catch(() => {});
   }

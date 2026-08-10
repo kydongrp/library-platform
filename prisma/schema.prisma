@@ -26,7 +26,7 @@ model Resource {
   description   String?
   coverColor    String        @default("#4F46E5") // used to render a placeholder cover
   digital       Boolean       @default(false) // digital titles grant instant access, no physical copy
-  digitalUrl    String? // direct access link (e.g. an IEEE Xplore article URL)
+  digitalUrl    String?       @unique // direct access link; unique so concurrent imports can't double-insert the same link-out (NULLs are exempt)
   provider      String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
   licenseSeats  Int? // concurrent-user limit for digital titles; null = unlimited (contract FR 8.2)
   editorsPick   Boolean       @default(false) // staff-curated highlight (live system: "editorspick" rail)
@@ -298,9 +298,12 @@ model ImportedFile {
   source            String // e.g. "sftp"
   filename          String
   resourcesImported Int      @default(0)
-  status            String   @default("OK") // OK, PARSE_ERROR
+  status            String   @default("OK") // OK, PARSE_ERROR, SKIPPED_OVERSIZE
   detail            String?
+  remoteMtime       BigInt? // SFTP modifyTime (ms) — re-import when a same-name file changes
+  remoteSize        BigInt? // SFTP file size (bytes) seen when last processed
   fetchedAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([source, filename])
 }

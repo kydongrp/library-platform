@@ -118,9 +118,14 @@ export async function importResourceRowsCore(
   let imported = 0;
   for (let i = 0; i < toCreate.length; i += CREATE_BATCH) {
     const batch = toCreate.slice(i, i + CREATE_BATCH);
-    await prisma.resource.createMany({ data: batch });
-    imported += batch.length;
+    // skipDuplicates + the unique index on digitalUrl make this safe against a
+    // concurrent run inserting the same link-out between our dedup query above
+    // and here; count only what was actually inserted.
+    const res = await prisma.resource.createMany({ data: batch, skipDuplicates: true });
+    imported += res.count;
   }
+  // Anything the DB skipped (a race inserted it first) is a duplicate, not new.
+  duplicates += toCreate.length - imported;
 
   return { imported, duplicates, skipped, skipReasons };
 }
@@ -157,14 +162,54 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
   }
 
   const source = sftpSourceInfo()!;
+  const defaultType = (RESOURCE_TYPES as readonly string[]).includes(source.defaultType)
+    ? source.defaultType
+    : "EBOOK";
+
+  // Upsert a per-file record; never let bookkeeping abort the run.
+  const recordFile = async (
+    filename: string,
+    status: string,
+    imported: number,
+    detail: string,
+    mtime: number | null,
+    size: number | null,
+  ) => {
+    const data = {
+      resourcesImported: imported,
+      status,
+      detail: detail.slice(0, 300),
+      remoteMtime: mtime != null ? BigInt(Math.trunc(mtime)) : null,
+      remoteSize: size != null ? BigInt(Math.trunc(size)) : null,
+    };
+    try {
+      await prisma.importedFile.upsert({
+        where: { source_filename: { source: SFTP_SOURCE, filename } },
+        update: data,
+        create: { source: SFTP_SOURCE, filename, ...data },
+      });
+    } catch {
+      /* bookkeeping failure must not abort the run */
+    }
+  };
+
   try {
     const done = await prisma.importedFile.findMany({
       where: { source: SFTP_SOURCE },
-      select: { filename: true },
+      select: { filename: true, remoteMtime: true, remoteSize: true },
     });
-    const processed = new Set(done.map((d) => d.filename));
+    const processed = new Map(
+      done.map((d) => [
+        d.filename,
+        { mtime: d.remoteMtime != null ? Number(d.remoteMtime) : null, size: d.remoteSize != null ? Number(d.remoteSize) : null },
+      ]),
+    );
 
-    const { files, totalNew } = await fetchNewSftpFiles(processed, MAX_FILES_PER_RUN);
+    const { files, totalNew, oversize } = await fetchNewSftpFiles(processed, MAX_FILES_PER_RUN);
+
+    for (const o of oversize) {
+      await recordFile(o.filename, "SKIPPED_OVERSIZE", 0, `skipped: ${o.size ?? "?"} bytes exceeds limit`, o.mtime, o.size);
+    }
 
     let resourcesImported = 0;
     let duplicates = 0;
@@ -175,40 +220,41 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
         const { rows } = parseBulk(file.content, file.filename);
         const res = await importResourceRowsCore(rows, {
           provider: source.provider,
-          defaultType: "EBOOK",
+          defaultType,
           defaultCategory: source.defaultCategory,
         });
         resourcesImported += res.imported;
         duplicates += res.duplicates;
         skipped += res.skipped;
         filesImported++;
-        await prisma.importedFile.create({
-          data: {
-            source: SFTP_SOURCE,
-            filename: file.filename,
-            resourcesImported: res.imported,
-            status: "OK",
-            detail: `${res.imported} imported · ${res.duplicates} dup · ${res.skipped} skipped`,
-          },
-        });
+        await recordFile(
+          file.filename,
+          "OK",
+          res.imported,
+          `${res.imported} imported · ${res.duplicates} dup · ${res.skipped} skipped`,
+          file.mtime,
+          file.size,
+        );
       } catch (e) {
         // Record the bad file so it is not retried forever, and keep going.
-        await prisma.importedFile.create({
-          data: {
-            source: SFTP_SOURCE,
-            filename: file.filename,
-            status: "PARSE_ERROR",
-            detail: e instanceof Error ? e.message.slice(0, 300) : "parse failed",
-          },
-        });
+        await recordFile(
+          file.filename,
+          "PARSE_ERROR",
+          0,
+          e instanceof Error ? e.message : "parse failed",
+          file.mtime,
+          file.size,
+        );
       }
     }
 
-    const capped = totalNew > files.length ? ` (${totalNew - files.length} more queued for next run)` : "";
+    const queued = totalNew - files.length - oversize.length;
+    const capped = queued > 0 ? ` (${queued} more queued for next run)` : "";
+    const over = oversize.length ? ` · ${oversize.length} too large` : "";
     const message =
-      files.length === 0
+      files.length === 0 && oversize.length === 0
         ? `No new files in ${source.host}:${source.remoteDir}.`
-        : `${filesImported}/${files.length} file(s) from ${source.host} · ${resourcesImported} imported · ${duplicates} dup · ${skipped} skipped${capped}`;
+        : `${filesImported}/${files.length} file(s) from ${source.host} · ${resourcesImported} imported · ${duplicates} dup · ${skipped} skipped${over}${capped}`;
 
     await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: message, ranBy } });
     if (resourcesImported > 0) revalidatePath("/admin/catalogue");
