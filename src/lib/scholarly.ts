@@ -14,6 +14,7 @@ export type ScholarlyRecord = {
   url: string; // access link (DOI or OA full text)
   oaUrl: string | null; // open-access full text when known
   abstract: string | null;
+  isbn?: string | null; // set by MARCXML bulk import; absent for search adapters
 };
 
 export const SOURCES = [
@@ -45,7 +46,7 @@ export const SOURCES = [
   {
     key: "bulk",
     name: "Bulk file import",
-    description: "Upload a whole Janes/Knovel batch at once — CSV, JSON or XML — and import every record in one go.",
+    description: "Upload a whole batch at once — CSV, JSON, XML, or Knovel MARCXML — and import every record in one go.",
   },
 ] as const;
 export type SourceKey = (typeof SOURCES)[number]["key"];

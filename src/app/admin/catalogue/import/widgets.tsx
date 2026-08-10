@@ -169,27 +169,50 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
     (providers as readonly string[]).includes("Janes") ? "Janes" : providers[0] ?? "",
   );
 
-  function downloadTemplate() {
-    const csv = [
+  function download(filename: string, mime: string, body: string) {
+    const blob = new Blob([body], { type: `${mime};charset=utf-8` });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function downloadCsvTemplate() {
+    download("batch-template.csv", "text/csv", [
       "title,authors,venue,year,url,type,category,abstract",
       `"Jane's Defence Weekly — Indo-Pacific Naval Modernisation","Jane's editorial team","Jane's Defence Weekly",2025,https://customer.janes.com/display/JDW-0001,JOURNAL,Technology,"Regional naval build-up analysis."`,
       `"Jane's Land Warfare Platforms — Tracked Vehicles","Jane's editorial team","Jane's Land Warfare Platforms",2024,https://customer.janes.com/display/JLWP-0007,EBOOK,Technology,"Reference entry on tracked platforms."`,
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "janes-batch-template.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
+    ].join("\n"));
+  }
+
+  function downloadMarcSample() {
+    download("knovel-sample.marcxml", "application/xml", [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<collection xmlns="http://www.loc.gov/MARC21/slim">`,
+      `  <record>`,
+      `    <leader>02033nam a2200397 i 4500</leader>`,
+      `    <controlfield tag="008">210101s2021    xxu           000 0 eng d</controlfield>`,
+      `    <datafield tag="020" ind1=" " ind2=" "><subfield code="a">9780071842709 (electronic bk.)</subfield></datafield>`,
+      `    <datafield tag="100" ind1="1" ind2=" "><subfield code="a">Green, Don W.,</subfield><subfield code="e">editor.</subfield></datafield>`,
+      `    <datafield tag="245" ind1="1" ind2="0"><subfield code="a">Perry's Chemical Engineers' Handbook :</subfield><subfield code="b">ninth edition /</subfield><subfield code="c">Don W. Green, Marylee Z. Southard.</subfield></datafield>`,
+      `    <datafield tag="264" ind1=" " ind2="1"><subfield code="a">New York :</subfield><subfield code="b">McGraw-Hill Education,</subfield><subfield code="c">2019.</subfield></datafield>`,
+      `    <datafield tag="520" ind1=" " ind2=" "><subfield code="a">The definitive reference for chemical engineering, fully updated.</subfield></datafield>`,
+      `    <datafield tag="650" ind1=" " ind2="0"><subfield code="a">Chemical engineering.</subfield></datafield>`,
+      `    <datafield tag="856" ind1="4" ind2="0"><subfield code="u">https://app.knovel.com/kn/resources/kpPCEHE001/toc</subfield><subfield code="y">Full text via Knovel</subfield></datafield>`,
+      `  </record>`,
+      `</collection>`,
+    ].join("\n"));
   }
 
   return (
     <Card className="max-w-3xl p-5">
       <h2 className="font-display text-lg font-semibold">Bulk import a batch file</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Upload a whole Janes/Knovel batch — <strong>CSV, JSON or XML</strong> — and every
+        Upload a whole batch — <strong>CSV, JSON, XML, or Knovel MARCXML</strong> — and every
         record is imported as a digital, link-out resource under the chosen provider.
-        Fields are matched leniently and each record is deduped against the catalogue.
+        The format is auto-detected; fields are matched leniently and each record is
+        deduped against the catalogue.
       </p>
       <StatefulForm action={bulkImportArticles} className="mt-4 space-y-4">
         {(state) => (
@@ -211,6 +234,7 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
                 <select id="bi-type" name="type" defaultValue="JOURNAL" className={fieldCls}>
                   {RESOURCE_TYPES.map((t) => <option key={t} value={t}>{RESOURCE_TYPE_LABELS[t]}</option>)}
                 </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">MARCXML reads type from each record.</p>
               </div>
               <div>
                 <label className={labelCls} htmlFor="bi-category">Default category</label>
@@ -223,12 +247,16 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
             <div>
               <label className={labelCls} htmlFor="bi-file">Batch file</label>
               <input id="bi-file" name="file" type="file"
-                accept=".csv,.tsv,.json,.xml,text/csv,application/json,text/xml,application/xml"
+                accept=".csv,.tsv,.json,.xml,.marcxml,.mrcx,text/csv,application/json,text/xml,application/xml"
                 className={`${fieldCls} file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary`} />
               <p className="mt-1 text-xs text-muted-foreground">
-                Recognised fields: title, authors, url, year, venue, type, category, abstract.{" "}
-                <button type="button" onClick={downloadTemplate} className="text-primary hover:underline">
-                  Download CSV template
+                CSV/JSON/XML fields (matched leniently): title, authors, url, year, venue, publisher, isbn, type, category, abstract.
+                MARCXML maps 245/100/700/264/520/856/020 automatically.{" "}
+                <button type="button" onClick={downloadCsvTemplate} className="text-primary hover:underline">
+                  CSV template
+                </button>{" · "}
+                <button type="button" onClick={downloadMarcSample} className="text-primary hover:underline">
+                  MARCXML sample
                 </button>
               </p>
             </div>

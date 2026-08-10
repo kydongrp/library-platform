@@ -19,7 +19,9 @@ function coverColorFor(seed: string): string {
   return COVER_COLORS[Math.abs(h) % COVER_COLORS.length];
 }
 
-async function alreadyImported(record: ScholarlyRecord): Promise<boolean> {
+type DedupKey = Pick<ScholarlyRecord, "url" | "oaUrl" | "title" | "authors">;
+
+async function alreadyImported(record: DedupKey): Promise<boolean> {
   const existing = await prisma.resource.findFirst({
     where: {
       OR: [
@@ -50,6 +52,7 @@ async function importOne(record: ScholarlyRecord, category: string): Promise<"im
       digitalUrl: record.oaUrl ?? record.url,
       provider: providerFor(record),
       subtitle: record.venue,
+      isbn: record.isbn ?? null,
     },
   });
   return "imported";
@@ -210,7 +213,7 @@ export async function bulkImportArticles(
 
   const { format, rows, errors } = parseBulk(content, filename);
   if (rows.length === 0)
-    return { ok: false, message: errors[0] ?? "No records found — check the file format (CSV, JSON, or XML)." };
+    return { ok: false, message: errors[0] ?? "No records found — check the file format (CSV, JSON, XML, or MARCXML)." };
 
   let imported = 0;
   let duplicates = 0;
@@ -228,22 +231,39 @@ export async function bulkImportArticles(
       if (skipReasons.length < 5) skipReasons.push(`record ${i + 1}: missing/invalid URL`);
       continue;
     }
-    const record: ScholarlyRecord = {
-      source: "manual",
-      externalId: row.url.toLowerCase(),
-      title: row.title,
-      authors: row.authors ?? "Unknown",
-      year: row.year,
-      publisher: provider,
-      venue: row.venue,
-      type: row.type ?? defaultType,
-      url: row.url,
-      oaUrl: null,
-      abstract: row.abstract,
-    };
-    const result = await importOne(record, row.category ?? defaultCategory);
-    if (result === "imported") imported++;
-    else duplicates++;
+    const authors = row.authors ?? "Unknown";
+    // Dedup on the access URL only: for link-out resources the URL is the
+    // identity. Matching on title+author would wrongly collapse distinct
+    // records that share a title (e.g. multi-volume sets, unnamed serials).
+    const existing = await prisma.resource.findFirst({
+      where: { digitalUrl: row.url },
+      select: { id: true },
+    });
+    if (existing) {
+      duplicates++;
+      continue;
+    }
+    // Create directly (not via importOne) so the batch's provider tag stays
+    // independent of the record's real bibliographic publisher, and ISBN /
+    // subtitle from MARCXML are preserved.
+    await prisma.resource.create({
+      data: {
+        title: row.title,
+        subtitle: row.venue,
+        author: authors,
+        isbn: row.isbn,
+        type: row.type ?? defaultType,
+        category: row.category ?? defaultCategory,
+        publisher: row.publisher,
+        publishedYear: row.year,
+        description: row.abstract,
+        coverColor: coverColorFor(provider + row.title),
+        digital: true,
+        digitalUrl: row.url,
+        provider,
+      },
+    });
+    imported++;
   }
 
   revalidatePath("/admin/catalogue");
@@ -254,5 +274,6 @@ export async function bulkImportArticles(
   let message = `${provider} batch (${format.toUpperCase()}): ${parts.join(" · ")}.`;
   const notes = [...errors, ...skipReasons];
   if (notes.length) message += ` — ${notes.slice(0, 6).join("; ")}`;
-  return { ok: imported > 0, message };
+  // An all-duplicate batch is a successful no-op, not an error (matches importScholarly).
+  return { ok: imported > 0 || duplicates > 0, message };
 }
