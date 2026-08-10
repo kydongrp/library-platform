@@ -61,7 +61,10 @@ export default async function CataloguePage({
             {(q || category || type) && " matching your filters"}.
           </p>
         </div>
-        <ButtonLink href="/admin/catalogue/new">+ Add title</ButtonLink>
+        <div className="flex gap-2">
+          <ButtonLink href="/admin/catalogue/import" variant="outline">⇩ LiveFetch import</ButtonLink>
+          <ButtonLink href="/admin/catalogue/new">+ Add title</ButtonLink>
+        </div>
       </div>
 
       {/* Filters */}
