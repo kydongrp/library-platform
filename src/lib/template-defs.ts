@@ -47,7 +47,7 @@ export const DEFAULT_TEMPLATES: {
   {
     code: "WELCOME",
     name: "New member welcome",
-    subject: "Welcome to Athenaeum, {{memberName}}",
+    subject: "Welcome to the Digital Library, {{memberName}}",
     body: "Hi {{memberName}},\n\nWelcome to the library! Browse the catalogue, borrow digital titles instantly, and reserve anything that's out.",
   },
   {

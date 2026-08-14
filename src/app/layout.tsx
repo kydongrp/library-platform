@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Athenaeum — Library Platform",
+  title: "DLS Admin — Digital Library System",
   description:
-    "A modern library management platform with a staff Admin Panel and a learner-facing discovery portal.",
+    "The staff administration panel for the DLS (Digital Library System) — catalogue, circulation, members, policies, reporting, and scholarly content import.",
 };
 
 export default function RootLayout({

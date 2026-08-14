@@ -30,6 +30,10 @@ model Resource {
   provider      String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
   licenseSeats  Int? // concurrent-user limit for digital titles; null = unlimited (contract FR 8.2)
   editorsPick   Boolean       @default(false) // staff-curated highlight (live system: "editorspick" rail)
+  epExternal    Boolean       @default(false) // pick exists ONLY as an Editor's Pick (promoted from outside the collection) — removing it from the picks deletes it from the library (BR-366G); internal picks stay in the catalogue (BR-366I)
+  epBlurb       String? // curator's note shown with the pick
+  epPickedAt    DateTime?
+  epPickedBy    String? // staff name — feeds contribution tracking later
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   copies        Copy[]
@@ -38,6 +42,7 @@ model Resource {
   reviews       Review[]
   favouritedIn  FavouriteItem[]
   browsedBy     BrowsingHistory[]
+  epSubmissions EpSubmission[]
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -288,6 +293,29 @@ model LinkCheck {
   statusCode Int?
   error      String?
   checkedAt  DateTime @default(now())
+}
+
+/// A learner nomination for the Editor's Pick shelf (BR-366E/404). Learners
+/// submit via the portal's form.sg flow (or send an external link over
+/// WhatsApp); staff record the retrieved submissions here and approve or
+/// reject them — approval promotes with one click instead of manual re-entry.
+model EpSubmission {
+  id         String    @id @default(cuid())
+  kind       String // INTERNAL (nominates a catalogue title) | EXTERNAL (new outside link)
+  channel    String    @default("FORMSG") // FORMSG, WHATSAPP, OTHER
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  submitter  String? // learner name/id as retrieved from the form
+  reason     String? // why the learner thinks it should be featured
+  resourceId String? // set for INTERNAL nominations
+  resource   Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  title      String? // EXTERNAL submissions carry their own metadata
+  authors    String?
+  url        String?
+  provider   String?
+  decidedBy  String?
+  staffNote  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
 /// A batch metadata file already ingested by the scheduled import service

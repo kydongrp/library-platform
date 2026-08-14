@@ -22,10 +22,26 @@ async function alreadyImported(record: DedupKey): Promise<boolean> {
     },
     select: { id: true },
   });
+  if (existing) {
+    // A source record matching an EXTERNAL Editor's Pick proves the title
+    // exists outside the shelf — claim it as internal so removing the pick
+    // later can't delete it (see removeFromEditorsPick, BR-366G/I).
+    await prisma.resource.updateMany({
+      where: {
+        digitalUrl: { in: [record.url, ...(record.oaUrl ? [record.oaUrl] : [])] },
+        epExternal: true,
+      },
+      data: { epExternal: false },
+    });
+  }
   return !!existing;
 }
 
-async function importOne(record: ScholarlyRecord, category: string): Promise<"imported" | "duplicate"> {
+async function importOne(record: ScholarlyRecord, category: string): Promise<"imported" | "duplicate" | "skipped"> {
+  // LiveFetch records come from third-party APIs via a client form field —
+  // never persist a non-http(s) link as the access URL.
+  const oaUrl = record.oaUrl && /^https?:\/\//i.test(record.oaUrl) ? record.oaUrl : null;
+  if (!/^https?:\/\//i.test(record.url) && !oaUrl) return "skipped";
   if (await alreadyImported(record)) return "duplicate";
   await prisma.resource.create({
     data: {
@@ -38,8 +54,8 @@ async function importOne(record: ScholarlyRecord, category: string): Promise<"im
       description: record.abstract,
       coverColor: coverColorFor(record.venue ?? record.publisher ?? record.title),
       digital: true,
-      // Prefer the open-access full text when one exists; else the DOI link.
-      digitalUrl: record.oaUrl ?? record.url,
+      // Prefer the (validated) open-access full text when one exists.
+      digitalUrl: oaUrl ?? record.url,
       provider: providerFor(record),
       subtitle: record.venue,
       isbn: record.isbn ?? null,
@@ -76,17 +92,23 @@ export async function importScholarly(
 
   let imported = 0;
   let duplicates = 0;
+  let skipped = 0;
   for (const record of records) {
-    if (!record?.title || !record?.url) continue;
+    if (!record?.title || !record?.url) {
+      skipped++;
+      continue;
+    }
     const result = await importOne(record, category);
     if (result === "imported") imported++;
-    else duplicates++;
+    else if (result === "duplicate") duplicates++;
+    else skipped++;
   }
 
   revalidatePath("/admin/catalogue");
 
   const parts = [`${imported} imported`];
   if (duplicates > 0) parts.push(`${duplicates} already in catalogue`);
+  if (skipped > 0) parts.push(`${skipped} skipped (invalid link)`);
   return { ok: imported > 0 || duplicates > 0, message: parts.join(" · ") + "." };
 }
 
@@ -140,22 +162,28 @@ export async function addManualArticle(
   if (await alreadyImported(record))
     return { ok: false, message: "That article (same URL or title) is already in the catalogue." };
 
-  await prisma.resource.create({
-    data: {
-      title: record.title,
-      author: record.authors,
-      type: record.type,
-      category,
-      publisher: provider,
-      publishedYear: record.year,
-      description: record.abstract,
-      coverColor: coverColorFor(provider + title),
-      digital: true,
-      digitalUrl: url,
-      provider, // exact provider chosen (Janes, etc.) — bypasses providerFor mapping
-      subtitle: record.venue,
-    },
-  });
+  try {
+    await prisma.resource.create({
+      data: {
+        title: record.title,
+        author: record.authors,
+        type: record.type,
+        category,
+        publisher: provider,
+        publishedYear: record.year,
+        description: record.abstract,
+        coverColor: coverColorFor(provider + title),
+        digital: true,
+        digitalUrl: url,
+        provider, // exact provider chosen (Janes, etc.) — bypasses providerFor mapping
+        subtitle: record.venue,
+      },
+    });
+  } catch (e) {
+    if (typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002")
+      return { ok: false, message: "That URL is already in the catalogue." };
+    throw e;
+  }
 
   revalidatePath("/admin/catalogue");
   return { ok: true, message: `Added "${title}" (${provider}).` };

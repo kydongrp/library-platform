@@ -23,15 +23,15 @@ export default async function LandingPage() {
       <section className="hero-paper border-b border-border">
         <div className="mx-auto max-w-5xl px-6 py-20 text-center">
           <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-accent">
-            Library Management Platform
+            Digital Library System
           </p>
           <h1 className="font-display text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
-            Athenaeum
+            DLS Admin
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
-            The staff back-office for the library — catalogue and members,
-            circulation, acquisitions, loan policies, reporting, and scholarly
-            content import, all in one place.
+            The staff back-office for the DLS (Digital Library System) —
+            catalogue and members, circulation, loan policies, reporting, and
+            scholarly content import, all in one place.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <ButtonLink href="/admin" variant="primary" className="px-6 py-3 text-base">

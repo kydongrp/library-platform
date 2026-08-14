@@ -5,6 +5,18 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { DIGITAL_TYPES } from "@/lib/constants";
+import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
+
+// Server actions are directly invocable endpoints — every mutation must
+// re-check CATALOGUE edit rights, not rely on the page hiding buttons.
+async function canEditCatalogue(): Promise<boolean> {
+  return canEdit(await getCurrentAdmin(), "CATALOGUE");
+}
+
+/** Unique-constraint violation (digitalUrl) — check-then-write race backstop. */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
+}
 
 // Generate the next sequential barcode (LIB-000123).
 async function nextBarcodes(count: number): Promise<string[]> {
@@ -42,21 +54,39 @@ export async function createResource(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  if (!(await canEditCatalogue()))
+    return { ok: false, message: "You don't have permission to edit the catalogue." };
   const data = parseResourceForm(formData);
   if (!data.title) return { ok: false, message: "Title is required." };
   if (!data.author) return { ok: false, message: "Author is required." };
+
+  if (data.digitalUrl) {
+    const clash = await prisma.resource.findFirst({
+      where: { digitalUrl: data.digitalUrl },
+      select: { title: true },
+    });
+    if (clash)
+      return { ok: false, message: `That access URL already belongs to "${clash.title}".` };
+  }
 
   const copyCount = data.digital
     ? 0
     : Math.max(0, parseInt(String(formData.get("copyCount") ?? "1"), 10) || 0);
   const barcodes = await nextBarcodes(copyCount);
 
-  const resource = await prisma.resource.create({
-    data: {
-      ...data,
-      copies: { create: barcodes.map((barcode) => ({ barcode })) },
-    },
-  });
+  let resource;
+  try {
+    resource = await prisma.resource.create({
+      data: {
+        ...data,
+        copies: { create: barcodes.map((barcode) => ({ barcode })) },
+      },
+    });
+  } catch (e) {
+    if (isUniqueViolation(e))
+      return { ok: false, message: "That access URL already belongs to another title." };
+    throw e;
+  }
 
   revalidatePath("/admin/catalogue");
   redirect(`/admin/catalogue/${resource.id}`);
@@ -66,19 +96,49 @@ export async function updateResource(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  if (!(await canEditCatalogue()))
+    return { ok: false, message: "You don't have permission to edit the catalogue." };
   const id = String(formData.get("id") ?? "");
   const data = parseResourceForm(formData);
   if (!id) return { ok: false, message: "Missing resource id." };
   if (!data.title || !data.author)
     return { ok: false, message: "Title and author are required." };
 
-  await prisma.resource.update({ where: { id }, data });
+  // An external Editor's Pick is identified by its access URL — stripping it
+  // would break the pick's delete semantics and importer dedup.
+  const existing = await prisma.resource.findUnique({
+    where: { id },
+    select: { epExternal: true },
+  });
+  if (existing?.epExternal && !data.digitalUrl)
+    return {
+      ok: false,
+      message: "This title is an external Editor's Pick — it must keep a valid access URL.",
+    };
+
+  if (data.digitalUrl) {
+    const clash = await prisma.resource.findFirst({
+      where: { digitalUrl: data.digitalUrl, NOT: { id } },
+      select: { title: true },
+    });
+    if (clash)
+      return { ok: false, message: `That access URL already belongs to "${clash.title}".` };
+  }
+
+  try {
+    await prisma.resource.update({ where: { id }, data });
+  } catch (e) {
+    if (isUniqueViolation(e))
+      return { ok: false, message: "That access URL already belongs to another title." };
+    throw e;
+  }
   revalidatePath(`/admin/catalogue/${id}`);
   revalidatePath("/admin/catalogue");
   return { ok: true, message: "Saved." };
 }
 
 export async function deleteResource(formData: FormData): Promise<void> {
+  if (!(await canEditCatalogue())) return;
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   // Block deletion when copies are out on loan.
@@ -90,6 +150,7 @@ export async function deleteResource(formData: FormData): Promise<void> {
   }
   await prisma.loan.deleteMany({ where: { resourceId: id } });
   await prisma.reservation.deleteMany({ where: { resourceId: id } });
+  await prisma.linkCheck.deleteMany({ where: { resourceId: id } });
   await prisma.resource.delete({ where: { id } });
   revalidatePath("/admin/catalogue");
   redirect("/admin/catalogue");
@@ -99,6 +160,8 @@ export async function addCopies(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  if (!(await canEditCatalogue()))
+    return { ok: false, message: "You don't have permission to edit the catalogue." };
   const resourceId = String(formData.get("resourceId") ?? "");
   const count = Math.max(1, parseInt(String(formData.get("count") ?? "1"), 10) || 1);
   const location = String(formData.get("location") ?? "Main Shelf");
@@ -113,6 +176,7 @@ export async function addCopies(
 }
 
 export async function setCopyStatus(formData: FormData): Promise<void> {
+  if (!(await canEditCatalogue())) return;
   const copyId = String(formData.get("copyId") ?? "");
   const status = String(formData.get("status") ?? "");
   const resourceId = String(formData.get("resourceId") ?? "");
@@ -126,6 +190,7 @@ export async function setCopyStatus(formData: FormData): Promise<void> {
 }
 
 export async function deleteCopy(formData: FormData): Promise<void> {
+  if (!(await canEditCatalogue())) return;
   const copyId = String(formData.get("copyId") ?? "");
   const resourceId = String(formData.get("resourceId") ?? "");
   if (!copyId) return;

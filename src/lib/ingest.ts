@@ -77,11 +77,19 @@ export async function importResourceRowsCore(
   const urls = Array.from(new Set(valid.map((r) => r.url)));
   const seen = new Set<string>();
   for (let i = 0; i < urls.length; i += DEDUP_BATCH) {
+    const batch = urls.slice(i, i + DEDUP_BATCH);
     const existing = await prisma.resource.findMany({
-      where: { digitalUrl: { in: urls.slice(i, i + DEDUP_BATCH) } },
+      where: { digitalUrl: { in: batch } },
       select: { digitalUrl: true },
     });
     existing.forEach((e) => e.digitalUrl && seen.add(e.digitalUrl));
+    // A feed row matching an EXTERNAL Editor's Pick proves the title exists in
+    // the collection's sources — claim it as internal so removing it from the
+    // picks later can't delete a vendor-supplied title (it stays deduped here).
+    await prisma.resource.updateMany({
+      where: { digitalUrl: { in: batch }, epExternal: true },
+      data: { epExternal: false },
+    });
   }
 
   let duplicates = 0;

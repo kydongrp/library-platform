@@ -9,6 +9,7 @@ const NAV: (NavItem & { area: string })[] = [
   { href: "/admin", label: "Dashboard", icon: "▣", area: "DASHBOARD" },
   { href: "/admin/circulation", label: "Circulation Desk", icon: "⇄", area: "CIRCULATION" },
   { href: "/admin/catalogue", label: "Catalogue", icon: "▤", area: "CATALOGUE" },
+  { href: "/admin/editors-pick", label: "Editor's Picks", icon: "★", area: "CATALOGUE" },
   { href: "/admin/members", label: "Members", icon: "◎", area: "MEMBERS" },
   { href: "/admin/loans", label: "Current Loans", icon: "↻", area: "LOANS" },
   { href: "/admin/reservations", label: "Reservations", icon: "✦", area: "RESERVATIONS" },
@@ -35,13 +36,13 @@ export default async function AdminLayout({
         <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card/60 px-4 py-6 md:flex">
           <Link href="/admin" className="mb-6 flex items-center gap-2 px-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary font-display text-lg font-bold text-primary-foreground">
-              A
+              D
             </span>
             <div>
               <p className="font-display text-lg font-semibold leading-none">
-                Athenaeum
+                DLS Admin
               </p>
-              <p className="text-xs text-muted-foreground">Admin Panel</p>
+              <p className="text-xs text-muted-foreground">Digital Library System</p>
             </div>
           </Link>
 
@@ -91,9 +92,9 @@ export default async function AdminLayout({
           {/* Mobile top nav */}
           <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3 md:hidden">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-              A
+              D
             </span>
-            <span className="font-display font-semibold">Admin Panel</span>
+            <span className="font-display font-semibold">DLS Admin</span>
             <Link href="/" className="ml-auto text-sm text-muted-foreground">
               Home
             </Link>
