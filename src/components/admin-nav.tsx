@@ -1,9 +1,23 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 export type NavItem = { href: string; label: string; icon: string };
+
+// Fixed-size pending hint (per Next docs: always rendered, opacity-toggled,
+// so the row never shifts). Must live inside the <Link> to read its status.
+function PendingSpinner() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      aria-hidden
+      className={`ml-auto h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent transition-opacity duration-150 ${
+        pending ? "opacity-60" : "opacity-0"
+      }`}
+    />
+  );
+}
 
 export function AdminNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
@@ -26,6 +40,7 @@ export function AdminNav({ items }: { items: NavItem[] }) {
           >
             <span className="text-base leading-none">{item.icon}</span>
             {item.label}
+            <PendingSpinner />
           </Link>
         );
       })}

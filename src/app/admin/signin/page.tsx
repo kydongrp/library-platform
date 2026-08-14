@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { signInAsAdmin } from "@/app/actions/admin-settings";
 import { initials } from "@/lib/format";
+import { SignInRowButton } from "./signin-button";
 
 export const dynamic = "force-dynamic";
 
@@ -26,21 +27,12 @@ export default async function AdminSignInPage() {
         {admins.map((a) => (
           <form key={a.id} action={signInAsAdmin}>
             <input type="hidden" name="adminId" value={a.id} />
-            <button
-              type="submit"
-              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                {initials(a.name)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{a.name}</p>
-                <p className="truncate text-sm text-muted-foreground">{a.email}</p>
-              </div>
-              <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-stone-600">
-                {a.group.name}
-              </span>
-            </button>
+            <SignInRowButton
+              avatar={initials(a.name)}
+              name={a.name}
+              email={a.email}
+              group={a.group.name}
+            />
           </form>
         ))}
       </div>
