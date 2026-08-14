@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { notify } from "@/lib/templates";
+import { audit } from "@/lib/audit";
 
 const REQUEST_STATUSES = new Set(["PENDING", "APPROVED", "REJECTED", "ACQUIRED"]);
 
@@ -40,6 +41,13 @@ export async function updateRequestStatus(
     });
   }
 
+  await audit({
+    action: "requests.decide",
+    summary: `Request "${request.title}" marked ${status.toLowerCase()}`,
+    entity: "ResourceRequest",
+    entityId: id,
+    detail: { from: request.status, to: status, staffNote },
+  });
   revalidatePath("/admin/requests");
   return { ok: true, message: `Request marked ${status.toLowerCase()}.` };
 }

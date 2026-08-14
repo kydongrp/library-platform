@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { parseBulk, type BulkRow } from "@/lib/bulk-import";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 import { sftpConfigured, sftpSourceInfo, fetchNewSftpFiles } from "@/lib/sftp";
+import { audit } from "@/lib/audit";
 import type { Prisma } from "@/generated/prisma/client";
 
 // Deterministic cover colour per seed so imports look organised.
@@ -265,12 +266,17 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
         : `${filesImported}/${files.length} file(s) from ${source.host} · ${resourcesImported} imported · ${duplicates} dup · ${skipped} skipped${over}${capped}`;
 
     await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: message, ranBy } });
+    // The manual trigger audits with the admin's session; cron has no session.
+    if (trigger === "cron")
+      await audit({ actor: { name: "cron" }, action: "batch.sftpFetch", summary: `Scheduled SFTP fetch — ${message.slice(0, 200)}`, entity: "BatchRun" });
     if (resourcesImported > 0) revalidatePath("/admin/catalogue");
     revalidatePath("/admin/batch");
     return { status: "success", filesFound: files.length, filesImported, resourcesImported, duplicates, skipped, message };
   } catch (e) {
     const message = `SFTP fetch failed: ${e instanceof Error ? e.message : "connection error"}`;
     await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: message.slice(0, 300), ranBy } });
+    if (trigger === "cron")
+      await audit({ actor: { name: "cron" }, action: "batch.sftpFetch", summary: message.slice(0, 200), entity: "BatchRun" });
     revalidatePath("/admin/batch");
     return { status: "error", filesFound: 0, filesImported: 0, resourcesImported: 0, duplicates: 0, skipped: 0, message };
   }

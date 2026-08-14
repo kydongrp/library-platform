@@ -318,6 +318,25 @@ model EpSubmission {
   updatedAt  DateTime  @updatedAt
 }
 
+/// Append-only audit trail of every admin mutation (IM8: accountability).
+/// Rows are only ever inserted — no update/delete path exists in the app.
+model AuditLog {
+  id       String   @id @default(cuid())
+  at       DateTime @default(now())
+  actor    String // admin display name, or "cron" for scheduled jobs
+  actorId  String? // AdminUser id when a session was present
+  action   String // dot notation, e.g. "catalogue.update", "ep.approve"
+  entity   String? // model touched, e.g. "Resource"
+  entityId String?
+  summary  String // human-readable one-liner
+  detail   Json? // before/after snapshot or payload extract
+
+  @@index([at])
+  @@index([action])
+  @@index([actor])
+  @@index([entity, entityId])
+}
+
 /// A batch metadata file already ingested by the scheduled import service
 /// (SDD: Metadata Import Service — vendor XML dropped via SFTP). Gives the
 /// re-fetch job idempotency: a filename is imported once per source.

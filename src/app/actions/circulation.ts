@@ -8,6 +8,7 @@ import { policyFor } from "@/lib/policies";
 import { notify } from "@/lib/templates";
 import { formatDate } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
+import { audit } from "@/lib/audit";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -105,6 +106,7 @@ export async function checkout(
       resourceTitle: resource.title,
       dueDate: formatDate(dueAt),
     });
+    await audit({ action: "circulation.checkout", summary: `Digital loan: "${resource.title}" to ${member.name}`, entity: "Resource", entityId: resource.id, detail: { memberId, dueAt } });
     revalidateAll();
     return { ok: true, message: `"${resource.title}" loaned (digital access).` };
   }
@@ -131,6 +133,7 @@ export async function checkout(
     dueDate: formatDate(dueAt),
   });
 
+  await audit({ action: "circulation.checkout", summary: `Checked out "${resource.title}" (${copy.barcode}) to ${member.name}`, entity: "Resource", entityId: resource.id, detail: { memberId, copyId: copy.id, dueAt } });
   revalidateAll();
   return {
     ok: true,
@@ -221,6 +224,7 @@ export async function checkin(
     }
   }
 
+  await audit({ action: "circulation.checkin", summary: `Returned "${loan.resource.title}" from ${loan.member.name}`, entity: "Loan", entityId: loan.id });
   revalidateAll();
   return { ok: true, message };
 }
@@ -253,6 +257,7 @@ export async function renewLoan(
     where: { id: loan.id },
     data: { dueAt, renewals: loan.renewals + 1 },
   });
+  await audit({ action: "circulation.renew", summary: `Renewed "${loan.resource.title}" for ${loan.member.name} (renewal ${loan.renewals + 1})`, entity: "Loan", entityId: loan.id, detail: { dueAt } });
   revalidateAll();
   return {
     ok: true,
@@ -302,7 +307,8 @@ export async function reserve(
   const ahead = await prisma.reservation.count({
     where: { resourceId, status: "PENDING" },
   });
-  await prisma.reservation.create({ data: { memberId, resourceId } });
+  const hold = await prisma.reservation.create({ data: { memberId, resourceId } });
+  await audit({ action: "circulation.reserve", summary: `Hold placed on "${resource.title}"`, entity: "Reservation", entityId: hold.id, detail: { memberId, resourceId } });
   revalidateAll();
   return {
     ok: true,
@@ -349,6 +355,7 @@ export async function cancelReservation(
     }
   }
 
+  await audit({ action: "circulation.cancelHold", summary: `Cancelled hold on "${res.resource.title}"`, entity: "Reservation", entityId: res.id });
   revalidateAll();
   return { ok: true, message: "Reservation cancelled." };
 }
@@ -390,6 +397,7 @@ export async function recallLoan(
     newDueDate: formatDate(dueAt),
   });
 
+  await audit({ action: "circulation.recall", summary: `Recalled "${loan.resource.title}" from ${loan.member.name} — due ${formatDate(dueAt)}`, entity: "Loan", entityId: loan.id });
   revalidateAll();
   return {
     ok: true,

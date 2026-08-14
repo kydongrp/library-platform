@@ -11,6 +11,7 @@ import {
   setCurrentAdmin,
   clearCurrentAdmin,
 } from "@/lib/admin-session";
+import { audit } from "@/lib/audit";
 
 /* ---------- Act-as session ---------- */
 
@@ -18,12 +19,29 @@ export async function signInAsAdmin(formData: FormData): Promise<void> {
   const id = String(formData.get("adminId") ?? "");
   if (!id) return;
   await setCurrentAdmin(id);
+  const user = await prisma.adminUser.findUnique({ where: { id }, select: { name: true } });
+  await audit({
+    action: "auth.signIn",
+    summary: `${user?.name ?? id} signed in`,
+    entity: "AdminUser",
+    entityId: id,
+    actor: { name: user?.name ?? id, id },
+  });
   revalidatePath("/admin", "layout");
   redirect("/admin");
 }
 
 export async function signOutAdmin(): Promise<void> {
+  const admin = await getCurrentAdmin();
   await clearCurrentAdmin();
+  if (admin)
+    await audit({
+      action: "auth.signOut",
+      summary: `${admin.name} signed out`,
+      entity: "AdminUser",
+      entityId: admin.id,
+      actor: { name: admin.name, id: admin.id },
+    });
   revalidatePath("/admin", "layout");
   redirect("/admin/signin");
 }
@@ -60,6 +78,7 @@ export async function createGroup(
       },
     },
   });
+  await audit({ action: "settings.group.create", summary: `Created admin group "${name}"`, entity: "AdminGroup", detail: { name, description } });
   revalidatePath("/admin/settings");
   return { ok: true, message: `Group "${name}" created.` };
 }
@@ -86,6 +105,7 @@ export async function updateGroupMatrix(
       create: { groupId, area, canView: canView || canEdit, canEdit },
     });
   }
+  await audit({ action: "settings.group.matrix", summary: `Saved access matrix for group "${group.name}"`, entity: "AdminGroup", entityId: groupId });
   revalidatePath("/admin/settings");
   revalidatePath("/admin", "layout");
   return { ok: true, message: `Access matrix for "${group.name}" saved.` };
@@ -97,7 +117,8 @@ export async function deleteGroup(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const users = await prisma.adminUser.count({ where: { groupId: id } });
   if (users > 0) return; // guarded in UI; groups with users can't be deleted
-  await prisma.adminGroup.delete({ where: { id } });
+  const group = await prisma.adminGroup.delete({ where: { id } });
+  await audit({ action: "settings.group.delete", summary: `Deleted admin group "${group.name}"`, entity: "AdminGroup", entityId: id });
   revalidatePath("/admin/settings");
 }
 
@@ -119,7 +140,8 @@ export async function createAdminUser(
   const existing = await prisma.adminUser.findUnique({ where: { email } });
   if (existing) return { ok: false, message: "An admin with that email already exists." };
 
-  await prisma.adminUser.create({ data: { name, email, groupId } });
+  const created = await prisma.adminUser.create({ data: { name, email, groupId } });
+  await audit({ action: "settings.user.create", summary: `Created admin user "${name}" <${email}>`, entity: "AdminUser", entityId: created.id });
   revalidatePath("/admin/settings");
   return { ok: true, message: `Admin "${name}" created.` };
 }
@@ -139,7 +161,9 @@ export async function updateAdminUser(
   if (self?.id === id && status === "SUSPENDED")
     return { ok: false, message: "You can't suspend your own account." };
 
+  const before = await prisma.adminUser.findUnique({ where: { id }, select: { name: true, groupId: true, status: true } });
   await prisma.adminUser.update({ where: { id }, data: { groupId, status } });
+  await audit({ action: "settings.user.update", summary: `Updated admin user "${before?.name ?? id}" (group/status)`, entity: "AdminUser", entityId: id, detail: { before, after: { groupId, status } } });
   revalidatePath("/admin/settings");
   revalidatePath("/admin", "layout");
   return { ok: true, message: "Admin updated." };
@@ -181,6 +205,7 @@ export async function updatePolicy(
       holdPickupDays: int("holdPickupDays", 3),
     },
   });
+  await audit({ action: "policies.update", summary: `Saved loan policy for ${memberType}`, entity: "LoanPolicy", entityId: memberType });
   revalidatePath("/admin/policies");
   return { ok: true, message: `Policy for ${memberType} saved.` };
 }
@@ -209,6 +234,7 @@ export async function updateTemplate(
       emailEnabled: formData.get("emailEnabled") === "on",
     },
   });
+  await audit({ action: "templates.update", summary: `Edited email template ${code}`, entity: "EmailTemplate", entityId: code });
   revalidatePath("/admin/templates");
   return { ok: true, message: "Template saved." };
 }

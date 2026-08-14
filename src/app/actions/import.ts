@@ -8,6 +8,7 @@ import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 import type { BulkRow } from "@/lib/bulk-import";
 import { coverColorFor, importResourceRowsCore } from "@/lib/ingest";
+import { audit } from "@/lib/audit";
 
 type DedupKey = Pick<ScholarlyRecord, "url" | "oaUrl" | "title" | "authors">;
 
@@ -104,6 +105,8 @@ export async function importScholarly(
     else skipped++;
   }
 
+  if (imported > 0)
+    await audit({ action: "import.livefetch", summary: `LiveFetch import: ${imported} record${imported === 1 ? "" : "s"} into ${category}`, entity: "Resource", detail: { imported, duplicates, skipped } });
   revalidatePath("/admin/catalogue");
 
   const parts = [`${imported} imported`];
@@ -185,6 +188,7 @@ export async function addManualArticle(
     throw e;
   }
 
+  await audit({ action: "import.manual", summary: `Manually added "${title}" (${provider})`, entity: "Resource", detail: { url, provider } });
   revalidatePath("/admin/catalogue");
   return { ok: true, message: `Added "${title}" (${provider}).` };
 }
@@ -237,6 +241,9 @@ export async function importResourceRows(
     defaultType: opts.defaultType,
     defaultCategory: opts.defaultCategory,
   });
-  if (r.imported > 0) revalidatePath("/admin/catalogue");
+  if (r.imported > 0) {
+    await audit({ action: "import.bulk", summary: `Bulk import chunk: ${r.imported} added (${provider})`, entity: "Resource", detail: { imported: r.imported, duplicates: r.duplicates, skipped: r.skipped } });
+    revalidatePath("/admin/catalogue");
+  }
   return { ok: true, ...r };
 }

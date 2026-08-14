@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { DIGITAL_TYPES } from "@/lib/constants";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
+import { audit, diffOf } from "@/lib/audit";
 
 // Server actions are directly invocable endpoints — every mutation must
 // re-check CATALOGUE edit rights, not rely on the page hiding buttons.
@@ -88,6 +89,12 @@ export async function createResource(
     throw e;
   }
 
+  await audit({
+    action: "catalogue.create",
+    summary: `Created "${data.title}" (${data.type}${copyCount ? `, ${copyCount} copies` : ""})`,
+    entity: "Resource",
+    entityId: resource.id,
+  });
   revalidatePath("/admin/catalogue");
   redirect(`/admin/catalogue/${resource.id}`);
 }
@@ -108,7 +115,11 @@ export async function updateResource(
   // would break the pick's delete semantics and importer dedup.
   const existing = await prisma.resource.findUnique({
     where: { id },
-    select: { epExternal: true },
+    select: {
+      epExternal: true, title: true, subtitle: true, author: true, isbn: true,
+      type: true, category: true, publisher: true, publishedYear: true,
+      description: true, provider: true, digitalUrl: true,
+    },
   });
   if (existing?.epExternal && !data.digitalUrl)
     return {
@@ -132,6 +143,17 @@ export async function updateResource(
       return { ok: false, message: "That access URL already belongs to another title." };
     throw e;
   }
+  if (existing) {
+    const { epExternal: _ep, ...beforeFields } = existing;
+    const { digital: _d, coverColor: _c, ...afterFields } = data;
+    await audit({
+      action: "catalogue.update",
+      summary: `Edited "${data.title}"`,
+      entity: "Resource",
+      entityId: id,
+      detail: { changed: diffOf(beforeFields, afterFields) },
+    });
+  }
   revalidatePath(`/admin/catalogue/${id}`);
   revalidatePath("/admin/catalogue");
   return { ok: true, message: "Saved." };
@@ -151,7 +173,14 @@ export async function deleteResource(formData: FormData): Promise<void> {
   await prisma.loan.deleteMany({ where: { resourceId: id } });
   await prisma.reservation.deleteMany({ where: { resourceId: id } });
   await prisma.linkCheck.deleteMany({ where: { resourceId: id } });
-  await prisma.resource.delete({ where: { id } });
+  const deleted = await prisma.resource.delete({ where: { id } });
+  await audit({
+    action: "catalogue.delete",
+    summary: `Deleted "${deleted.title}" and its copies/history`,
+    entity: "Resource",
+    entityId: id,
+    detail: { title: deleted.title, author: deleted.author, provider: deleted.provider },
+  });
   revalidatePath("/admin/catalogue");
   redirect("/admin/catalogue");
 }
@@ -171,6 +200,12 @@ export async function addCopies(
   await prisma.copy.createMany({
     data: barcodes.map((barcode) => ({ resourceId, barcode, location })),
   });
+  await audit({
+    action: "catalogue.addCopies",
+    summary: `Added ${count} cop${count === 1 ? "y" : "ies"} (${barcodes[0]}…)`,
+    entity: "Resource",
+    entityId: resourceId,
+  });
   revalidatePath(`/admin/catalogue/${resourceId}`);
   return { ok: true, message: `Added ${count} cop${count === 1 ? "y" : "ies"}.` };
 }
@@ -185,6 +220,12 @@ export async function setCopyStatus(formData: FormData): Promise<void> {
   const copy = await prisma.copy.findUnique({ where: { id: copyId } });
   if (copy && copy.status !== "ON_LOAN") {
     await prisma.copy.update({ where: { id: copyId }, data: { status } });
+    await audit({
+      action: "catalogue.copyStatus",
+      summary: `Copy ${copy.barcode}: ${copy.status} → ${status}`,
+      entity: "Copy",
+      entityId: copyId,
+    });
   }
   revalidatePath(`/admin/catalogue/${resourceId}`);
 }
@@ -197,6 +238,12 @@ export async function deleteCopy(formData: FormData): Promise<void> {
   const copy = await prisma.copy.findUnique({ where: { id: copyId } });
   if (copy && copy.status !== "ON_LOAN") {
     await prisma.copy.delete({ where: { id: copyId } });
+    await audit({
+      action: "catalogue.copyDelete",
+      summary: `Deleted copy ${copy.barcode}`,
+      entity: "Copy",
+      entityId: copyId,
+    });
   }
   revalidatePath(`/admin/catalogue/${resourceId}`);
 }

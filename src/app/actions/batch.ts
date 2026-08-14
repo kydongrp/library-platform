@@ -8,6 +8,7 @@ import { notify } from "@/lib/templates";
 import { formatDate, daysUntil } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { runSftpFetch } from "@/lib/ingest";
+import { audit } from "@/lib/audit";
 
 const DAY = 24 * 60 * 60 * 1000;
 const PREDUE_DAYS = 2; // notify when a loan is due within this many days
@@ -161,6 +162,7 @@ export async function runEodProcess(
     data: { process: "EOD", summary, ranBy: admin?.name ?? "system" },
   });
 
+  await audit({ action: "batch.eod", summary: `Ran EodProcess — ${summary}`, entity: "BatchRun" });
   revalidatePath("/admin", "layout");
   return { ok: true, message: `EodProcess complete — ${summary}` };
 }
@@ -214,6 +216,7 @@ export async function runLinkCheck(
     data: { process: "LINKCHECK", summary, ranBy: admin?.name ?? "system" },
   });
 
+  await audit({ action: "batch.linkcheck", summary: `Ran link check — ${summary}`, entity: "BatchRun" });
   revalidatePath("/admin/batch");
   return { ok: true, message: `Link check complete — ${summary}.` };
 }
@@ -233,6 +236,7 @@ export async function triggerSftpFetch(
     return { ok: false, message: "You don't have permission to run batch processes." };
 
   const summary = await runSftpFetch("manual");
+  await audit({ action: "batch.sftpFetch", summary: `Triggered SFTP fetch — ${summary.message.slice(0, 200)}`, entity: "BatchRun" });
   return { ok: summary.status !== "error", message: summary.message };
 }
 
