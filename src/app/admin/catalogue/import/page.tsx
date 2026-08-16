@@ -4,6 +4,7 @@ import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { SOURCES, searchScholarly, xploreConfigured, MANUAL_PROVIDERS, type ScholarlyRecord, type SourceKey } from "@/lib/scholarly";
+import { aiConfigured } from "@/lib/ai-draft";
 import { ImportButton, ImportAllBar, ManualArticleForm, BulkImportForm } from "./widgets";
 
 export const dynamic = "force-dynamic";
@@ -95,7 +96,7 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
         ) : isBulk ? (
           <BulkImportForm providers={MANUAL_PROVIDERS} />
         ) : (
-          <ManualArticleForm providers={MANUAL_PROVIDERS} />
+          <ManualArticleForm providers={MANUAL_PROVIDERS} aiEnabled={aiConfigured()} />
         )
       ) : (
       <>

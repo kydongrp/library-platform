@@ -9,6 +9,7 @@ import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 import type { BulkRow } from "@/lib/bulk-import";
 import { coverColorFor, importResourceRowsCore } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
+import { draftRecord, type ArticleDraft } from "@/lib/ai-draft";
 
 type DedupKey = Pick<ScholarlyRecord, "url" | "oaUrl" | "title" | "authors">;
 
@@ -191,6 +192,45 @@ export async function addManualArticle(
   await audit({ action: "import.manual", summary: `Manually added "${title}" (${provider})`, entity: "Resource", detail: { url, provider } });
   revalidatePath("/admin/catalogue");
   return { ok: true, message: `Added "${title}" (${provider}).` };
+}
+
+export type DraftResult =
+  | { ok: true; draft: ArticleDraft; warning: string | null }
+  | { ok: false; error: string };
+
+/**
+ * AI cataloguing assistant: draft a record from a DOI, URL, or free-text
+ * citation. Read-only — nothing is saved; the draft prefills the manual-entry
+ * form for staff review. Warns when the draft matches an existing title.
+ */
+export async function draftArticle(input: string): Promise<DraftResult> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "CATALOGUE"))
+    return { ok: false, error: "You don't have permission to add to the catalogue." };
+
+  let draft: ArticleDraft;
+  try {
+    draft = await draftRecord(String(input ?? ""));
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Drafting failed — try again." };
+  }
+
+  // Non-blocking dedup check so staff see a clash before they hit save.
+  const clash = await prisma.resource.findFirst({
+    where: {
+      OR: [
+        ...(draft.url ? [{ digitalUrl: draft.url }] : []),
+        { AND: [{ title: draft.title }, { author: draft.authors }] },
+      ],
+    },
+    select: { title: true },
+  });
+
+  return {
+    ok: true,
+    draft,
+    warning: clash ? `Possible duplicate: "${clash.title}" is already in the catalogue.` : null,
+  };
 }
 
 export type BulkImportOptions = {

@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { StatefulForm, SubmitButton } from "@/components/forms";
 import { Card, buttonVariants } from "@/components/ui";
-import { importScholarly, addManualArticle, importResourceRows } from "@/app/actions/import";
+import { importScholarly, addManualArticle, importResourceRows, draftArticle } from "@/app/actions/import";
+import type { ArticleDraft } from "@/lib/ai-draft";
 import { useToast } from "@/components/toast";
 import { CATEGORIES, RESOURCE_TYPES, RESOURCE_TYPE_LABELS } from "@/lib/constants";
 import { parseBulk, type BulkRow } from "@/lib/bulk-import";
@@ -72,12 +73,48 @@ const fieldCls =
   "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 const labelCls = "mb-1 block text-xs font-medium text-muted-foreground";
 
+const SOURCE_LABELS: Record<ArticleDraft["source"], string> = {
+  crossref: "Crossref (DOI registry)",
+  "ai+page": "AI · read from the page",
+  ai: "AI · bibliographic knowledge",
+};
+
 /**
  * Manual add for scholarly articles from sources without a search API
- * (Janes, Knovel, IHS, etc.). Creates a digital, link-out resource.
+ * (Janes, Knovel, IHS, etc.). Creates a digital, link-out resource. The AI
+ * assistant drafts the fields from a DOI/URL/citation; staff review and save.
  */
-export function ManualArticleForm({ providers }: { providers: readonly string[] }) {
+export function ManualArticleForm({
+  providers,
+  aiEnabled,
+}: {
+  providers: readonly string[];
+  aiEnabled: boolean;
+}) {
   const [provider, setProvider] = useState(providers[0] ?? "");
+  const [draftInput, setDraftInput] = useState("");
+  const [draft, setDraft] = useState<ArticleDraft | null>(null);
+  const [draftRev, setDraftRev] = useState(0); // remounts the fields with new defaults
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftWarning, setDraftWarning] = useState<string | null>(null);
+
+  async function runDraft() {
+    if (draftBusy || !draftInput.trim()) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    setDraftWarning(null);
+    const result = await draftArticle(draftInput);
+    setDraftBusy(false);
+    if (!result.ok) {
+      setDraftError(result.error);
+      return;
+    }
+    setDraft(result.draft);
+    setDraftWarning(result.warning);
+    setDraftRev((r) => r + 1);
+  }
+
   return (
     <Card className="max-w-3xl p-5">
       <h2 className="font-display text-lg font-semibold">Add an article manually</h2>
@@ -85,9 +122,58 @@ export function ManualArticleForm({ providers }: { providers: readonly string[] 
         For subscription sources with no search API (e.g. Janes). Saved as a digital
         resource that links out to the provider, exactly like imported IEEE content.
       </p>
-      <StatefulForm action={addManualArticle} className="mt-4 space-y-4">
+
+      {/* AI draft box */}
+      <div className="mt-4 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+        <p className="text-sm font-medium">✨ Draft with AI</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Paste a DOI, URL, or citation and the assistant fills the form below for your
+          review — nothing is saved until you check the fields and click Add.
+          {!aiEnabled && " DOIs resolve via Crossref; set ANTHROPIC_API_KEY to enable URL and free-text drafting."}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <input
+            value={draftInput}
+            onChange={(e) => setDraftInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void runDraft();
+              }
+            }}
+            placeholder="e.g. 10.1109/TSE.2024.1234567 · https://customer.janes.com/… · Clean Code, Robert Martin, 2008"
+            className={`${fieldCls} min-w-64 flex-1 font-mono text-xs`}
+            aria-label="DOI, URL, or citation to draft from"
+          />
+          <button
+            type="button"
+            onClick={() => void runDraft()}
+            disabled={draftBusy || !draftInput.trim()}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
+          >
+            {draftBusy ? "Drafting…" : "Draft"}
+          </button>
+        </div>
+        {draftError && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{draftError}</p>
+        )}
+        {draft && !draftError && (
+          <div className="mt-2 space-y-1">
+            <p className="text-xs text-muted-foreground">
+              <span className="mr-1.5 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                {SOURCE_LABELS[draft.source]}
+              </span>
+              {draft.note} Review every field before saving.
+            </p>
+            {draftWarning && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠ {draftWarning}</p>
+            )}
+          </div>
+        )}
+      </div>
+      <StatefulForm action={addManualArticle} className="mt-4">
         {(state) => (
-          <>
+          <div key={draftRev} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelCls} htmlFor="ma-provider">Provider *</label>
@@ -102,7 +188,7 @@ export function ManualArticleForm({ providers }: { providers: readonly string[] 
               </div>
               <div>
                 <label className={labelCls} htmlFor="ma-type">Type</label>
-                <select id="ma-type" name="type" defaultValue="JOURNAL" className={fieldCls}>
+                <select id="ma-type" name="type" defaultValue={draft?.type ?? "JOURNAL"} className={fieldCls}>
                   {RESOURCE_TYPES.map((t) => <option key={t} value={t}>{RESOURCE_TYPE_LABELS[t]}</option>)}
                 </select>
               </div>
@@ -111,17 +197,20 @@ export function ManualArticleForm({ providers }: { providers: readonly string[] 
             <div>
               <label className={labelCls} htmlFor="ma-title">Title *</label>
               <input id="ma-title" name="title" required className={fieldCls}
+                defaultValue={draft?.title ?? ""}
                 placeholder="e.g. Jane's Defence Weekly — Naval Systems Assessment" />
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelCls} htmlFor="ma-authors">Author(s)</label>
-                <input id="ma-authors" name="authors" className={fieldCls} placeholder="e.g. IHS Markit" />
+                <input id="ma-authors" name="authors" className={fieldCls}
+                  defaultValue={draft?.authors ?? ""} placeholder="e.g. IHS Markit" />
               </div>
               <div>
                 <label className={labelCls} htmlFor="ma-venue">Publication / venue</label>
-                <input id="ma-venue" name="venue" className={fieldCls} placeholder="e.g. Jane's Fighting Ships" />
+                <input id="ma-venue" name="venue" className={fieldCls}
+                  defaultValue={draft?.venue ?? ""} placeholder="e.g. Jane's Fighting Ships" />
               </div>
             </div>
 
@@ -129,31 +218,34 @@ export function ManualArticleForm({ providers }: { providers: readonly string[] 
               <div>
                 <label className={labelCls} htmlFor="ma-url">Access URL *</label>
                 <input id="ma-url" name="url" type="url" required className={`${fieldCls} font-mono`}
+                  defaultValue={draft?.url ?? ""}
                   placeholder="https://customer.janes.com/…" />
               </div>
               <div>
                 <label className={labelCls} htmlFor="ma-year">Year</label>
-                <input id="ma-year" name="year" type="number" min="0" max="2100" className={fieldCls} />
+                <input id="ma-year" name="year" type="number" min="0" max="2100" className={fieldCls}
+                  defaultValue={draft?.year ?? undefined} />
               </div>
             </div>
 
             <div>
               <label className={labelCls} htmlFor="ma-category">Category</label>
-              <select id="ma-category" name="category" defaultValue="Technology" className={fieldCls}>
+              <select id="ma-category" name="category" defaultValue={draft?.category ?? "Technology"} className={fieldCls}>
                 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
 
             <div>
               <label className={labelCls} htmlFor="ma-abstract">Abstract / notes</label>
-              <textarea id="ma-abstract" name="abstract" rows={3} className={fieldCls} />
+              <textarea id="ma-abstract" name="abstract" rows={3} className={fieldCls}
+                defaultValue={draft?.abstract ?? ""} />
             </div>
 
             {state.ok === false && state.message && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.message}</p>
             )}
             <SubmitButton pendingLabel="Adding…">Add to catalogue</SubmitButton>
-          </>
+          </div>
         )}
       </StatefulForm>
     </Card>

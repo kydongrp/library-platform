@@ -9,6 +9,7 @@ import { formatDate, daysUntil } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { runSftpFetch } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
+import { isBlockedHost } from "@/lib/net";
 
 const DAY = 24 * 60 * 60 * 1000;
 const PREDUE_DAYS = 2; // notify when a loan is due within this many days
@@ -238,33 +239,6 @@ export async function triggerSftpFetch(
   const summary = await runSftpFetch("manual");
   await audit({ action: "batch.sftpFetch", summary: `Triggered SFTP fetch — ${summary.message.slice(0, 200)}`, entity: "BatchRun" });
   return { ok: summary.status !== "error", message: summary.message };
-}
-
-// Block obvious SSRF targets before fetching. Since resources can now be
-// imported unattended from vendor SFTP files, refuse to have the server fetch
-// private/loopback/link-local/metadata hosts. (This guards the initial host;
-// it does not chase DNS rebinding or a redirect into an internal network.)
-function isBlockedHost(rawUrl: string): boolean {
-  let host: string;
-  try {
-    host = new URL(rawUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  } catch {
-    return true;
-  }
-  if (host === "localhost" || host.endsWith(".localhost") || host === "metadata.google.internal")
-    return true;
-  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (v4) {
-    const a = +v4[1], b = +v4[2];
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true; // link-local incl. 169.254.169.254 metadata
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  }
-  if (host === "::1" || host === "::" ) return true;
-  if (/^f[cd][0-9a-f]{2}:/.test(host) || host.startsWith("fe80:")) return true; // ULA / link-local
-  return false;
 }
 
 async function checkUrl(url: string): Promise<{ ok: boolean; statusCode: number | null; error: string | null }> {
