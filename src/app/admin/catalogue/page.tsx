@@ -61,7 +61,22 @@ export default async function CataloguePage({
             {(q || category || type) && " matching your filters"}.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* MARC 21 export honours the active filters (SDD: MARC exchange). */}
+          <ButtonLink
+            href={`/admin/catalogue/export?${new URLSearchParams({ format: "xml", q, category, type, source })}`}
+            variant="ghost"
+            className="text-xs"
+          >
+            ⇑ MARC XML
+          </ButtonLink>
+          <ButtonLink
+            href={`/admin/catalogue/export?${new URLSearchParams({ format: "mrc", q, category, type, source })}`}
+            variant="ghost"
+            className="text-xs"
+          >
+            ⇑ MARC .mrc
+          </ButtonLink>
           <ButtonLink href="/admin/catalogue/import" variant="outline">⇩ LiveFetch import</ButtonLink>
           <ButtonLink href="/admin/catalogue/new">+ Add title</ButtonLink>
         </div>
