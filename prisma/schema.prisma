@@ -43,6 +43,7 @@ model Resource {
   favouritedIn  FavouriteItem[]
   browsedBy     BrowsingHistory[]
   epSubmissions EpSubmission[]
+  epSuggestionDismissal EpSuggestionDismissal?
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -316,6 +317,16 @@ model EpSubmission {
   staffNote  String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+}
+
+/// A staff "no" to an auto-curation suggestion — dismissed titles are never
+/// re-suggested (restorable from the same panel).
+model EpSuggestionDismissal {
+  id          String   @id @default(cuid())
+  resourceId  String   @unique
+  resource    Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  dismissedBy String
+  dismissedAt DateTime @default(now())
 }
 
 /// A provider subscription (e-resource licence): the registry behind the

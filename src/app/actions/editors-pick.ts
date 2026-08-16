@@ -459,3 +459,60 @@ export async function rejectSubmission(
   revalidatePath("/admin/editors-pick");
   return { ok: true, message: "Submission rejected." };
 }
+
+/* ---------- Auto-curation suggestions ---------- */
+
+/** Staff "no" to a suggested title — it is never suggested again. */
+export async function dismissSuggestion(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireCatalogueEditor();
+  if (!admin) return { ok: false, message: "You don't have permission to curate Editor's Picks." };
+
+  const resourceId = String(formData.get("resourceId") ?? "");
+  if (!resourceId) return { ok: false, message: "Missing title id." };
+  const resource = await prisma.resource.findUnique({
+    where: { id: resourceId },
+    select: { title: true },
+  });
+  if (!resource) return { ok: false, message: "That title no longer exists." };
+
+  try {
+    await prisma.epSuggestionDismissal.create({
+      data: { resourceId, dismissedBy: admin.name },
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { ok: true, message: "Already dismissed." };
+    throw e;
+  }
+  await audit({
+    action: "ep.suggestion.dismiss",
+    summary: `Dismissed auto-curation suggestion "${resource.title}"`,
+    entity: "Resource",
+    entityId: resourceId,
+  });
+  revalidatePath("/admin/editors-pick");
+  return { ok: true, message: `"${resource.title}" won't be suggested again.` };
+}
+
+/** Undo a dismissal so the title can compete for suggestions again. */
+export async function restoreSuggestion(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireCatalogueEditor();
+  if (!admin) return { ok: false, message: "You don't have permission to curate Editor's Picks." };
+
+  const resourceId = String(formData.get("resourceId") ?? "");
+  const r = await prisma.epSuggestionDismissal.deleteMany({ where: { resourceId } });
+  if (r.count === 0) return { ok: false, message: "That dismissal is already gone." };
+  await audit({
+    action: "ep.suggestion.restore",
+    summary: "Restored a dismissed auto-curation suggestion",
+    entity: "Resource",
+    entityId: resourceId,
+  });
+  revalidatePath("/admin/editors-pick");
+  return { ok: true, message: "Restored — it can be suggested again." };
+}

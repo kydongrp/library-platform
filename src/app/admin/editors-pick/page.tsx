@@ -4,7 +4,14 @@ import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
-import { approveSubmission, rejectSubmission } from "@/app/actions/editors-pick";
+import {
+  approveSubmission,
+  rejectSubmission,
+  promoteToEditorsPick,
+  dismissSuggestion,
+  restoreSuggestion,
+} from "@/app/actions/editors-pick";
+import { getCurationSuggestions, DEMAND_WINDOW_DAYS } from "@/lib/curation";
 import { formatDate } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS } from "@/lib/constants";
 import {
@@ -30,7 +37,7 @@ export default async function EditorsPickPage() {
 
   // Pending and decided are queried separately: a shared capped query sorted
   // by status would let decided history crowd pending items out of view.
-  const [picks, pending, decided, candidates] = await Promise.all([
+  const [picks, pending, decided, candidates, curation] = await Promise.all([
     prisma.resource.findMany({
       where: { editorsPick: true },
       orderBy: { epPickedAt: { sort: "desc", nulls: "last" } },
@@ -52,6 +59,7 @@ export default async function EditorsPickPage() {
       orderBy: { title: "asc" },
       take: 500, // bound the dropdown payload; typeahead search is the upgrade path
     }),
+    getCurationSuggestions(),
   ]);
 
   const options: TitleOption[] = candidates;
@@ -123,6 +131,96 @@ export default async function EditorsPickPage() {
             </div>
           ))}
         </Card>
+      )}
+
+      {/* Auto-curation suggestions */}
+      <h2 className="mb-1 mt-8 font-display text-lg font-semibold">
+        Suggested picks{" "}
+        {curation.suggestions.length > 0 && (
+          <Badge tone="accent">{curation.suggestions.length}</Badge>
+        )}
+      </h2>
+      <p className="mb-2 max-w-3xl text-xs text-muted-foreground">
+        Catalogue titles scored from circulation demand ({DEMAND_WINDOW_DAYS}-day
+        loans and holds), learner ratings, new arrivals, and shelf variety —
+        with the evidence shown, so you judge. Broken-link titles and rejected
+        nominations are excluded. Nothing is promoted automatically.
+      </p>
+      {curation.suggestions.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+          No stand-out candidates right now — suggestions appear as loans,
+          ratings, and new arrivals accumulate.
+        </p>
+      ) : (
+        <Card className="divide-y divide-border overflow-hidden">
+          {curation.suggestions.map((s) => (
+            <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 font-display text-sm font-bold text-primary"
+                title={`Suggestion score ${s.score}`}
+                style={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {s.score}
+              </span>
+              <div className="min-w-0 flex-1">
+                <Link href={`/admin/catalogue/${s.id}`} className="font-medium leading-snug hover:underline">
+                  {s.title}
+                </Link>
+                <p className="mt-0.5 text-sm text-muted-foreground">{s.author}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <Badge tone="muted">{RESOURCE_TYPE_LABELS[s.type] ?? s.type}</Badge>
+                  <Badge tone="muted">{s.category}</Badge>
+                  {s.provider && <Badge tone="neutral">{s.provider}</Badge>}
+                  {s.reasons.map((reason) => (
+                    <span
+                      key={reason}
+                      className="rounded-full bg-teal-50 px-2 py-0.5 text-xs text-teal-900 ring-1 ring-inset ring-teal-200"
+                    >
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              {editable && (
+                <div className="flex items-center gap-2">
+                  <ActionButton action={promoteToEditorsPick} fields={{ resourceId: s.id }}
+                    className="!px-3 !py-1.5 text-xs" pendingLabel="Promoting…">
+                    ★ Promote
+                  </ActionButton>
+                  <ActionButton action={dismissSuggestion} fields={{ resourceId: s.id }}
+                    variant="outline" className="!px-3 !py-1.5 text-xs" pendingLabel="Dismissing…">
+                    Dismiss
+                  </ActionButton>
+                </div>
+              )}
+            </div>
+          ))}
+        </Card>
+      )}
+      {curation.dismissed.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            Dismissed suggestions ({curation.dismissed.length})
+          </summary>
+          <ul className="mt-2 divide-y divide-border rounded-xl border border-border">
+            {curation.dismissed.map((d) => (
+              <li key={d.resourceId} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+                <span className="min-w-0 truncate text-sm">{d.title}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    by {d.dismissedBy} · {formatDate(d.dismissedAt)}
+                  </span>
+                  {editable && (
+                    <ActionButton action={restoreSuggestion} fields={{ resourceId: d.resourceId }}
+                      variant="ghost" className="!px-2 !py-1 text-xs" pendingLabel="…">
+                      Restore
+                    </ActionButton>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {/* Intake + promote tools */}
