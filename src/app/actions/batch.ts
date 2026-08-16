@@ -9,7 +9,7 @@ import { formatDate, daysUntil } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { runSftpFetch } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
-import { isBlockedHost } from "@/lib/net";
+import { runLinkCheckCore } from "@/lib/linkcheck";
 
 const DAY = 24 * 60 * 60 * 1000;
 const PREDUE_DAYS = 2; // notify when a loan is due within this many days
@@ -175,12 +175,10 @@ function renderKey(subjectTemplate: string, vars: Record<string, string>, member
   );
 }
 
-const LINK_TIMEOUT_MS = 5000;
-
 /**
- * Broken-link scan (contract FR 8.2): checks every resource access URL and
- * records the result per resource, so administrators see failures on the
- * Batch Processes page.
+ * Broken-link scan (contract FR 8.2): checks every resource access URL,
+ * records per-resource results, and rolls health up per provider. The same
+ * scan runs nightly via cron; this is the manual trigger.
  */
 export async function runLinkCheck(
   _prev: ActionState,
@@ -190,35 +188,11 @@ export async function runLinkCheck(
   if (!canEdit(admin, "BATCH"))
     return { ok: false, message: "You don't have permission to run batch processes." };
 
-  const resources = await prisma.resource.findMany({
-    where: { digitalUrl: { not: null } },
-    select: { id: true, title: true, digitalUrl: true },
-  });
-
-  let broken = 0;
-  // Small concurrency to keep the total under serverless time limits.
-  const CHUNK = 6;
-  for (let i = 0; i < resources.length; i += CHUNK) {
-    await Promise.all(
-      resources.slice(i, i + CHUNK).map(async (r) => {
-        const result = await checkUrl(r.digitalUrl!);
-        if (!result.ok) broken++;
-        await prisma.linkCheck.upsert({
-          where: { resourceId: r.id },
-          update: { url: r.digitalUrl!, ...result, checkedAt: new Date() },
-          create: { resourceId: r.id, url: r.digitalUrl!, ...result },
-        });
-      }),
-    );
-  }
-
-  const summary = `Checked ${resources.length} link${resources.length === 1 ? "" : "s"} · ${broken} broken`;
-  await prisma.batchRun.create({
-    data: { process: "LINKCHECK", summary, ranBy: admin?.name ?? "system" },
-  });
+  const { summary } = await runLinkCheckCore(admin?.name ?? "system");
 
   await audit({ action: "batch.linkcheck", summary: `Ran link check — ${summary}`, entity: "BatchRun" });
   revalidatePath("/admin/batch");
+  revalidatePath("/admin/access-health");
   return { ok: true, message: `Link check complete — ${summary}.` };
 }
 
@@ -239,29 +213,4 @@ export async function triggerSftpFetch(
   const summary = await runSftpFetch("manual");
   await audit({ action: "batch.sftpFetch", summary: `Triggered SFTP fetch — ${summary.message.slice(0, 200)}`, entity: "BatchRun" });
   return { ok: summary.status !== "error", message: summary.message };
-}
-
-async function checkUrl(url: string): Promise<{ ok: boolean; statusCode: number | null; error: string | null }> {
-  if (isBlockedHost(url))
-    return { ok: false, statusCode: null, error: "Blocked host (private/loopback)" };
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LINK_TIMEOUT_MS);
-  try {
-    // GET, not HEAD — several providers (incl. IEEE) reject HEAD requests.
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { "User-Agent": "AthenaeumLinkCheck/1.0" },
-    });
-    // Auth walls (401/403) mean the link resolves but needs the subscription —
-    // that's not "broken" for an externally licensed resource.
-    const ok = res.status < 500 && res.status !== 404 && res.status !== 410;
-    return { ok, statusCode: res.status, error: ok ? null : `HTTP ${res.status}` };
-  } catch (e) {
-    const msg = e instanceof Error ? (e.name === "AbortError" ? "Timed out" : e.message) : "Fetch failed";
-    return { ok: false, statusCode: null, error: msg };
-  } finally {
-    clearTimeout(timer);
-  }
 }

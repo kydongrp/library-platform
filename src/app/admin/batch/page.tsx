@@ -63,9 +63,14 @@ export default async function BatchPage() {
 
       {/* Broken links (contract FR: broken-link detection + admin alerting) */}
       <Card className="mb-6 border-amber-200 p-5">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-semibold">Broken links</h2>
-          {lastLinkRun && <Badge tone="muted">Last scan {formatDate(lastLinkRun.ranAt)}</Badge>}
+          <div className="flex items-center gap-2">
+            {lastLinkRun && <Badge tone="muted">Last scan {formatDate(lastLinkRun.ranAt)}</Badge>}
+            <Link href="/admin/access-health" className="text-xs text-primary hover:underline">
+              Access Health dashboard →
+            </Link>
+          </div>
         </div>
         {!lastLinkRun ? (
           <p className="py-3 text-sm text-muted-foreground">
