@@ -44,6 +44,7 @@ model Resource {
   browsedBy     BrowsingHistory[]
   epSubmissions EpSubmission[]
   epSuggestionDismissal EpSuggestionDismissal?
+  serial        Serial?
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -317,6 +318,42 @@ model EpSubmission {
   staffNote  String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+}
+
+/// A journal/magazine subscription tracked at issue level (SDD: serials
+/// management). The catalogue Resource is the bibliographic record; this row
+/// carries the publication pattern and vendor claim contact.
+model Serial {
+  id         String        @id @default(cuid())
+  resourceId String        @unique
+  resource   Resource      @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  issn       String?
+  frequency  String // WEEKLY, BIWEEKLY, MONTHLY, BIMONTHLY, QUARTERLY, SEMIANNUAL, ANNUAL
+  status     String        @default("ACTIVE") // ACTIVE, PAUSED, CLOSED
+  claimEmail String? // vendor contact for missing-issue claims; admins alerted if unset
+  notes      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  issues     SerialIssue[]
+}
+
+/// One predicted or received issue of a Serial. "Late" is computed
+/// (EXPECTED and past expectedAt + grace); claimedAt records that a
+/// missing-issue claim was queued.
+model SerialIssue {
+  id         String    @id @default(cuid())
+  serialId   String
+  serial     Serial    @relation(fields: [serialId], references: [id], onDelete: Cascade)
+  seq        Int
+  label      String // e.g. "No. 14 (Aug 2026)"
+  expectedAt DateTime
+  receivedAt DateTime?
+  claimedAt  DateTime?
+  status     String    @default("EXPECTED") // EXPECTED, RECEIVED, SKIPPED
+  createdAt  DateTime  @default(now())
+
+  @@unique([serialId, seq])
+  @@index([status, expectedAt])
 }
 
 /// A credential for the read-only Portal API (/api/portal/v1). The full key

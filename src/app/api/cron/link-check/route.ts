@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runLinkCheckCore } from "@/lib/linkcheck";
 import { checkRenewalAlerts } from "@/lib/eresources";
+import { runSerialClaims } from "@/lib/serials";
 import { audit } from "@/lib/audit";
 
 // Nightly access-health scan, scheduled by Vercel Cron (see vercel.json).
@@ -48,5 +49,21 @@ export async function GET(request: Request) {
     console.error("renewal alert check failed", err);
   }
 
-  return NextResponse.json({ ok: true, ...result, renewals });
+  // Serial missing-issue claims share the nightly job too — same isolation.
+  let serialClaims = { checked: 0, late: 0, claimsQueued: 0 };
+  try {
+    serialClaims = await runSerialClaims();
+    if (serialClaims.claimsQueued > 0) {
+      await audit({
+        actor: { name: "cron" },
+        action: "serials.claimSweep",
+        summary: `Serial claim sweep — ${serialClaims.late} late issue${serialClaims.late === 1 ? "" : "s"}, ${serialClaims.claimsQueued} claim email${serialClaims.claimsQueued === 1 ? "" : "s"} queued`,
+        entity: "SerialIssue",
+      });
+    }
+  } catch (err) {
+    console.error("serial claim sweep failed", err);
+  }
+
+  return NextResponse.json({ ok: true, ...result, renewals, serialClaims });
 }

@@ -11,6 +11,7 @@ const NAV: (NavItem & { area: string })[] = [
   { href: "/admin/catalogue", label: "Catalogue", icon: "▤", area: "CATALOGUE" },
   { href: "/admin/editors-pick", label: "Editor's Picks", icon: "★", area: "CATALOGUE" },
   { href: "/admin/eresources", label: "E-Resources", icon: "◈", area: "CATALOGUE" },
+  { href: "/admin/serials", label: "Serials", icon: "◫", area: "CATALOGUE" },
   { href: "/admin/members", label: "Members", icon: "◎", area: "MEMBERS" },
   { href: "/admin/loans", label: "Current Loans", icon: "↻", area: "LOANS" },
   { href: "/admin/reservations", label: "Reservations", icon: "✦", area: "RESERVATIONS" },
