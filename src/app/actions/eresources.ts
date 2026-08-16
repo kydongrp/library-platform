@@ -84,25 +84,33 @@ export async function saveSubscription(
   if (clash)
     return { ok: false, message: `A subscription for ${provider} already exists — edit that one instead.` };
 
-  if (id) {
-    const before = await prisma.subscription.findUnique({ where: { id } });
-    if (!before) return { ok: false, message: "That subscription no longer exists." };
-    await prisma.subscription.update({ where: { id }, data });
-    await audit({
-      action: "eresources.subscription.update",
-      summary: `Updated ${provider} subscription (renewal ${renewalRaw})`,
-      entity: "Subscription",
-      entityId: id,
-      detail: diffOf(before, { ...before, ...data }),
-    });
-  } else {
-    const created = await prisma.subscription.create({ data });
-    await audit({
-      action: "eresources.subscription.create",
-      summary: `Registered ${provider} subscription (renewal ${renewalRaw})`,
-      entity: "Subscription",
-      entityId: created.id,
-    });
+  try {
+    if (id) {
+      const before = await prisma.subscription.findUnique({ where: { id } });
+      if (!before) return { ok: false, message: "That subscription no longer exists." };
+      await prisma.subscription.update({ where: { id }, data });
+      await audit({
+        action: "eresources.subscription.update",
+        summary: `Updated ${provider} subscription (renewal ${renewalRaw})`,
+        entity: "Subscription",
+        entityId: id,
+        detail: diffOf(before, { ...before, ...data }),
+      });
+    } else {
+      const created = await prisma.subscription.create({ data });
+      await audit({
+        action: "eresources.subscription.create",
+        summary: `Registered ${provider} subscription (renewal ${renewalRaw})`,
+        entity: "Subscription",
+        entityId: created.id,
+      });
+    }
+  } catch (err) {
+    // The pre-check above races concurrent submits — the unique index is the
+    // real guard, so translate its violation instead of surfacing a 500.
+    if (err instanceof Error && "code" in err && (err as { code?: string }).code === "P2002")
+      return { ok: false, message: `A subscription for ${provider} already exists — edit that one instead.` };
+    throw err;
   }
   revalidatePath("/admin/eresources");
   return { ok: true, message: id ? "Subscription updated." : "Subscription registered." };
