@@ -35,7 +35,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       </div>
 
       {/* Report picker */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {REPORTS.map((r) => (
           <Link
             key={r.key}
@@ -48,6 +48,15 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
             <p className="mt-1 text-xs text-muted-foreground">{r.description}</p>
           </Link>
         ))}
+        <Link
+          href="/admin/reports/contributions"
+          className="rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <p className="text-sm font-semibold">Staff Contributions ↗</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Editor's Picks, nomination decisions, and reviews per staff — charts for all time and the past 3 months.
+          </p>
+        </Link>
       </div>
 
       {!active ? (
