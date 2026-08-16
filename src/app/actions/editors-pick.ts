@@ -7,6 +7,7 @@ import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 import { coverColorFor } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
+import { emitEventAfter } from "@/lib/webhooks";
 
 // Editor's Pick management (BR-366E/F/G/I, 404). Curation is catalogue work,
 // so every mutation is gated on CATALOGUE edit rights.
@@ -63,6 +64,7 @@ export async function promoteToEditorsPick(
     },
   });
   await audit({ action: "ep.promote", summary: `Promoted "${resource.title}" to Editor's Picks`, entity: "Resource", entityId: resourceId });
+  emitEventAfter("editors_pick.added", { id: resourceId, title: resource.title });
   revalidateEp();
   return { ok: true, message: `"${resource.title}" promoted to Editor's Pick.` };
 }
@@ -127,6 +129,7 @@ export async function addExternalPick(
     throw e;
   }
   await audit({ action: "ep.addExternal", summary: `Added external pick "${title}" (${provider})`, entity: "Resource", detail: { url, provider } });
+  emitEventAfter("editors_pick.added", { title, provider, accessUrl: url });
   revalidateEp();
   return { ok: true, message: `External pick "${title}" added to Editor's Picks.` };
 }
@@ -219,6 +222,8 @@ export async function removeFromEditorsPick(
     await prisma.linkCheck.deleteMany({ where: { resourceId: id } });
     await prisma.resource.delete({ where: { id } });
     await audit({ action: "ep.removeExternal", summary: `Removed external pick "${resource.title}" — deleted from the library (BR-366G)`, entity: "Resource", entityId: id, detail: { title: resource.title, digitalUrl: resource.digitalUrl } });
+    emitEventAfter("editors_pick.removed", { id, title: resource.title, removedFromLibrary: true });
+    emitEventAfter("resource.deleted", { id, title: resource.title });
     revalidateEp();
     return { ok: true, message: `External pick "${resource.title}" removed from the library.` };
   }
@@ -228,6 +233,7 @@ export async function removeFromEditorsPick(
     data: { editorsPick: false, epExternal: false, epBlurb: null, epPickedAt: null, epPickedBy: null },
   });
   await audit({ action: "ep.removeInternal", summary: `Removed "${resource.title}" from Editor's Picks (kept in catalogue)`, entity: "Resource", entityId: id });
+  emitEventAfter("editors_pick.removed", { id, title: resource.title, removedFromLibrary: false });
   revalidateEp();
   return {
     ok: true,
@@ -368,6 +374,7 @@ export async function approveSubmission(
     }
     await prisma.resource.update({ where: { id: sub.resource.id }, data: pickData });
     await audit({ action: "ep.approve", summary: `Approved nomination — promoted "${sub.resource.title}"`, entity: "EpSubmission", entityId: id });
+    emitEventAfter("editors_pick.added", { id: sub.resourceId, title: sub.resource.title });
     revalidateEp();
     return { ok: true, message: `"${sub.resource.title}" promoted to Editor's Picks.` };
   }
@@ -391,6 +398,7 @@ export async function approveSubmission(
     }
     await prisma.resource.update({ where: { id: dup.id }, data: pickData });
     await audit({ action: "ep.approve", summary: `Approved nomination — promoted existing title "${dup.title}"`, entity: "EpSubmission", entityId: id });
+    emitEventAfter("editors_pick.added", { id: dup.id, title: dup.title });
     revalidateEp();
     return {
       ok: true,
@@ -432,6 +440,7 @@ export async function approveSubmission(
     throw e;
   }
   await audit({ action: "ep.approve", summary: `Approved nomination — created external pick "${sub.title}"`, entity: "EpSubmission", entityId: id, detail: { url: sub.url, provider } });
+  emitEventAfter("editors_pick.added", { title: sub.title, provider, accessUrl: sub.url });
   revalidateEp();
   return { ok: true, message: `External pick "${sub.title}" created and promoted to Editor's Picks.` };
 }

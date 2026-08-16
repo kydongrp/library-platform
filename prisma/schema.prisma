@@ -319,6 +319,48 @@ model EpSubmission {
   updatedAt  DateTime  @updatedAt
 }
 
+/// A credential for the read-only Portal API (/api/portal/v1). The full key
+/// is shown once at creation; only its SHA-256 hash is stored.
+model ApiClient {
+  id         String    @id @default(cuid())
+  name       String // e.g. "Learner Portal (prod)"
+  keyPrefix  String    @unique // first characters of the key, for display + lookup
+  keyHash    String    @unique // sha256 hex of the full key
+  status     String    @default("ACTIVE") // ACTIVE, REVOKED
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime? // bumped at most once a minute
+}
+
+/// An outbound webhook the portal (or any consumer) registers to hear about
+/// catalogue and Editor's Pick changes. Deliveries are HMAC-SHA256 signed
+/// with `secret` (stored as entered — it is a shared signing secret).
+model Webhook {
+  id         String            @id @default(cuid())
+  url        String
+  secret     String
+  events     String[] // subscribed event names; empty = all events
+  status     String            @default("ACTIVE") // ACTIVE, DISABLED
+  createdBy  String
+  createdAt  DateTime          @default(now())
+  deliveries WebhookDelivery[]
+}
+
+/// One delivery attempt (newest kept per webhook, older rows pruned).
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  webhookId  String
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event      String
+  ok         Boolean
+  statusCode Int?
+  error      String?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([webhookId, createdAt])
+}
+
 /// A staff "no" to an auto-curation suggestion — dismissed titles are never
 /// re-suggested (restorable from the same panel).
 model EpSuggestionDismissal {
