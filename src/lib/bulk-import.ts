@@ -95,7 +95,8 @@ function normaliseCategory(raw: string | null): string | null {
 /* ---------- CSV ---------- */
 
 // RFC-4180-ish parser: handles quoted fields, embedded commas/newlines, "" escapes.
-function parseCsv(text: string): Record<string, string>[] {
+// Also reused by the COUNTER usage-report parser (src/lib/counter.ts).
+export function parseCsv(text: string): Record<string, string>[] {
   const rows: string[][] = [];
   let field = "";
   let row: string[] = [];

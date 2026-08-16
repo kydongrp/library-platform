@@ -318,6 +318,36 @@ model EpSubmission {
   updatedAt  DateTime  @updatedAt
 }
 
+/// A provider subscription (e-resource licence): the registry behind the
+/// E-Resources dashboard — renewal tracking and cost-per-use.
+model Subscription {
+  id              String    @id @default(cuid())
+  provider        String    @unique // matches Resource.provider display values
+  startDate       DateTime?
+  renewalDate     DateTime
+  autoRenews      Boolean   @default(false)
+  annualCostCents Int? // in `currency` minor units; null = not recorded
+  currency        String    @default("SGD")
+  seats           Int? // licence-wide concurrent seats (per-title caps live on Resource.licenseSeats)
+  notes           String? // key licence terms, account refs, cancellation window
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+/// Monthly e-resource usage per provider — COUNTER R5.1 ingest or manual
+/// entry. Drives the cost-per-use figures.
+model UsageStat {
+  id        String   @id @default(cuid())
+  provider  String
+  period    String // "YYYY-MM"
+  metric    String   @default("Total_Item_Requests")
+  count     Int
+  source    String? // COUNTER filename, or "manual"
+  createdAt DateTime @default(now())
+
+  @@unique([provider, period, metric])
+}
+
 /// Append-only audit trail of every admin mutation (IM8: accountability).
 /// Rows are only ever inserted — no update/delete path exists in the app.
 model AuditLog {
