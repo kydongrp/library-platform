@@ -320,6 +320,81 @@ model EpSubmission {
   updatedAt  DateTime  @updatedAt
 }
 
+/// A vendor the library orders from (SDD: acquisitions).
+model Supplier {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  email     String?
+  contact   String? // person / phone
+  notes     String?
+  status    String          @default("ACTIVE") // ACTIVE, INACTIVE
+  createdAt DateTime        @default(now())
+  orders    PurchaseOrder[]
+  invoices  Invoice[]
+}
+
+/// A budget line for a fiscal year (SDD: acquisitions budgets). Committed and
+/// spent are derived: open purchase orders commit, paid invoices spend.
+model AcqFund {
+  id          String          @id @default(cuid())
+  fiscalYear  String // e.g. "FY2026"
+  name        String // e.g. "Digital subscriptions", "Monographs"
+  amountCents Int
+  currency    String          @default("SGD")
+  createdAt   DateTime        @default(now())
+  orders      PurchaseOrder[]
+  invoices    Invoice[]
+
+  @@unique([fiscalYear, name])
+}
+
+/// A purchase order: commits fund money while ORDERED/RECEIVED, stops on
+/// CANCELLED, and CLOSED once fully received and its invoice is paid.
+model PurchaseOrder {
+  id         String    @id @default(cuid())
+  poNumber   String    @unique // PO-2026-0001
+  supplierId String
+  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+  fundId     String
+  fund       AcqFund   @relation(fields: [fundId], references: [id])
+  status     String    @default("ORDERED") // ORDERED, RECEIVED, CLOSED, CANCELLED
+  orderedAt  DateTime  @default(now())
+  orderedBy  String
+  notes      String?
+  lines      PoLine[]
+  invoices   Invoice[]
+}
+
+model PoLine {
+  id          String        @id @default(cuid())
+  poId        String
+  po          PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  title       String
+  qty         Int
+  unitCents   Int
+  receivedQty Int           @default(0)
+}
+
+/// A supplier invoice, charged to a fund; spends the budget once PAID.
+model Invoice {
+  id            String         @id @default(cuid())
+  invoiceNumber String
+  supplierId    String
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  poId          String?
+  po            PurchaseOrder? @relation(fields: [poId], references: [id], onDelete: SetNull)
+  fundId        String
+  fund          AcqFund        @relation(fields: [fundId], references: [id])
+  amountCents   Int
+  invoiceDate   DateTime
+  status        String         @default("PENDING") // PENDING, PAID
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime       @default(now())
+
+  @@unique([supplierId, invoiceNumber])
+}
+
 /// A journal/magazine subscription tracked at issue level (SDD: serials
 /// management). The catalogue Resource is the bibliographic record; this row
 /// carries the publication pattern and vendor claim contact.

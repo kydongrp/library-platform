@@ -15,6 +15,7 @@ const ACTION_FAMILIES: { key: string; label: string }[] = [
   { key: "eresources", label: "E-Resources" },
   { key: "portal", label: "Portal API" },
   { key: "serials", label: "Serials" },
+  { key: "acq", label: "Acquisitions" },
   { key: "import", label: "Imports" },
   { key: "circulation", label: "Circulation" },
   { key: "members", label: "Members" },
