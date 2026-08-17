@@ -506,6 +506,36 @@ async function ensureBackfills() {
   }
 }
 
+/**
+ * Item-level code lists — ensured on EVERY run. Item types are what the loan
+ * policy matrix keys on, so an empty table would leave the matrix unusable.
+ */
+async function ensureItemCodeLists() {
+  const collections = [
+    { code: "GEN", name: "General collection" },
+    { code: "REF", name: "Reference", loanLimitOverride: 0 },
+    { code: "RESERVE", name: "Course reserve", loanLimitOverride: 2 },
+  ];
+  for (const c of collections)
+    await prisma.itemCollection.upsert({ where: { code: c.code }, create: c, update: {} });
+
+  const locations = [
+    { code: "MAIN", name: "Main Shelf" },
+    { code: "L2", name: "Level 2 Reading Room" },
+    { code: "STORE", name: "Closed store" },
+  ];
+  for (const l of locations)
+    await prisma.itemLocation.upsert({ where: { code: l.code }, create: l, update: {} });
+
+  const types = [
+    { code: "BOOK", name: "Book", loanable: true },
+    { code: "AV", name: "Audio-visual", loanable: true },
+    { code: "REFONLY", name: "Reference only", loanable: false },
+  ];
+  for (const t of types)
+    await prisma.itemType.upsert({ where: { code: t.code }, create: t, update: {} });
+}
+
 /** Built-in member statuses — ensured on EVERY run (idempotent), since the
  *  circulation gate and member forms rely on the table being populated. */
 async function ensureMemberStatuses() {
@@ -524,6 +554,7 @@ async function main() {
     await ensureMemberStatuses();
     await ensureServiceCalendar();
     await ensureBackfills();
+    await ensureItemCodeLists();
     const existing = await prisma.resource.count();
     if (existing > 0) {
       console.log(`Database already has ${existing} resources — skipping seed.`);
@@ -533,6 +564,7 @@ async function main() {
     await ensureMemberStatuses();
     await ensureServiceCalendar();
     await ensureBackfills();
+    await ensureItemCodeLists();
   }
 
   console.log("Clearing existing data...");

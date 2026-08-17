@@ -9,6 +9,7 @@ const NAV: (NavItem & { area: string })[] = [
   { href: "/admin", label: "Dashboard", icon: "▣", area: "DASHBOARD" },
   { href: "/admin/circulation", label: "Circulation Desk", icon: "⇄", area: "CIRCULATION" },
   { href: "/admin/catalogue", label: "Catalogue", icon: "▤", area: "CATALOGUE" },
+  { href: "/admin/items", label: "Items", icon: "▪", area: "CATALOGUE" },
   { href: "/admin/editors-pick", label: "Editor's Picks", icon: "★", area: "CATALOGUE" },
   { href: "/admin/eresources", label: "E-Resources", icon: "◈", area: "CATALOGUE" },
   { href: "/admin/serials", label: "Serials", icon: "◫", area: "CATALOGUE" },

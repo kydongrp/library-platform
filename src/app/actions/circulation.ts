@@ -159,7 +159,21 @@ export async function checkout(
   }
   if (!copy) return { ok: false, message: "No copies available to loan." };
 
-  const dueAt = dueDateFrom(new Date(), policy.loanDays, await loadCalendar());
+  // Reference-only item types are never issued.
+  if (copy.itemTypeId) {
+    const itemType = await prisma.itemType.findUnique({ where: { id: copy.itemTypeId } });
+    if (itemType && !itemType.loanable)
+      return {
+        ok: false,
+        message: `${copy.barcode} is catalogued as "${itemType.name}" — that item type cannot be loaned.`,
+      };
+  }
+
+  // Physical items resolve the policy on the member-type x item-type matrix.
+  const itemPolicy = copy.itemTypeId
+    ? await policyFor(member.memberType, copy.itemTypeId)
+    : policy;
+  const dueAt = dueDateFrom(new Date(), itemPolicy.loanDays, await loadCalendar());
 
   await prisma.$transaction([
     prisma.loan.create({

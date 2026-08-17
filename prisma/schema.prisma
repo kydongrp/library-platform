@@ -55,12 +55,71 @@ model Resource {
 model Copy {
   id         String   @id @default(cuid())
   barcode    String   @unique
-  status     String   @default("AVAILABLE") // AVAILABLE, ON_LOAN, RESERVED, LOST, MAINTENANCE
-  location   String   @default("Main Shelf")
+  status     String   @default("AVAILABLE") // AVAILABLE, ON_LOAN, RESERVED, LOST, MAINTENANCE — circulation state, system-controlled
+  location   String   @default("Main Shelf") // legacy free-text shelf; superseded by locationId when set
   createdAt  DateTime @default(now())
   resourceId String
   resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
   loans      Loan[]
+
+  // Item-level cataloguing (Vibrant "Items" module). All optional so existing
+  // copies stay valid; the code lists are what staff actually manage.
+  collectionId String?
+  collection   ItemCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  locationId   String?
+  itemLocation ItemLocation?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  itemTypeId   String?
+  itemType     ItemType?       @relation(fields: [itemTypeId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([collectionId])
+  @@index([locationId])
+}
+
+/// A collection code grouping items (Reference, Reserve, General…). May cap
+/// how many items from it a member can hold at once.
+model ItemCollection {
+  id                String  @id @default(cuid())
+  code              String  @unique
+  name              String
+  loanLimitOverride Int? // overrides the policy's maxLoans for items in this collection
+  notes             String?
+  createdAt         DateTime @default(now())
+  copies            Copy[]
+}
+
+/// Where a copy physically lives.
+model ItemLocation {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  notes     String?
+  createdAt DateTime @default(now())
+  copies    Copy[]
+}
+
+/// Item-level resource type. Combined with member type this forms the loan
+/// policy matrix (the real DLS rule is user-type x item-type).
+model ItemType {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  name      String
+  loanable  Boolean      @default(true) // false = reference-only, never issued
+  createdAt DateTime     @default(now())
+  copies    Copy[]
+  policies  LoanPolicy[]
+}
+
+/// Append-only record of weeded/deleted copies (Vibrant: Items Weed Log).
+model ItemWeedLog {
+  id         String   @id @default(cuid())
+  barcode    String
+  title      String
+  reason     String
+  collection String?
+  location   String?
+  weededBy   String
+  weededAt   DateTime @default(now())
 }
 
 /// A configurable member status (beyond the built-in Active/Suspended).
@@ -246,9 +305,14 @@ model AdminGroupPermission {
 
 /// Configurable circulation rules (SDD: LoansPolicies). One row per member
 /// type; the DEFAULT row backstops anything unmatched.
+/// Circulation rules resolved on the member type x ITEM type matrix, as the
+/// real DLS does. A null itemTypeId is the "any item type" row, so existing
+/// per-member-type policies keep working untouched.
 model LoanPolicy {
   id            String   @id @default(cuid())
-  memberType    String   @unique // STUDENT, STAFF, EXTERNAL, DEFAULT
+  memberType    String // STUDENT, STAFF, EXTERNAL, DEFAULT
+  itemTypeId    String? // null = applies to every item type
+  itemType      ItemType? @relation(fields: [itemTypeId], references: [id], onDelete: Cascade)
   loanDays      Int      @default(14)
   maxLoans      Int      @default(5)
   maxRenewals   Int      @default(2)
@@ -263,6 +327,8 @@ model LoanPolicy {
   maxFineCents    Int? // null = uncapped
 
   updatedAt     DateTime @updatedAt
+
+  @@unique([memberType, itemTypeId])
 }
 
 /// A day the library is closed: due dates never land on one, fines do not

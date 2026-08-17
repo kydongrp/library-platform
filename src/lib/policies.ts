@@ -27,16 +27,33 @@ const FALLBACK: EffectivePolicy = {
 };
 
 /**
- * Resolve the circulation policy for a member type: exact row, then the
- * DEFAULT row, then the code fallback.
+ * Resolve the circulation policy on the member-type x item-type matrix, most
+ * specific first:
+ *   (memberType, itemType) → (memberType, any) → (DEFAULT, itemType)
+ *   → (DEFAULT, any) → code fallback
+ * Passing no item type resolves the "any item type" row, which is how every
+ * pre-matrix policy behaves.
  */
-export async function policyFor(memberType: string): Promise<EffectivePolicy> {
+export async function policyFor(
+  memberType: string,
+  itemTypeId?: string | null,
+): Promise<EffectivePolicy> {
   const rows = await prisma.loanPolicy.findMany({
-    where: { memberType: { in: [memberType, "DEFAULT"] } },
+    where: {
+      memberType: { in: [memberType, "DEFAULT"] },
+      ...(itemTypeId
+        ? { OR: [{ itemTypeId }, { itemTypeId: null }] }
+        : { itemTypeId: null }),
+    },
   });
-  const exact = rows.find((r) => r.memberType === memberType);
-  const def = rows.find((r) => r.memberType === "DEFAULT");
-  const src = exact ?? def;
+  const pick = (mt: string, it: string | null) =>
+    rows.find((r) => r.memberType === mt && r.itemTypeId === it);
+
+  const src =
+    (itemTypeId ? pick(memberType, itemTypeId) : undefined) ??
+    pick(memberType, null) ??
+    (itemTypeId ? pick("DEFAULT", itemTypeId) : undefined) ??
+    pick("DEFAULT", null);
   if (!src) return FALLBACK;
   return {
     loanDays: src.loanDays,

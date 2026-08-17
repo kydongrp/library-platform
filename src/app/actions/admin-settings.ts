@@ -209,14 +209,27 @@ export async function updatePolicy(
     maxFineCents: centsOrNull("maxFineCents"),
   };
 
-  await prisma.loanPolicy.upsert({
-    where: { memberType },
-    update: fields,
-    create: { memberType, ...fields },
-  });
-  await audit({ action: "policies.update", summary: `Saved loan policy for ${memberType}`, entity: "LoanPolicy", entityId: memberType });
+  // Policies live on the member-type x item-type matrix; a blank item type is
+  // the "any item type" row that every pre-matrix policy occupies.
+  const itemTypeId = String(formData.get("itemTypeId") ?? "").trim() || null;
+  const itemTypeName = itemTypeId
+    ? (await prisma.itemType.findUnique({ where: { id: itemTypeId }, select: { name: true } }))?.name
+    : null;
+  if (itemTypeId && !itemTypeName)
+    return { ok: false, message: "That item type no longer exists." };
+
+  // Not an upsert: a compound unique containing NULL can't be looked up (SQL
+  // treats NULLs as distinct), and the "any item type" row has itemTypeId null.
+  const existing = await prisma.loanPolicy.findFirst({ where: { memberType, itemTypeId } });
+  if (existing) {
+    await prisma.loanPolicy.update({ where: { id: existing.id }, data: fields });
+  } else {
+    await prisma.loanPolicy.create({ data: { memberType, itemTypeId, ...fields } });
+  }
+  const label = `${memberType}${itemTypeName ? ` × ${itemTypeName}` : ""}`;
+  await audit({ action: "policies.update", summary: `Saved loan policy for ${label}`, entity: "LoanPolicy", entityId: memberType });
   revalidatePath("/admin/policies");
-  return { ok: true, message: `Policy for ${memberType} saved.` };
+  return { ok: true, message: `Policy for ${label} saved.` };
 }
 
 /* ---------- Email templates ---------- */
