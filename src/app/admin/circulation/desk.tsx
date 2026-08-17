@@ -54,7 +54,8 @@ export function CirculationDesk({ members }: { members: MemberOption[] }) {
           <h2 className="font-display text-xl font-semibold">Check in</h2>
         </div>
         <p className="mb-4 text-sm text-muted-foreground">
-          Return a copy by scanning its barcode. The next hold is filled automatically.
+          Return a copy by scanning its barcode. Any overdue fine is worked out
+          against the library calendar, and the next hold is filled automatically.
         </p>
         <StatefulForm action={checkin} className="space-y-4">
           {(state) => (
@@ -62,6 +63,17 @@ export function CirculationDesk({ members }: { members: MemberOption[] }) {
               <div>
                 <label className={labelCls} htmlFor="ci-barcode">Copy barcode</label>
                 <input id="ci-barcode" name="barcode" placeholder="e.g. LIB-001001" autoComplete="off" className={`${inputCls} font-mono`} />
+              </div>
+              <div>
+                <label className={labelCls} htmlFor="ci-condition">Condition on return</label>
+                <select id="ci-condition" name="condition" defaultValue="GOOD" className={inputCls}>
+                  <option value="GOOD">Good — back on the shelf</option>
+                  <option value="DAMAGED">Damaged — send to maintenance</option>
+                  <option value="LOST">Lost — withdraw the copy</option>
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Damaged and lost copies leave circulation, so a waiting hold is not filled from them.
+                </p>
               </div>
               {state.ok === false && state.message && (
                 <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.message}</p>

@@ -10,6 +10,7 @@ import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { runSftpFetch } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
 import { runLinkCheckCore } from "@/lib/linkcheck";
+import { loadCalendar, nextOpenDay } from "@/lib/calendar";
 
 const DAY = 24 * 60 * 60 * 1000;
 const PREDUE_DAYS = 2; // notify when a loan is due within this many days
@@ -72,9 +73,15 @@ export async function runEodProcess(
     where: { status: "READY" },
     include: { member: true, resource: { include: { copies: true } } },
   });
+  const calendar = await loadCalendar();
   for (const hold of readyHolds) {
     const policy = await policyFor(hold.member.memberType);
-    const expiry = new Date((hold.readyAt ?? hold.reservedAt).getTime() + policy.holdPickupDays * DAY);
+    // A pickup window that ends on a closed day runs to the next open day —
+    // a member can't collect a hold from a shut library.
+    const expiry = nextOpenDay(
+      new Date((hold.readyAt ?? hold.reservedAt).getTime() + policy.holdPickupDays * DAY),
+      calendar,
+    );
     if (expiry > now) continue;
 
     await prisma.reservation.update({
@@ -121,7 +128,9 @@ export async function runEodProcess(
         });
         await notify("RESERVATION_READY", next.member, {
           resourceTitle: hold.resource.title,
-          expiryDate: formatDate(new Date(now.getTime() + nextPolicy.holdPickupDays * DAY)),
+          expiryDate: formatDate(
+            nextOpenDay(new Date(now.getTime() + nextPolicy.holdPickupDays * DAY), calendar),
+          ),
         });
       } else {
         await prisma.copy.update({

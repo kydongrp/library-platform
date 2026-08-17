@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
-import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
+import { CATEGORIES, RESOURCE_TYPES, defaultDesignationFor } from "@/lib/constants";
 import { coverColorFor } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -110,6 +110,7 @@ export async function addExternalPick(
         title,
         author: authors,
         type,
+        materialDesignation: defaultDesignationFor(type),
         category,
         publisher: provider,
         coverColor: coverColorFor(provider + title),

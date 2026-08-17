@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
-import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
+import { CATEGORIES, RESOURCE_TYPES, defaultDesignationFor } from "@/lib/constants";
 import type { BulkRow } from "@/lib/bulk-import";
 import { coverColorFor, importResourceRowsCore } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
@@ -51,6 +51,7 @@ async function importOne(record: ScholarlyRecord, category: string): Promise<"im
       title: record.title,
       author: record.authors,
       type: record.type,
+      materialDesignation: defaultDesignationFor(record.type),
       category,
       publisher: record.publisher,
       publishedYear: record.year,
@@ -175,6 +176,7 @@ export async function addManualArticle(
         title: record.title,
         author: record.authors,
         type: record.type,
+        materialDesignation: defaultDesignationFor(record.type),
         category,
         publisher: provider,
         publishedYear: record.year,

@@ -18,6 +18,7 @@ const NAV: (NavItem & { area: string })[] = [
   { href: "/admin/reservations", label: "Reservations", icon: "✦", area: "RESERVATIONS" },
   { href: "/admin/requests", label: "Resource Requests", icon: "✍", area: "REQUESTS" },
   { href: "/admin/policies", label: "Loan Policies", icon: "§", area: "POLICIES" },
+  { href: "/admin/calendar", label: "Library Calendar", icon: "▦", area: "POLICIES" },
   { href: "/admin/templates", label: "Email Templates", icon: "✉", area: "TEMPLATES" },
   { href: "/admin/reports", label: "Reports", icon: "▥", area: "REPORTS" },
   { href: "/admin/batch", label: "Batch Processes", icon: "⏱", area: "BATCH" },

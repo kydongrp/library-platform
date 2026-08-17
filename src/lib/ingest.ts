@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { parseBulk, type BulkRow } from "@/lib/bulk-import";
-import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
+import { CATEGORIES, RESOURCE_TYPES, defaultDesignationFor } from "@/lib/constants";
 import { sftpConfigured, sftpSourceInfo, fetchNewSftpFiles } from "@/lib/sftp";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -114,6 +114,8 @@ export async function importResourceRowsCore(
       author: row.authors ?? "Unknown",
       isbn: row.isbn ?? null,
       type,
+      // Imported records get the bib-level designation their type implies.
+      materialDesignation: defaultDesignationFor(type),
       category,
       publisher: row.publisher ?? null,
       publishedYear: typeof row.year === "number" ? row.year : null,

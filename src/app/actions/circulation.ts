@@ -9,12 +9,44 @@ import { notify } from "@/lib/templates";
 import { formatDate } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit } from "@/lib/audit";
+import { loadCalendar, dueDateFrom, nextOpenDay, dateKey } from "@/lib/calendar";
+import { assessFine, formatFine } from "@/lib/fines";
 
 const DAY = 24 * 60 * 60 * 1000;
+
+// What staff can record about an item's condition when it comes back.
+const RETURN_CONDITIONS = ["GOOD", "DAMAGED", "LOST"] as const;
+type ReturnCondition = (typeof RETURN_CONDITIONS)[number];
+
+/** Copy status an item lands in for a given return condition. */
+const CONDITION_COPY_STATUS: Record<ReturnCondition, string> = {
+  GOOD: "AVAILABLE",
+  DAMAGED: "MAINTENANCE",
+  LOST: "LOST",
+};
 
 function revalidateAll() {
   revalidatePath("/admin", "layout");
 }
+
+/**
+ * Server actions are directly invocable endpoints, so every circulation
+ * mutation re-checks rights here. These operations are surfaced from several
+ * pages (the desk, Current Loans, member detail), so any one of the listed
+ * areas grants them.
+ */
+async function requireCirculation(
+  ...areas: string[]
+): Promise<{ name: string } | null> {
+  const admin = await getCurrentAdmin();
+  if (!admin) return null;
+  return areas.some((a) => canEdit(admin, a)) ? { name: admin.name } : null;
+}
+
+const DENIED = (what: string) => ({
+  ok: false as const,
+  message: `You don't have permission to ${what}.`,
+});
 
 /**
  * Check out a resource to a member.
@@ -25,6 +57,8 @@ export async function checkout(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  if (!(await requireCirculation("CIRCULATION"))) return DENIED("check items out");
+
   const memberId = String(formData.get("memberId") ?? "");
   const resourceId = String(formData.get("resourceId") ?? "");
   const barcode = String(formData.get("barcode") ?? "").trim();
@@ -97,7 +131,8 @@ export async function checkout(
         };
     }
 
-    const dueAt = new Date(Date.now() + policy.digitalDays * DAY);
+    // Due dates never land on a day the library is shut.
+    const dueAt = dueDateFrom(new Date(), policy.digitalDays, await loadCalendar());
     await prisma.loan.create({
       data: { memberId, resourceId: resource.id, dueAt },
     });
@@ -124,7 +159,7 @@ export async function checkout(
   }
   if (!copy) return { ok: false, message: "No copies available to loan." };
 
-  const dueAt = new Date(Date.now() + policy.loanDays * DAY);
+  const dueAt = dueDateFrom(new Date(), policy.loanDays, await loadCalendar());
 
   await prisma.$transaction([
     prisma.loan.create({
@@ -150,6 +185,9 @@ export async function checkin(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const admin = await requireCirculation("CIRCULATION", "LOANS");
+  if (!admin) return DENIED("check items in");
+
   const loanId = String(formData.get("loanId") ?? "");
   const barcode = String(formData.get("barcode") ?? "").trim();
 
@@ -172,13 +210,63 @@ export async function checkin(
   if (loan.status !== "ACTIVE")
     return { ok: false, message: "This loan was already returned." };
 
-  await prisma.loan.update({
-    where: { id: loan.id },
-    data: { status: "RETURNED", returnedAt: new Date() },
+  const conditionRaw = String(formData.get("condition") ?? "GOOD").toUpperCase();
+  const condition: ReturnCondition = (RETURN_CONDITIONS as readonly string[]).includes(conditionRaw)
+    ? (conditionRaw as ReturnCondition)
+    : "GOOD";
+
+  // Assess the fine against the calendar: lateness is measured in days the
+  // library was actually open, so a closed weekend is never chargeable.
+  const returnedAt = new Date();
+  const [policy, cal] = await Promise.all([
+    policyFor(loan.member.memberType),
+    loadCalendar(),
+  ]);
+  const fine = assessFine(loan.dueAt, returnedAt, policy, cal);
+  // Lateness is judged on calendar DAYS, matching the fine counter. dueAt
+  // carries the checkout time-of-day, so comparing instants would stamp an
+  // item returned the morning it is due as LATE.
+  const returnStatus = dateKey(returnedAt) > dateKey(loan.dueAt) ? "LATE" : "ON_TIME";
+
+  // Atomic close: a second scan of the same barcode must not re-return it.
+  const claimed = await prisma.loan.updateMany({
+    where: { id: loan.id, status: "ACTIVE" },
+    data: {
+      status: "RETURNED",
+      returnedAt,
+      returnStatus,
+      returnCondition: condition,
+      returnedBy: admin.name,
+      fineCents: fine.cents,
+      fineNote:
+        fine.cents > 0
+          ? `${fine.chargeableDays} chargeable day${fine.chargeableDays === 1 ? "" : "s"} of ${fine.daysLate} open day${fine.daysLate === 1 ? "" : "s"} late${fine.capped ? " (capped)" : ""}`
+          : null,
+    },
   });
+  if (claimed.count === 0)
+    return { ok: false, message: "That loan was just returned by someone else." };
+
   await notify("RETURN", loan.member, { resourceTitle: loan.resource.title });
 
   let message = `"${loan.resource.title}" returned.`;
+  if (returnStatus === "LATE") {
+    if (fine.cents > 0) {
+      message += ` Late — fine ${formatFine(fine.cents)}${fine.capped ? " (capped)" : ""}.`;
+    } else {
+      // Say which of the three reasons actually applies, rather than blaming
+      // closures for a zero-rate policy or an unspent grace period.
+      const why =
+        policy.fineCentsPerDay <= 0
+          ? "this member type is not fined"
+          : fine.daysLate === 0
+            ? "the library was closed every day it was late"
+            : `within the ${policy.fineGraceDays}-day grace period`;
+      message += ` Late, but no fine — ${why}.`;
+    }
+  }
+  if (condition !== "GOOD")
+    message += ` Marked ${condition.toLowerCase()}.`;
 
   // Digital return: a licence seat freed up — notify the next in queue.
   if (!loan.copyId) {
@@ -200,35 +288,56 @@ export async function checkin(
   }
 
   if (loan.copyId) {
-    // If someone is waiting, hold the copy for them; otherwise shelve it.
-    const nextHold = await prisma.reservation.findFirst({
-      where: { resourceId: loan.resourceId, status: "PENDING" },
-      orderBy: { reservedAt: "asc" },
-      include: { member: true },
-    });
-    if (nextHold) {
-      await prisma.$transaction([
-        prisma.copy.update({ where: { id: loan.copyId }, data: { status: "RESERVED" } }),
-        prisma.reservation.update({
-          where: { id: nextHold.id },
-          data: { status: "READY", readyAt: new Date() },
-        }),
-      ]);
-      const holdPolicy = await policyFor(nextHold.member.memberType);
-      await notify("RESERVATION_READY", nextHold.member, {
-        resourceTitle: loan.resource.title,
-        expiryDate: formatDate(new Date(Date.now() + holdPolicy.holdPickupDays * DAY)),
-      });
-      message += ` Held for ${nextHold.member.name} (next in queue).`;
-    } else {
+    // A damaged or lost copy leaves circulation — it must never be handed to
+    // the next person waiting.
+    if (condition !== "GOOD") {
       await prisma.copy.update({
         where: { id: loan.copyId },
-        data: { status: "AVAILABLE" },
+        data: { status: CONDITION_COPY_STATUS[condition] },
       });
+      message +=
+        condition === "LOST"
+          ? " Copy withdrawn as lost."
+          : " Copy sent to maintenance.";
+    } else {
+      // If someone is waiting, hold the copy for them; otherwise shelve it.
+      const nextHold = await prisma.reservation.findFirst({
+        where: { resourceId: loan.resourceId, status: "PENDING" },
+        orderBy: { reservedAt: "asc" },
+        include: { member: true },
+      });
+      if (nextHold) {
+        await prisma.$transaction([
+          prisma.copy.update({ where: { id: loan.copyId }, data: { status: "RESERVED" } }),
+          prisma.reservation.update({
+            where: { id: nextHold.id },
+            data: { status: "READY", readyAt: new Date() },
+          }),
+        ]);
+        const holdPolicy = await policyFor(nextHold.member.memberType);
+        // The pickup deadline must fall on a day the library is open.
+        const expiry = nextOpenDay(new Date(Date.now() + holdPolicy.holdPickupDays * DAY), cal);
+        await notify("RESERVATION_READY", nextHold.member, {
+          resourceTitle: loan.resource.title,
+          expiryDate: formatDate(expiry),
+        });
+        message += ` Held for ${nextHold.member.name} (next in queue).`;
+      } else {
+        await prisma.copy.update({
+          where: { id: loan.copyId },
+          data: { status: "AVAILABLE" },
+        });
+      }
     }
   }
 
-  await audit({ action: "circulation.checkin", summary: `Returned "${loan.resource.title}" from ${loan.member.name}`, entity: "Loan", entityId: loan.id });
+  await audit({
+    action: "circulation.checkin",
+    summary: `Returned "${loan.resource.title}" from ${loan.member.name} — ${returnStatus === "LATE" ? `late${fine.cents > 0 ? `, fine ${formatFine(fine.cents)}` : ", no fine chargeable"}` : "on time"}, condition ${condition.toLowerCase()}`,
+    entity: "Loan",
+    entityId: loan.id,
+    detail: { returnStatus, condition, fineCents: fine.cents, daysLate: fine.daysLate, chargeableDays: fine.chargeableDays },
+  });
   revalidateAll();
   return { ok: true, message };
 }
@@ -238,6 +347,8 @@ export async function renewLoan(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  if (!(await requireCirculation("CIRCULATION", "LOANS"))) return DENIED("renew loans");
+
   const loanId = String(formData.get("loanId") ?? "");
   const loan = await prisma.loan.findUnique({
     where: { id: loanId },
@@ -256,7 +367,18 @@ export async function renewLoan(
   if (waiting > 0)
     return { ok: false, message: "Cannot renew — another member has reserved this title." };
 
-  const dueAt = new Date(loan.dueAt.getTime() + policy.renewalDays * DAY);
+  // An overdue loan cannot be renewed: rebasing off a past due date would
+  // retroactively erase the fine that has already accrued, and may not even
+  // clear the overdue state. Staff check it in (freezing the fine) instead.
+  if (dateKey(loan.dueAt) < dateKey(new Date()))
+    return {
+      ok: false,
+      message: "Cannot renew — this loan is overdue. Check it in to settle the fine, then check it out again.",
+    };
+
+  // Renewal extends from the existing due date (unused days are not lost),
+  // then rolls off any closed day.
+  const dueAt = dueDateFrom(loan.dueAt, policy.renewalDays, await loadCalendar());
   await prisma.loan.update({
     where: { id: loan.id },
     data: { dueAt, renewals: loan.renewals + 1 },
@@ -274,6 +396,9 @@ export async function reserve(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  if (!(await requireCirculation("CIRCULATION", "RESERVATIONS")))
+    return DENIED("place holds");
+
   const memberId = String(formData.get("memberId") ?? "");
   const resourceId = String(formData.get("resourceId") ?? "");
   if (!memberId) return { ok: false, message: "Sign in to reserve." };
@@ -325,6 +450,9 @@ export async function cancelReservation(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  if (!(await requireCirculation("CIRCULATION", "RESERVATIONS")))
+    return DENIED("cancel holds");
+
   const reservationId = String(formData.get("reservationId") ?? "");
   const res = await prisma.reservation.findUnique({
     where: { id: reservationId },
@@ -388,7 +516,11 @@ export async function recallLoan(
   if (loan.recalledAt)
     return { ok: false, message: "This loan has already been recalled." };
 
-  const noticeDue = new Date(Date.now() + RECALL_NOTICE_DAYS * DAY);
+  // The recall deadline must fall on a day the member can actually return it.
+  const noticeDue = nextOpenDay(
+    new Date(Date.now() + RECALL_NOTICE_DAYS * DAY),
+    await loadCalendar(),
+  );
   // Never extend: keep the earlier of the current due date and the notice.
   const dueAt = loan.dueAt < noticeDue ? loan.dueAt : noticeDue;
 
@@ -407,4 +539,72 @@ export async function recallLoan(
     ok: true,
     message: `"${loan.resource.title}" recalled — ${loan.member.name} notified, due ${formatDate(dueAt)}.`,
   };
+}
+
+/* ---------- Fine settlement ---------- */
+
+/** Mark an assessed fine as paid at the desk. */
+export async function payFine(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "LOANS"))
+    return { ok: false, message: "You don't have permission to settle fines." };
+
+  const loanId = String(formData.get("loanId") ?? "");
+  const r = await prisma.loan.updateMany({
+    where: { id: loanId, fineCents: { gt: 0 }, finePaidAt: null, fineWaivedAt: null },
+    data: { finePaidAt: new Date() },
+  });
+  if (r.count === 0)
+    return { ok: false, message: "That fine is already settled or no longer exists." };
+
+  const loan = await prisma.loan.findUnique({
+    where: { id: loanId },
+    include: { member: true, resource: true },
+  });
+  await audit({
+    action: "circulation.finePaid",
+    summary: `Fine ${formatFine(loan?.fineCents ?? 0)} paid by ${loan?.member.name ?? "?"} for "${loan?.resource.title ?? "?"}"`,
+    entity: "Loan",
+    entityId: loanId,
+  });
+  revalidateAll();
+  return { ok: true, message: `Fine of ${formatFine(loan?.fineCents ?? 0)} marked paid.` };
+}
+
+/** Waive an assessed fine, with the reason recorded on the loan. */
+export async function waiveFine(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "LOANS"))
+    return { ok: false, message: "You don't have permission to waive fines." };
+
+  const loanId = String(formData.get("loanId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 200);
+  const r = await prisma.loan.updateMany({
+    where: { id: loanId, fineCents: { gt: 0 }, finePaidAt: null, fineWaivedAt: null },
+    data: {
+      fineWaivedAt: new Date(),
+      fineNote: reason ? `Waived by ${admin?.name ?? "staff"}: ${reason}` : `Waived by ${admin?.name ?? "staff"}`,
+    },
+  });
+  if (r.count === 0)
+    return { ok: false, message: "That fine is already settled or no longer exists." };
+
+  const loan = await prisma.loan.findUnique({
+    where: { id: loanId },
+    include: { member: true, resource: true },
+  });
+  await audit({
+    action: "circulation.fineWaived",
+    summary: `Fine ${formatFine(loan?.fineCents ?? 0)} waived for ${loan?.member.name ?? "?"} on "${loan?.resource.title ?? "?"}"${reason ? ` — ${reason}` : ""}`,
+    entity: "Loan",
+    entityId: loanId,
+  });
+  revalidateAll();
+  return { ok: true, message: "Fine waived." };
 }

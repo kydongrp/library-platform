@@ -58,6 +58,9 @@ export default async function ResourceDetailPage({
           {resource.subtitle && <p className="text-lg text-muted-foreground">{resource.subtitle}</p>}
           <p className="mt-1 text-muted-foreground">{resource.author}</p>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <Badge tone={resource.materialDesignation === "SERIAL" ? "primary" : "neutral"}>
+              {resource.materialDesignation === "SERIAL" ? "Serial" : "Monograph"}
+            </Badge>
             <Badge tone="neutral">{resource.category}</Badge>
             {resource.provider ? (
               <Badge tone="accent">{resource.provider}</Badge>

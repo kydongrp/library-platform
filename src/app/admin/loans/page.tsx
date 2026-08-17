@@ -1,10 +1,14 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { Card, Badge, EmptyState } from "@/components/ui";
+import { Card, Badge, EmptyState, ButtonLink } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { checkin, renewLoan, recallLoan } from "@/app/actions/circulation";
 import { formatDate, dueLabel, isOverdue } from "@/lib/format";
+import { getAccruingFines } from "@/lib/loan-history";
+import { formatFine } from "@/lib/fines";
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ filter?: string }>;
 
@@ -23,11 +27,17 @@ export default async function LoansPage({
       ? { status: "ACTIVE", dueAt: { lt: now } }
       : { status: "ACTIVE" };
 
-  const loans = await prisma.loan.findMany({
-    where,
-    include: { member: true, resource: true, copy: true },
-    orderBy: { dueAt: "asc" },
-  });
+  const [loans, accruing] = await Promise.all([
+    prisma.loan.findMany({
+      where,
+      include: { member: true, resource: true, copy: true },
+      orderBy: { dueAt: "asc" },
+    }),
+    // Live figures — nothing is charged until the item is checked in.
+    getAccruingFines(now),
+  ]);
+  const accruedByLoan = new Map(accruing.map((a) => [a.loanId, a]));
+  const accruedTotal = accruing.reduce((n, a) => n + a.accruedCents, 0);
 
   const tabs = [
     { key: "all", label: "All active" },
@@ -36,11 +46,23 @@ export default async function LoansPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-5">
-        <h1 className="font-display text-3xl font-semibold">Current Loans</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {loans.length} active loan{loans.length === 1 ? "" : "s"}.
-        </p>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-3xl font-semibold">Current Loans</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {loans.length} active loan{loans.length === 1 ? "" : "s"}
+            {accruing.length > 0 && (
+              <>
+                {" · "}
+                <span className="font-medium text-amber-700">
+                  {formatFine(accruedTotal)} accruing across {accruing.length} overdue
+                </span>
+              </>
+            )}
+            .
+          </p>
+        </div>
+        <ButtonLink href="/admin/loans/history" variant="outline">≣ Loan history</ButtonLink>
       </div>
 
       <div className="mb-5 flex gap-2">
@@ -77,6 +99,17 @@ export default async function LoansPage({
               </div>
               {l.recalledAt && <Badge tone="accent">Recalled</Badge>}
               <Badge tone={isOverdue(l.dueAt) ? "danger" : "muted"}>{dueLabel(l.dueAt)}</Badge>
+              {(() => {
+                const a = accruedByLoan.get(l.id);
+                if (!a) return null;
+                return a.accruedCents > 0 ? (
+                  <Badge tone="accent">
+                    {formatFine(a.accruedCents)} accruing · {a.daysLate} open day{a.daysLate === 1 ? "" : "s"}
+                  </Badge>
+                ) : (
+                  <Badge tone="muted">no fine yet</Badge>
+                );
+              })()}
               <div className="flex items-center gap-2">
                 {!l.recalledAt && (
                   <ActionButton action={recallLoan} fields={{ loanId: l.id }} variant="outline" className="!px-3 !py-1.5 text-xs" confirm="Recall this loan? The member will be notified and the due date shortened." pendingLabel="…">Recall</ActionButton>

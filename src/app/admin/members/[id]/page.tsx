@@ -9,6 +9,7 @@ import { updateMember } from "@/app/actions/members";
 import { checkin, renewLoan, cancelReservation } from "@/app/actions/circulation";
 import { MEMBER_TYPE_LABELS } from "@/lib/constants";
 import { initials, formatDate, dueLabel, isOverdue } from "@/lib/format";
+import { formatFine } from "@/lib/fines";
 
 export default async function MemberDetailPage({
   params,
@@ -44,7 +45,12 @@ export default async function MemberDetailPage({
   const statusRow = statuses.find((s) => s.name === member.status);
 
   const activeLoans = member.loans.filter((l) => l.status === "ACTIVE");
-  const pastLoans = member.loans.filter((l) => l.status === "RETURNED");
+  const pastLoans = member.loans
+    .filter((l) => l.status === "RETURNED")
+    .sort((a, b) => (b.returnedAt?.getTime() ?? 0) - (a.returnedAt?.getTime() ?? 0));
+  const outstandingFines = pastLoans
+    .filter((l) => l.fineCents > 0 && !l.finePaidAt && !l.fineWaivedAt)
+    .reduce((n, l) => n + l.fineCents, 0);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -136,6 +142,62 @@ export default async function MemberDetailPage({
           </ul>
         </Card>
       )}
+
+      {/* Past loans */}
+      <Card className="mb-6 p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-lg font-semibold">Loan history</h2>
+          <div className="flex items-center gap-2">
+            {outstandingFines > 0 && (
+              <Badge tone="accent">{formatFine(outstandingFines)} outstanding</Badge>
+            )}
+            <Link href={`/admin/loans/history?q=${encodeURIComponent(member.name)}`}
+              className="text-xs text-primary hover:underline">
+              Full history →
+            </Link>
+          </div>
+        </div>
+        {pastLoans.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">No returned loans yet.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {pastLoans.slice(0, 15).map((l) => (
+              <li key={l.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{l.resource.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(l.borrowedAt)} → {formatDate(l.returnedAt)} · due {formatDate(l.dueAt)}
+                    {l.renewals > 0 && ` · ${l.renewals} renewal${l.renewals === 1 ? "" : "s"}`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {l.returnStatus === "LATE" ? (
+                    <Badge tone="danger">✕ Late</Badge>
+                  ) : (
+                    <Badge tone="success">✓ On time</Badge>
+                  )}
+                  {l.returnCondition && l.returnCondition !== "GOOD" && (
+                    <Badge tone={l.returnCondition === "LOST" ? "danger" : "accent"}>
+                      {l.returnCondition === "LOST" ? "✕ Lost" : "⚠ Damaged"}
+                    </Badge>
+                  )}
+                  {l.fineCents > 0 && (
+                    <Badge tone={l.finePaidAt ? "success" : l.fineWaivedAt ? "muted" : "accent"}>
+                      {formatFine(l.fineCents)}
+                      {l.finePaidAt ? " paid" : l.fineWaivedAt ? " waived" : " due"}
+                    </Badge>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {pastLoans.length > 15 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Showing the 15 most recent of {pastLoans.length} returned loans.
+          </p>
+        )}
+      </Card>
 
       {/* Edit */}
       <Card className="p-5">

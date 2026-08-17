@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
-import { DIGITAL_TYPES } from "@/lib/constants";
+import { DIGITAL_TYPES, MATERIAL_DESIGNATIONS, defaultDesignationFor } from "@/lib/constants";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit, diffOf } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -34,6 +34,7 @@ function parseResourceForm(formData: FormData) {
   const type = String(formData.get("type") ?? "BOOK");
   const yearRaw = String(formData.get("publishedYear") ?? "").trim();
   const provider = String(formData.get("provider") ?? "").trim() || null;
+  const designationRaw = String(formData.get("materialDesignation") ?? "").toUpperCase();
   return {
     title: String(formData.get("title") ?? "").trim(),
     subtitle: String(formData.get("subtitle") ?? "").trim() || null,
@@ -49,6 +50,10 @@ function parseResourceForm(formData: FormData) {
     digitalUrl: String(formData.get("digitalUrl") ?? "").trim() || null,
     // External-provider and digital-format titles have no physical copies.
     digital: DIGITAL_TYPES.has(type) || !!provider,
+    // Bib-level designation: staff may override, otherwise it follows the type.
+    materialDesignation: (MATERIAL_DESIGNATIONS as readonly string[]).includes(designationRaw)
+      ? designationRaw
+      : defaultDesignationFor(type),
   };
 }
 

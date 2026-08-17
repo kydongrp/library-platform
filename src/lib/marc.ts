@@ -24,6 +24,8 @@ export type MarcInput = {
   author: string;
   isbn: string | null;
   type: string;
+  /** MONOGRAPH | SERIAL — drives leader/07 (bibliographic level). */
+  materialDesignation: string;
   category: string;
   publisher: string | null;
   publishedYear: number | null;
@@ -57,9 +59,10 @@ const LANG_CODES: Record<string, string> = {
 const clean = (v: string) => v.replace(/[\x1d\x1e\x1f]/g, " ").trim().slice(0, SUB_MAX);
 
 function leaderFor(r: MarcInput): string {
-  // 06 type of record / 07 bibliographic level (mirrors the importer's read).
+  // 06 type of record / 07 bibliographic level. The bibliographic level comes
+  // straight from the record's material designation: 's' serial, 'm' monograph.
   const t06 = r.type === "AUDIOBOOK" ? "i" : r.type === "DVD" ? "g" : "a";
-  const t07 = r.type === "JOURNAL" || r.type === "MAGAZINE" ? "s" : "m";
+  const t07 = r.materialDesignation === "SERIAL" ? "s" : "m";
   // 00000 n a m  a 22 00000  7 i  4500 — lengths patched in ISO 2709 output.
   return `00000n${t06}${t07} a2200000 i 4500`;
 }

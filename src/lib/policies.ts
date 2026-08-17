@@ -7,6 +7,10 @@ export type EffectivePolicy = {
   renewalDays: number;
   digitalDays: number;
   holdPickupDays: number;
+  // Overdue charges (see src/lib/fines.ts).
+  fineCentsPerDay: number;
+  fineGraceDays: number;
+  maxFineCents: number | null;
 };
 
 // Code-level backstop if the LoanPolicy table is empty (pre-seed).
@@ -17,6 +21,9 @@ const FALLBACK: EffectivePolicy = {
   renewalDays: 14,
   digitalDays: 14,
   holdPickupDays: 3,
+  fineCentsPerDay: 0,
+  fineGraceDays: 0,
+  maxFineCents: null,
 };
 
 /**
@@ -38,5 +45,8 @@ export async function policyFor(memberType: string): Promise<EffectivePolicy> {
     renewalDays: src.renewalDays,
     digitalDays: src.digitalDays,
     holdPickupDays: src.holdPickupDays,
+    fineCentsPerDay: src.fineCentsPerDay,
+    fineGraceDays: src.fineGraceDays,
+    maxFineCents: src.maxFineCents,
   };
 }

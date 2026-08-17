@@ -40,7 +40,9 @@ export default async function SerialsPage({
   const [overview, candidates] = await Promise.all([
     getSerialsOverview(),
     prisma.resource.findMany({
-      where: { type: { in: ["JOURNAL", "MAGAZINE"] }, serial: null },
+      // Eligibility now follows the bib-level designation, so a serial
+      // catalogued under any type (including newspapers) can be tracked.
+      where: { materialDesignation: "SERIAL", serial: null },
       select: { id: true, title: true },
       orderBy: { title: "asc" },
       take: 500,

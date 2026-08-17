@@ -25,6 +25,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const category = (p.get("category") ?? "").trim();
   const type = (p.get("type") ?? "").trim();
   const source = (p.get("source") ?? "").trim().slice(0, 80);
+  const designation = (p.get("designation") ?? "").trim().toUpperCase();
 
   const where: Record<string, unknown> = {};
   if (q) {
@@ -36,6 +37,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
   if (category && (CATEGORIES as readonly string[]).includes(category)) where.category = category;
   if (type && (RESOURCE_TYPES as readonly string[]).includes(type)) where.type = type;
+  if (designation === "MONOGRAPH" || designation === "SERIAL")
+    where.materialDesignation = designation;
   if (source === "local") where.provider = null;
   else if (source) where.provider = source;
 

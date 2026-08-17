@@ -9,7 +9,9 @@ import {
 } from "@/lib/constants";
 import { availability } from "@/lib/availability";
 
-type SearchParams = Promise<{ q?: string; category?: string; type?: string; source?: string }>;
+type SearchParams = Promise<{
+  q?: string; category?: string; type?: string; source?: string; designation?: string;
+}>;
 
 const inputCls =
   "rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -21,7 +23,7 @@ export default async function CataloguePage({
 }) {
   await requireAdminView("CATALOGUE");
 
-  const { q = "", category = "", type = "", source = "" } = await searchParams;
+  const { q = "", category = "", type = "", source = "", designation = "" } = await searchParams;
 
   const where: Record<string, unknown> = {};
   if (q) {
@@ -33,6 +35,8 @@ export default async function CataloguePage({
   }
   if (category) where.category = category;
   if (type) where.type = type;
+  if (designation === "MONOGRAPH" || designation === "SERIAL")
+    where.materialDesignation = designation;
   if (source === "local") where.provider = null;
   else if (source) where.provider = source;
 
@@ -64,14 +68,14 @@ export default async function CataloguePage({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {/* MARC 21 export honours the active filters (SDD: MARC exchange). */}
           <ButtonLink
-            href={`/admin/catalogue/export?${new URLSearchParams({ format: "xml", q, category, type, source })}`}
+            href={`/admin/catalogue/export?${new URLSearchParams({ format: "xml", q, category, type, source, designation })}`}
             variant="ghost"
             className="text-xs"
           >
             ⇑ MARC XML
           </ButtonLink>
           <ButtonLink
-            href={`/admin/catalogue/export?${new URLSearchParams({ format: "mrc", q, category, type, source })}`}
+            href={`/admin/catalogue/export?${new URLSearchParams({ format: "mrc", q, category, type, source, designation })}`}
             variant="ghost"
             className="text-xs"
           >
@@ -102,6 +106,11 @@ export default async function CataloguePage({
             <option key={t} value={t}>{RESOURCE_TYPE_LABELS[t]}</option>
           ))}
         </select>
+        <select name="designation" defaultValue={designation} className={inputCls} aria-label="Material designation">
+          <option value="">Monographs &amp; serials</option>
+          <option value="MONOGRAPH">Monographs only</option>
+          <option value="SERIAL">Serials only</option>
+        </select>
         <select name="source" defaultValue={source} className={inputCls}>
           <option value="">All sources</option>
           <option value="local">Local collection</option>
@@ -112,7 +121,7 @@ export default async function CataloguePage({
         <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover">
           Filter
         </button>
-        {(q || category || type || source) && (
+        {(q || category || type || source || designation) && (
           <Link href="/admin/catalogue" className="px-2 py-2 text-sm text-muted-foreground hover:text-foreground">
             Clear
           </Link>
@@ -145,6 +154,7 @@ export default async function CataloguePage({
                   <p className="truncate text-sm text-muted-foreground">{r.author}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <Badge tone="neutral">{RESOURCE_TYPE_LABELS[r.type] ?? r.type}</Badge>
+                    {r.materialDesignation === "SERIAL" && <Badge tone="primary">Serial</Badge>}
                     <Badge tone="muted">{r.category}</Badge>
                     {r.provider && <Badge tone="accent">{r.provider}</Badge>}
                   </div>

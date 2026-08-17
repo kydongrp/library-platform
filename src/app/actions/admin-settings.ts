@@ -184,26 +184,35 @@ export async function updatePolicy(
     const v = parseInt(String(formData.get(name) ?? ""), 10);
     return Number.isFinite(v) && v >= 0 ? v : fallback;
   };
+  // Fine amounts are entered in dollars and stored in cents.
+  const cents = (name: string, fallback: number) => {
+    const raw = String(formData.get(name) ?? "").replace(/[sS]?\$|,|\s/g, "");
+    if (!/^\d+(\.\d{1,2})?$/.test(raw)) return fallback;
+    const v = Math.round(parseFloat(raw) * 100);
+    return v >= 0 && v <= 100_000_000 ? v : fallback;
+  };
+  /** Blank means "no cap" — stored as null, not zero. */
+  const centsOrNull = (name: string) => {
+    const raw = String(formData.get(name) ?? "").trim();
+    return raw === "" ? null : cents(name, 0);
+  };
+
+  const fields = {
+    loanDays: int("loanDays", 14),
+    maxLoans: int("maxLoans", 5),
+    maxRenewals: int("maxRenewals", 2),
+    renewalDays: int("renewalDays", 14),
+    digitalDays: int("digitalDays", 14),
+    holdPickupDays: int("holdPickupDays", 3),
+    fineCentsPerDay: cents("fineCentsPerDay", 0),
+    fineGraceDays: int("fineGraceDays", 0),
+    maxFineCents: centsOrNull("maxFineCents"),
+  };
 
   await prisma.loanPolicy.upsert({
     where: { memberType },
-    update: {
-      loanDays: int("loanDays", 14),
-      maxLoans: int("maxLoans", 5),
-      maxRenewals: int("maxRenewals", 2),
-      renewalDays: int("renewalDays", 14),
-      digitalDays: int("digitalDays", 14),
-      holdPickupDays: int("holdPickupDays", 3),
-    },
-    create: {
-      memberType,
-      loanDays: int("loanDays", 14),
-      maxLoans: int("maxLoans", 5),
-      maxRenewals: int("maxRenewals", 2),
-      renewalDays: int("renewalDays", 14),
-      digitalDays: int("digitalDays", 14),
-      holdPickupDays: int("holdPickupDays", 3),
-    },
+    update: fields,
+    create: { memberType, ...fields },
   });
   await audit({ action: "policies.update", summary: `Saved loan policy for ${memberType}`, entity: "LoanPolicy", entityId: memberType });
   revalidatePath("/admin/policies");

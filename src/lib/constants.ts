@@ -18,6 +18,7 @@ export const RESOURCE_TYPES = [
   "AUDIOBOOK",
   "JOURNAL",
   "MAGAZINE",
+  "NEWSPAPER",
   "CONFERENCE",
   "STANDARD",
   "DVD",
@@ -30,10 +31,29 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   AUDIOBOOK: "Audiobook",
   JOURNAL: "Journal / Transactions",
   MAGAZINE: "Magazine",
+  NEWSPAPER: "Newspaper",
   CONFERENCE: "Conference paper",
   STANDARD: "Standard",
   DVD: "DVD",
 };
+
+// Bib-level material designation, mirroring how the Vibrante ILS tags every
+// record. A SERIAL is issued in a continuing sequence (journal, magazine,
+// newspaper); a MONOGRAPH is a standalone work.
+export const MATERIAL_DESIGNATIONS = ["MONOGRAPH", "SERIAL"] as const;
+export type MaterialDesignation = (typeof MATERIAL_DESIGNATIONS)[number];
+
+export const MATERIAL_DESIGNATION_LABELS: Record<string, string> = {
+  MONOGRAPH: "Monograph",
+  SERIAL: "Serial",
+};
+
+/** Types that are serials by nature — the default designation for a record. */
+export const SERIAL_TYPES = new Set(["JOURNAL", "MAGAZINE", "NEWSPAPER"]);
+
+export function defaultDesignationFor(type: string): MaterialDesignation {
+  return SERIAL_TYPES.has(type) ? "SERIAL" : "MONOGRAPH";
+}
 
 // Digital types grant instant access and never have physical copies.
 // Scholarly publication formats (commonly supplied by IEEE Xplore et al.)

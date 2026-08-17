@@ -9,6 +9,9 @@ import {
   RESOURCE_TYPE_LABELS,
   DIGITAL_TYPES,
   PROVIDERS,
+  MATERIAL_DESIGNATIONS,
+  MATERIAL_DESIGNATION_LABELS,
+  defaultDesignationFor,
 } from "@/lib/constants";
 import type { ActionState } from "@/lib/types";
 
@@ -32,6 +35,7 @@ type Defaults = {
   coverColor?: string;
   provider?: string | null;
   digitalUrl?: string | null;
+  materialDesignation?: string;
 };
 
 const labelCls = "block text-sm font-medium text-foreground mb-1.5";
@@ -52,6 +56,15 @@ export function ResourceForm({
   const [type, setType] = useState(defaults.type ?? "BOOK");
   const [color, setColor] = useState(defaults.coverColor ?? COLORS[0]);
   const [provider, setProvider] = useState(defaults.provider ?? "");
+  const [designation, setDesignation] = useState(
+    defaults.materialDesignation ?? defaultDesignationFor(defaults.type ?? "BOOK"),
+  );
+  // On an existing record the designation is already deliberate, so changing
+  // the type must not silently rewrite it; on a new record it follows the type
+  // until the cataloguer picks one.
+  const [designationTouched, setDesignationTouched] = useState(
+    defaults.materialDesignation != null,
+  );
   // External-provider or digital-format titles are accessed online, no copies.
   const isDigital = DIGITAL_TYPES.has(type) || provider.trim() !== "";
 
@@ -86,15 +99,35 @@ export function ResourceForm({
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <label className={labelCls} htmlFor="type">Type</label>
                 <select id="type" name="type" value={type}
-                  onChange={(e) => setType(e.target.value)} className={inputCls}>
+                  onChange={(e) => {
+                    setType(e.target.value);
+                    // Keep the bib-level designation in step with the type
+                    // unless a cataloguer has deliberately overridden it.
+                    if (!designationTouched) setDesignation(defaultDesignationFor(e.target.value));
+                  }} className={inputCls}>
                   {RESOURCE_TYPES.map((t) => (
                     <option key={t} value={t}>{RESOURCE_TYPE_LABELS[t]}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className={labelCls} htmlFor="materialDesignation">Material designation</label>
+                <select id="materialDesignation" name="materialDesignation" value={designation}
+                  onChange={(e) => { setDesignation(e.target.value); setDesignationTouched(true); }}
+                  className={inputCls}>
+                  {MATERIAL_DESIGNATIONS.map((d) => (
+                    <option key={d} value={d}>{MATERIAL_DESIGNATION_LABELS[d]}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {designation === "SERIAL"
+                    ? "Issued in a continuing sequence — eligible for issue tracking."
+                    : "A standalone work."}
+                </p>
               </div>
               <div>
                 <label className={labelCls} htmlFor="category">Category</label>

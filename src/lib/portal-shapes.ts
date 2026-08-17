@@ -9,6 +9,7 @@ type ResourceWithCopies = {
   author: string;
   isbn: string | null;
   type: string;
+  materialDesignation: string;
   category: string;
   publisher: string | null;
   publishedYear: number | null;
@@ -36,6 +37,8 @@ export function toPublicResource(r: ResourceWithCopies) {
     author: r.author,
     isbn: r.isbn,
     type: r.type,
+    /** MONOGRAPH | SERIAL — bib-level designation, for portal facets. */
+    materialDesignation: r.materialDesignation,
     category: r.category,
     publisher: r.publisher,
     publishedYear: r.publishedYear,
@@ -62,7 +65,7 @@ export function toPublicResource(r: ResourceWithCopies) {
 /** The `select` matching ResourceWithCopies — pass to prisma queries. */
 export const publicResourceSelect = {
   id: true, title: true, subtitle: true, author: true, isbn: true,
-  type: true, category: true, publisher: true, publishedYear: true,
+  type: true, materialDesignation: true, category: true, publisher: true, publishedYear: true,
   language: true, description: true, digital: true, digitalUrl: true,
   provider: true, licenseSeats: true, editorsPick: true, epBlurb: true,
   epPickedAt: true, createdAt: true, updatedAt: true,

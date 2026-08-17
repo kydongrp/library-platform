@@ -25,7 +25,7 @@ async function requireSerialsEditor(): Promise<{ name: string } | null> {
 
 const NO_PERMISSION = { ok: false as const, message: "You don't have permission to manage serials." };
 const clip = (v: FormDataEntryValue | null, n: number) => String(v ?? "").trim().slice(0, n);
-const SERIAL_TYPES = new Set(["JOURNAL", "MAGAZINE"]);
+// Issue tracking is gated on the bib-level designation, not the format type.
 const MAX_OPEN_ISSUES = 120; // schedule-length backstop per serial
 
 function isUniqueViolation(e: unknown): boolean {
@@ -80,11 +80,14 @@ export async function registerSerial(
 
   const resource = await prisma.resource.findUnique({
     where: { id: resourceId },
-    select: { title: true, type: true },
+    select: { title: true, materialDesignation: true },
   });
   if (!resource) return { ok: false, message: "That title no longer exists." };
-  if (!SERIAL_TYPES.has(resource.type))
-    return { ok: false, message: "Serials track journals and magazines — that title is neither." };
+  if (resource.materialDesignation !== "SERIAL")
+    return {
+      ok: false,
+      message: `"${resource.title}" is catalogued as a monograph — change its material designation to Serial before tracking issues.`,
+    };
 
   // First issue lands ON the chosen date; the rest follow the pattern.
   const first = { seq: 1, label: issueLabel(1, firstExpected), expectedAt: firstExpected };

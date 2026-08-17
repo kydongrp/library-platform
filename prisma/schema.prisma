@@ -19,6 +19,10 @@ model Resource {
   author        String
   isbn          String?
   type          String // BOOK, EBOOK, AUDIOBOOK, JOURNAL, DVD
+  /// Bib-level material designation, as the Vibrante ILS tags every record:
+  /// MONOGRAPH (standalone work) or SERIAL (journal/magazine/newspaper).
+  /// Drives MARC leader/07, catalogue filtering, and serials eligibility.
+  materialDesignation String @default("MONOGRAPH")
   category      String // Area of Interest: Technology, Business, Science, Arts, Fiction, History, Health
   publisher     String?
   publishedYear Int?
@@ -169,12 +173,29 @@ model Loan {
   status     String    @default("ACTIVE") // ACTIVE, RETURNED
   renewals   Int       @default(0)
   recalledAt DateTime? // staff recall (contract FR 8.2) — due date shortened, member notified
+
+  // Return tracking: both axes are recorded at check-in so loan history can
+  // be filtered on either. Timeliness is frozen at return (an ACTIVE loan's
+  // overdue state is computed live instead).
+  returnStatus    String? // ON_TIME, LATE
+  returnCondition String? // GOOD, DAMAGED, LOST
+  returnedBy      String? // staff member who checked it in
+
+  // Fines: accrue live while overdue, assessed onto the loan at check-in.
+  fineCents    Int       @default(0)
+  finePaidAt   DateTime?
+  fineWaivedAt DateTime?
+  fineNote     String?
+
   copyId     String?
   copy       Copy?     @relation(fields: [copyId], references: [id])
   resourceId String
   resource   Resource  @relation(fields: [resourceId], references: [id])
   memberId   String
   member     Member    @relation(fields: [memberId], references: [id])
+
+  @@index([status, dueAt])
+  @@index([returnedAt])
 }
 
 /// A hold placed on a Resource when no copy is currently available.
@@ -234,6 +255,30 @@ model LoanPolicy {
   renewalDays   Int      @default(14)
   digitalDays   Int      @default(14)
   holdPickupDays Int     @default(3) // READY reservations expire after this many days
+
+  // Overdue charges. Fines accrue per OPEN day (library closures are not
+  // chargeable) after the grace period, capped at maxFineCents.
+  fineCentsPerDay Int  @default(0) // 0 = this member type is never fined
+  fineGraceDays   Int  @default(0)
+  maxFineCents    Int? // null = uncapped
+
+  updatedAt     DateTime @updatedAt
+}
+
+/// A day the library is closed: due dates never land on one, fines do not
+/// accrue on one, and hold pickup windows skip them.
+model LibraryClosure {
+  id        String   @id @default(cuid())
+  date      DateTime @unique // date-only, stored at noon UTC
+  name      String // "New Year's Day", "Stocktake"
+  createdAt DateTime @default(now())
+  createdBy String?
+}
+
+/// Single-row service calendar: which weekdays the library is routinely shut.
+model ServiceCalendar {
+  id            String   @id @default("singleton")
+  closedWeekdays Int[]   @default([]) // 0 = Sunday … 6 = Saturday
   updatedAt     DateTime @updatedAt
 }
 

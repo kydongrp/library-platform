@@ -18,6 +18,8 @@ type Seed = {
   author: string;
   isbn?: string;
   type: string;
+  /** MONOGRAPH | SERIAL — omitted means "derive from type". */
+  materialDesignation?: string;
   category: string;
   publisher?: string;
   publishedYear?: number;
@@ -272,6 +274,7 @@ const RESOURCES: Seed[] = [
     subtitle: "International Weekly Journal of Science",
     author: "Springer Nature",
     type: "JOURNAL",
+    materialDesignation: "SERIAL",
     category: "Science",
     publisher: "Springer Nature",
     publishedYear: 2024,
@@ -298,6 +301,7 @@ const RESOURCES: Seed[] = [
     title: "IEEE Transactions on Software Engineering",
     author: "IEEE Computer Society",
     type: "JOURNAL",
+    materialDesignation: "SERIAL",
     category: "Technology",
     publisher: "IEEE",
     publishedYear: 2024,
@@ -313,6 +317,7 @@ const RESOURCES: Seed[] = [
     title: "IEEE Transactions on Neural Networks and Learning Systems",
     author: "IEEE Computational Intelligence Society",
     type: "JOURNAL",
+    materialDesignation: "SERIAL",
     category: "Science",
     publisher: "IEEE",
     publishedYear: 2024,
@@ -360,6 +365,7 @@ const RESOURCES: Seed[] = [
     title: "IEEE Spectrum",
     author: "IEEE",
     type: "MAGAZINE",
+    materialDesignation: "SERIAL",
     category: "Technology",
     publisher: "IEEE",
     publishedYear: 2024,
@@ -375,6 +381,7 @@ const RESOURCES: Seed[] = [
     title: "IEEE Transactions on Power Systems",
     author: "IEEE Power & Energy Society",
     type: "JOURNAL",
+    materialDesignation: "SERIAL",
     category: "Science",
     publisher: "IEEE",
     publishedYear: 2024,
@@ -406,6 +413,7 @@ const RESOURCES: Seed[] = [
     title: "The Structure of Scientific Revolutions Revisited",
     author: "Journal of the History of Ideas",
     type: "JOURNAL",
+    materialDesignation: "SERIAL",
     category: "History",
     publisher: "University of Pennsylvania Press",
     publishedYear: 2019,
@@ -430,6 +438,74 @@ const MEMBERS = [
   { name: "Hana Kimura", email: "hana.kimura@example.edu", memberType: "STUDENT" },
 ];
 
+/**
+ * Service calendar — ensured on EVERY run (idempotent). Only FIXED-DATE
+ * Singapore public holidays are seeded: the lunar and Islamic holidays
+ * (Chinese New Year, Good Friday, Hari Raya, Vesak, Deepavali) shift each
+ * year and are gazetted by MOM, so staff add those on the Calendar page
+ * rather than have the seed guess them wrong and skew due dates.
+ */
+async function ensureServiceCalendar() {
+  await prisma.serviceCalendar.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", closedWeekdays: [0] }, // closed Sundays
+    update: {},
+  });
+
+  const year = new Date().getUTCFullYear();
+  const fixed = [
+    { md: "01-01", name: "New Year's Day" },
+    { md: "05-01", name: "Labour Day" },
+    { md: "08-09", name: "National Day" },
+    { md: "12-25", name: "Christmas Day" },
+  ];
+  for (const y of [year, year + 1]) {
+    for (const h of fixed) {
+      const date = new Date(`${y}-${h.md}T12:00:00Z`);
+      await prisma.libraryClosure.upsert({
+        where: { date },
+        create: { date, name: h.name, createdBy: "seed" },
+        update: {},
+      });
+    }
+  }
+}
+
+/**
+ * Backfills for rows that predate a column — idempotent, runs on EVERY deploy.
+ * Without these, a live database silently reports every historical loan as
+ * on-time and every serial as a monograph.
+ */
+async function ensureBackfills() {
+  // Loans returned before return-tracking shipped: derive timeliness from the
+  // dates (null carries no information, so this can only add truth).
+  const legacyLoans = await prisma.loan.findMany({
+    where: { status: "RETURNED", returnStatus: null },
+    select: { id: true, dueAt: true, returnedAt: true },
+  });
+  for (const l of legacyLoans) {
+    const late = !!l.returnedAt && l.returnedAt.getTime() > l.dueAt.getTime();
+    await prisma.loan.update({
+      where: { id: l.id },
+      data: { returnStatus: late ? "LATE" : "ON_TIME", returnCondition: "GOOD" },
+    });
+  }
+  if (legacyLoans.length)
+    console.log(`Backfilled returnStatus on ${legacyLoans.length} returned loan(s).`);
+
+  // Material designation: only when the catalogue has never been designated
+  // at all, so a cataloguer's deliberate MONOGRAPH on a journal is never
+  // stomped on a later deploy.
+  const anySerial = await prisma.resource.count({ where: { materialDesignation: "SERIAL" } });
+  if (anySerial === 0) {
+    const r = await prisma.resource.updateMany({
+      where: { type: { in: ["JOURNAL", "MAGAZINE", "NEWSPAPER"] } },
+      data: { materialDesignation: "SERIAL" },
+    });
+    if (r.count) console.log(`Backfilled materialDesignation on ${r.count} serial record(s).`);
+  }
+}
+
 /** Built-in member statuses — ensured on EVERY run (idempotent), since the
  *  circulation gate and member forms rely on the table being populated. */
 async function ensureMemberStatuses() {
@@ -446,6 +522,8 @@ async function main() {
   // so redeploys never wipe existing data.
   if (process.env.SEED_IF_EMPTY === "1") {
     await ensureMemberStatuses();
+    await ensureServiceCalendar();
+    await ensureBackfills();
     const existing = await prisma.resource.count();
     if (existing > 0) {
       console.log(`Database already has ${existing} resources — skipping seed.`);
@@ -453,6 +531,8 @@ async function main() {
     }
   } else {
     await ensureMemberStatuses();
+    await ensureServiceCalendar();
+    await ensureBackfills();
   }
 
   console.log("Clearing existing data...");
