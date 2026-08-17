@@ -88,7 +88,61 @@ function marc005(d: Date): string {
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}.0`;
 }
 
-export function toMarcRecord(r: MarcInput): MarcRecord {
+/** A catalogued field, as stored on the record by the MARC editor. */
+export type StoredField = {
+  tag: string;
+  ind1: string;
+  ind2: string;
+  value: string | null;
+  subfields: unknown;
+  seq: number;
+};
+
+/**
+ * Merge catalogued fields over the synthesised ones, PER TAG: if a cataloguer
+ * has entered any 650, their 650s replace the derived one entirely; tags they
+ * haven't touched keep the value derived from the flat columns. That keeps a
+ * plain record exporting sensibly while never contradicting a real catalogue
+ * entry — and it lets a repeatable tag carry as many instances as entered.
+ */
+function applyStoredFields(rec: MarcRecord, stored: StoredField[]): MarcRecord {
+  if (stored.length === 0) return rec;
+
+  const sorted = [...stored].sort((a, b) => a.seq - b.seq || a.tag.localeCompare(b.tag));
+  const controlTags = new Set(sorted.filter((f) => /^00\d$/.test(f.tag)).map((f) => f.tag));
+  const dataTags = new Set(sorted.filter((f) => !/^00\d$/.test(f.tag)).map((f) => f.tag));
+
+  const controls: [string, string][] = rec.controls
+    .filter(([tag]) => !controlTags.has(tag))
+    .concat(
+      sorted
+        .filter((f) => /^00\d$/.test(f.tag))
+        .map((f) => [f.tag, clean(String(f.value ?? ""))] as [string, string]),
+    )
+    .sort((a, b) => a[0].localeCompare(b[0]));
+
+  const fields: DataField[] = rec.fields
+    .filter((f) => !dataTags.has(f.tag))
+    .concat(
+      sorted
+        .filter((f) => !/^00\d$/.test(f.tag))
+        .map((f) => ({
+          tag: f.tag,
+          ind1: (f.ind1 || " ").slice(0, 1),
+          ind2: (f.ind2 || " ").slice(0, 1),
+          subs: (Array.isArray(f.subfields) ? f.subfields : [])
+            .filter((s): s is { code?: unknown; value?: unknown } => !!s && typeof s === "object")
+            .map((s) => [String(s.code ?? "").slice(0, 1), clean(String(s.value ?? ""))] as [string, string])
+            .filter(([code, value]) => code !== "" && value !== ""),
+        }))
+        .filter((f) => f.subs.length > 0),
+    )
+    .sort((a, b) => a.tag.localeCompare(b.tag));
+
+  return { leader: rec.leader, controls, fields };
+}
+
+export function toMarcRecord(r: MarcInput, stored: StoredField[] = []): MarcRecord {
   const authors = r.author.split(";").map((a) => clean(a)).filter(Boolean);
   const controls: [string, string][] = [
     ["001", r.id],
@@ -129,7 +183,7 @@ export function toMarcRecord(r: MarcInput): MarcRecord {
     f("856", "4", "1", ...subs);
   }
 
-  return { leader: leaderFor(r), controls, fields };
+  return applyStoredFields({ leader: leaderFor(r), controls, fields }, stored);
 }
 
 /* ---------- MARCXML (MARC21-slim collection) ---------- */

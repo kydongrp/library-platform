@@ -18,6 +18,7 @@ const ACTION_FAMILIES: { key: string; label: string }[] = [
   { key: "acq", label: "Acquisitions" },
   { key: "calendar", label: "Library Calendar" },
   { key: "items", label: "Items" },
+  { key: "marc", label: "Cataloguing (MARC)" },
   { key: "import", label: "Imports" },
   { key: "circulation", label: "Circulation" },
   { key: "members", label: "Members" },

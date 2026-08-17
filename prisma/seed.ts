@@ -507,6 +507,26 @@ async function ensureBackfills() {
 }
 
 /**
+ * MARC tag definitions — ensured on EVERY run. The cataloguing editor is
+ * unusable without them, and staff edits are preserved (update is empty).
+ */
+async function ensureMarcTagDefs() {
+  const { DEFAULT_TAG_DEFS } = await import("../src/lib/marc-tags");
+  for (const d of DEFAULT_TAG_DEFS) {
+    await prisma.marcTagDef.upsert({
+      where: { tag: d.tag },
+      create: {
+        tag: d.tag, alias: d.alias ?? null, label: d.label,
+        description: d.description ?? null, repeatable: d.repeatable ?? false,
+        isControl: d.isControl ?? false, local: d.local ?? false,
+        subfields: d.subfields ?? [], sortOrder: d.sortOrder,
+      },
+      update: {},
+    });
+  }
+}
+
+/**
  * Item-level code lists — ensured on EVERY run. Item types are what the loan
  * policy matrix keys on, so an empty table would leave the matrix unusable.
  */
@@ -555,6 +575,7 @@ async function main() {
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();
+    await ensureMarcTagDefs();
     const existing = await prisma.resource.count();
     if (existing > 0) {
       console.log(`Database already has ${existing} resources — skipping seed.`);
@@ -565,6 +586,7 @@ async function main() {
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();
+    await ensureMarcTagDefs();
   }
 
   console.log("Clearing existing data...");

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { Card, Badge, BookCover } from "@/components/ui";
 import { SubmitButton } from "@/components/forms";
-import { AddCopiesForm, EditResourceSection } from "./sections";
+import { AddCopiesForm, EditResourceSection, MarcRecordSection } from "./sections";
 import {
   setCopyStatus,
   deleteCopy,
@@ -38,11 +38,14 @@ export default async function ResourceDetailPage({
     where: { id },
     include: {
       copies: { orderBy: { barcode: "asc" }, include: { loans: { where: { status: "ACTIVE" }, include: { member: true } } } },
+      marcFields: { orderBy: { seq: "asc" } },
       _count: { select: { loans: true, reservations: { where: { status: { in: ["PENDING", "READY"] } } } } },
     },
   });
 
   if (!resource) notFound();
+
+  const tagDefs = await prisma.marcTagDef.findMany({ orderBy: { sortOrder: "asc" } });
   const digital = isDigital(resource);
 
   return (
@@ -165,6 +168,12 @@ export default async function ResourceDetailPage({
 
       {/* Edit details */}
       <EditResourceSection resource={resource} />
+
+      <MarcRecordSection
+        resourceId={resource.id}
+        fields={resource.marcFields}
+        tagDefs={tagDefs}
+      />
 
       {/* Danger zone */}
       <Card className="mt-6 border-red-200 p-5">

@@ -44,17 +44,20 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const resources = await prisma.resource.findMany({
     where,
+    // Catalogued MARC fields override the synthesised ones, per tag.
+    include: { marcFields: { orderBy: { seq: "asc" } } },
     orderBy: { title: "asc" },
     take: EXPORT_MAX,
   });
 
-  const records = resources.map(toMarcRecord);
+  const records = resources.map((r) => toMarcRecord(r, r.marcFields));
+  const catalogued = resources.filter((r) => r.marcFields.length > 0).length;
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const filters = [q && `q=${q}`, category, type, source].filter(Boolean).join(", ");
 
   await audit({
     action: "catalogue.exportMarc",
-    summary: `Exported ${records.length} record${records.length === 1 ? "" : "s"} as MARC 21 (${format.toUpperCase()})${filters ? ` — filters: ${filters}` : ""}`,
+    summary: `Exported ${records.length} record${records.length === 1 ? "" : "s"} as MARC 21 (${format.toUpperCase()}), ${catalogued} with catalogued fields${filters ? ` — filters: ${filters}` : ""}`,
     entity: "Resource",
   });
 

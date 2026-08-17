@@ -49,6 +49,7 @@ model Resource {
   epSubmissions EpSubmission[]
   epSuggestionDismissal EpSuggestionDismissal?
   serial        Serial?
+  marcFields    MarcField[]
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -74,6 +75,90 @@ model Copy {
   @@index([status])
   @@index([collectionId])
   @@index([locationId])
+}
+
+/// Configurable MARC tag definition (Vibrant: Information Context). Drives
+/// the cataloguing editor: which tags exist, what they are called, whether
+/// they repeat, and which subfields they carry.
+model MarcTagDef {
+  id          String   @id @default(cuid())
+  tag         String   @unique // "245", "650", "950" (local block)
+  alias       String? // short name used by staff, e.g. "StandardsforITT"
+  label       String // display label in the editor
+  description String?
+  repeatable  Boolean  @default(false)
+  isControl   Boolean  @default(false) // 00X: no indicators, no subfields
+  /// [{ code, label, repeatable }] — the subfields this tag may carry.
+  subfields   Json     @default("[]")
+  local       Boolean  @default(false) // 9XX local-use tags
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+/// One MARC field instance on a bibliographic record. Repeatable by design:
+/// a record may carry many 650s, many 856s, and so on.
+model MarcField {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  tag        String
+  ind1       String   @default(" ")
+  ind2       String   @default(" ")
+  value      String? // control fields (00X) only
+  /// [{ code, value }] in cataloguer-entered order.
+  subfields  Json     @default("[]")
+  seq        Int      @default(0) // display order within the record
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([resourceId, tag])
+  @@index([tag])
+}
+
+/// Category of controlled heading (Vibrant: Authority Types).
+model AuthorityType {
+  id          String      @id @default(cuid())
+  code        String      @unique // PERS, CORP, SUBJ, CURATOR
+  name        String
+  marcTag     String? // the bib tag it controls, e.g. "100" or "650"
+  createdAt   DateTime    @default(now())
+  authorities Authority[]
+}
+
+/// A controlled heading. `uri` holds external linked data — the live system
+/// points name authorities at OCLC WorldCat.
+model Authority {
+  id        String        @id @default(cuid())
+  typeId    String
+  type      AuthorityType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  heading   String
+  seeAlso   String? // cross-reference: "use for" / variant form
+  uri       String? // e.g. https://id.oclc.org/worldcat/entity/…
+  note      String?
+  createdAt DateTime      @default(now())
+
+  @@unique([typeId, heading])
+  @@index([heading])
+}
+
+/// Domain code (Vibrant: Domain Code) — the DSTA subject taxonomy that the
+/// custom bib tags reference.
+model DomainCode {
+  id        String          @id @default(cuid())
+  code      String          @unique
+  name      String
+  createdAt DateTime        @default(now())
+  topics    InterestTopic[]
+}
+
+/// An area of interest hanging off a domain code (Vibrant: Interest Topic).
+model InterestTopic {
+  id       String     @id @default(cuid())
+  name     String
+  domainId String
+  domain   DomainCode @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, name])
 }
 
 /// A collection code grouping items (Reference, Reserve, General…). May cap
