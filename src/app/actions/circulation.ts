@@ -33,8 +33,12 @@ export async function checkout(
 
   const member = await prisma.member.findUnique({ where: { id: memberId } });
   if (!member) return { ok: false, message: "Member not found." };
-  if (member.status !== "ACTIVE")
-    return { ok: false, message: `${member.name}'s account is suspended.` };
+  // Custom statuses carry their own borrowing rule; a legacy status with no
+  // row only borrows if it reads as active.
+  const statusRow = await prisma.memberStatus.findUnique({ where: { name: member.status } });
+  const canBorrow = statusRow?.canBorrow ?? /^active$/i.test(member.status);
+  if (!canBorrow)
+    return { ok: false, message: `${member.name}'s account status "${member.status}" does not allow borrowing.` };
 
   const policy = await policyFor(member.memberType);
   // Member-specific override wins when set higher/lower than the policy.

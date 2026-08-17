@@ -430,15 +430,29 @@ const MEMBERS = [
   { name: "Hana Kimura", email: "hana.kimura@example.edu", memberType: "STUDENT" },
 ];
 
+/** Built-in member statuses — ensured on EVERY run (idempotent), since the
+ *  circulation gate and member forms rely on the table being populated. */
+async function ensureMemberStatuses() {
+  for (const s of [
+    { name: "Active", canBorrow: true, isDefault: true, note: "Built-in default" },
+    { name: "Suspended", canBorrow: false, isDefault: false, note: "Built-in: borrowing blocked" },
+  ]) {
+    await prisma.memberStatus.upsert({ where: { name: s.name }, create: s, update: {} });
+  }
+}
+
 async function main() {
   // When invoked from the build (SEED_IF_EMPTY=1), only seed a fresh database
   // so redeploys never wipe existing data.
   if (process.env.SEED_IF_EMPTY === "1") {
+    await ensureMemberStatuses();
     const existing = await prisma.resource.count();
     if (existing > 0) {
       console.log(`Database already has ${existing} resources — skipping seed.`);
       return;
     }
+  } else {
+    await ensureMemberStatuses();
   }
 
   console.log("Clearing existing data...");

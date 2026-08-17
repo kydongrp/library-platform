@@ -57,6 +57,9 @@ export const MEMBER_TYPE_LABELS: Record<string, string> = {
   EXTERNAL: "External",
 };
 
+// Notice/preference languages offered on member records (SG official languages).
+export const MEMBER_LANGUAGES = ["English", "Chinese", "Malay", "Tamil"] as const;
+
 // Circulation rules now live in the LoanPolicy table (see src/lib/policies.ts),
 // editable from Admin → Loan Policies.
 

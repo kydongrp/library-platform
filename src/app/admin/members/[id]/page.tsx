@@ -19,22 +19,29 @@ export default async function MemberDetailPage({
 
   const { id } = await params;
 
-  const member = await prisma.member.findUnique({
-    where: { id },
-    include: {
-      loans: {
-        include: { resource: true },
-        orderBy: [{ status: "asc" }, { borrowedAt: "desc" }],
+  const [member, statuses] = await Promise.all([
+    prisma.member.findUnique({
+      where: { id },
+      include: {
+        loans: {
+          include: { resource: true },
+          orderBy: [{ status: "asc" }, { borrowedAt: "desc" }],
+        },
+        reservations: {
+          where: { status: { in: ["PENDING", "READY"] } },
+          include: { resource: true },
+          orderBy: { reservedAt: "asc" },
+        },
       },
-      reservations: {
-        where: { status: { in: ["PENDING", "READY"] } },
-        include: { resource: true },
-        orderBy: { reservedAt: "asc" },
-      },
-    },
-  });
+    }),
+    prisma.memberStatus.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { name: true, canBorrow: true, isDefault: true },
+    }),
+  ]);
 
   if (!member) notFound();
+  const statusRow = statuses.find((s) => s.name === member.status);
 
   const activeLoans = member.loans.filter((l) => l.status === "ACTIVE");
   const pastLoans = member.loans.filter((l) => l.status === "RETURNED");
@@ -52,10 +59,19 @@ export default async function MemberDetailPage({
         <div>
           <h1 className="font-display text-3xl font-semibold">{member.name}</h1>
           <p className="text-muted-foreground">{member.email}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {[member.phone, member.department, member.location, member.language]
+              .filter(Boolean)
+              .join(" · ") || "No contact details on file"}
+          </p>
         </div>
         <div className="ml-auto flex flex-col items-end gap-1.5">
           <Badge tone="neutral">{MEMBER_TYPE_LABELS[member.memberType]}</Badge>
-          {member.status === "SUSPENDED" ? <Badge tone="danger">Suspended</Badge> : <Badge tone="success">Active</Badge>}
+          {statusRow?.canBorrow === false ? (
+            <Badge tone="danger">✕ {member.status}</Badge>
+          ) : (
+            <Badge tone="success">✓ {member.status}</Badge>
+          )}
         </div>
       </div>
 
@@ -126,12 +142,17 @@ export default async function MemberDetailPage({
         <h2 className="mb-4 font-display text-lg font-semibold">Edit member</h2>
         <MemberForm
           action={updateMember}
+          statuses={statuses}
           defaults={{
             id: member.id,
             name: member.name,
             email: member.email,
             memberType: member.memberType,
             status: member.status,
+            phone: member.phone ?? "",
+            language: member.language,
+            location: member.location ?? "",
+            department: member.department ?? "",
             maxLoans: member.maxLoans,
           }}
           submitLabel="Save changes"

@@ -59,13 +59,29 @@ model Copy {
   loans      Loan[]
 }
 
+/// A configurable member status (beyond the built-in Active/Suspended).
+/// canBorrow drives the circulation gate; exactly one status is the default
+/// for new and imported members.
+model MemberStatus {
+  id        String   @id @default(cuid())
+  name      String   @unique // display name, e.g. "Active", "Alumni", "On exchange"
+  canBorrow Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  note      String?
+  createdAt DateTime @default(now())
+}
+
 /// A library patron who can borrow and reserve resources.
 model Member {
   id           String        @id @default(cuid())
   name         String
   email        String        @unique
   memberType   String        @default("STUDENT") // STAFF, STUDENT, EXTERNAL
-  status       String        @default("ACTIVE") // ACTIVE, SUSPENDED
+  status       String        @default("Active") // references MemberStatus.name
+  phone        String?
+  language     String        @default("English") // notice/preference language
+  location     String? // campus / site / branch
+  department   String?
   maxLoans     Int           @default(5)
   joinedAt     DateTime      @default(now())
   tcAcceptedAt DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)

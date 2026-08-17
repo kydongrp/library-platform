@@ -132,9 +132,13 @@ export async function runEodProcess(
     }
   }
 
-  // 3. Welcome new members (joined in the last day).
+  // 3. Welcome new members (joined in the last day). Nudges only go to
+  // members whose status allows borrowing (custom statuses may not).
+  const borrowableStatuses = (
+    await prisma.memberStatus.findMany({ where: { canBorrow: true }, select: { name: true } })
+  ).map((s) => s.name);
   const newMembers = await prisma.member.findMany({
-    where: { joinedAt: { gte: since }, status: "ACTIVE" },
+    where: { joinedAt: { gte: since }, status: { in: borrowableStatuses } },
   });
   for (const m of newMembers) {
     if (alreadySent.has(`WELCOME:${m.id}:`) || recent.some((n) => n.type === "WELCOME" && n.memberId === m.id)) continue;
@@ -145,7 +149,7 @@ export async function runEodProcess(
   // 4. Inactive members: no loan activity for N months.
   const cutoff = new Date(Date.now() - INACTIVE_MONTHS * 30 * DAY);
   const members = await prisma.member.findMany({
-    where: { status: "ACTIVE" },
+    where: { status: { in: borrowableStatuses } },
     include: { loans: { orderBy: { borrowedAt: "desc" }, take: 1 } },
   });
   for (const m of members) {
