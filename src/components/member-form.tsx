@@ -27,11 +27,16 @@ const inputCls =
 export function MemberForm({
   action,
   statuses,
+  locations = [],
+  departments = [],
   defaults = {},
   submitLabel = "Save",
 }: {
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   statuses: StatusOption[];
+  /** Managed registration lists; empty = the field falls back to free text. */
+  locations?: string[];
+  departments?: string[];
   defaults?: Defaults;
   submitLabel?: string;
 }) {
@@ -73,16 +78,20 @@ export function MemberForm({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className={labelCls} htmlFor="location">Location (campus / site)</label>
-              <input id="location" name="location" defaultValue={defaults.location ?? ""}
-                placeholder="e.g. Depot Road Campus" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls} htmlFor="department">Department</label>
-              <input id="department" name="department" defaultValue={defaults.department ?? ""}
-                placeholder="e.g. Engineering Faculty" className={inputCls} />
-            </div>
+            <RegListField
+              id="location"
+              label="Location (campus / site)"
+              options={locations}
+              current={defaults.location ?? ""}
+              placeholder="e.g. Depot Road Campus"
+            />
+            <RegListField
+              id="department"
+              label="Department"
+              options={departments}
+              current={defaults.department ?? ""}
+              placeholder="e.g. Engineering Faculty"
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -126,5 +135,48 @@ export function MemberForm({
         </>
       )}
     </StatefulForm>
+  );
+}
+
+/**
+ * A registration list field: a select over the managed list when one exists
+ * (rows 42-43), a free-text input otherwise. A member's current value that is
+ * no longer on the list stays selectable, so editing never silently drops it.
+ */
+function RegListField({
+  id,
+  label,
+  options,
+  current,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  options: string[];
+  current: string;
+  placeholder: string;
+}) {
+  if (options.length === 0) {
+    return (
+      <div>
+        <label className={labelCls} htmlFor={id}>{label}</label>
+        <input id={id} name={id} defaultValue={current} placeholder={placeholder} className={inputCls} />
+      </div>
+    );
+  }
+  const withCurrent = current && !options.includes(current) ? [current, ...options] : options;
+  return (
+    <div>
+      <label className={labelCls} htmlFor={id}>{label}</label>
+      <select id={id} name={id} defaultValue={current} className={inputCls}>
+        <option value="">Not specified</option>
+        {withCurrent.map((o) => (
+          <option key={o} value={o}>
+            {o}
+            {current === o && !options.includes(o) ? " (no longer on the list)" : ""}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

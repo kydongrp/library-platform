@@ -567,11 +567,45 @@ async function ensureMemberStatuses() {
   }
 }
 
+// Rows 42-43: start the registration lists from the values members already
+// carry, so the form's selects reflect reality on day one. Idempotent.
+async function ensureMemberRegLists() {
+  const [locs, depts] = await Promise.all([
+    prisma.member.findMany({
+      where: { location: { not: null } },
+      select: { location: true },
+      distinct: ["location"],
+    }),
+    prisma.member.findMany({
+      where: { department: { not: null } },
+      select: { department: true },
+      distinct: ["department"],
+    }),
+  ]);
+  for (const l of locs) {
+    if (!l.location?.trim()) continue;
+    await prisma.memberLocation.upsert({
+      where: { name: l.location.trim() },
+      create: { name: l.location.trim() },
+      update: {},
+    });
+  }
+  for (const d of depts) {
+    if (!d.department?.trim()) continue;
+    await prisma.memberDepartment.upsert({
+      where: { name: d.department.trim() },
+      create: { name: d.department.trim() },
+      update: {},
+    });
+  }
+}
+
 async function main() {
   // When invoked from the build (SEED_IF_EMPTY=1), only seed a fresh database
   // so redeploys never wipe existing data.
   if (process.env.SEED_IF_EMPTY === "1") {
     await ensureMemberStatuses();
+    await ensureMemberRegLists();
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();
@@ -583,6 +617,7 @@ async function main() {
     }
   } else {
     await ensureMemberStatuses();
+    await ensureMemberRegLists();
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();

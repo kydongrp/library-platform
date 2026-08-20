@@ -4,10 +4,16 @@ import { prisma } from "@/lib/db";
 import { canEdit } from "@/lib/admin-session";
 import { Card, Badge, ButtonLink, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
-import { toggleStatusBorrow, makeDefaultStatus, deleteMemberStatus } from "@/app/actions/members";
+import {
+  toggleStatusBorrow,
+  makeDefaultStatus,
+  deleteMemberStatus,
+  deleteMemberLocation,
+  deleteMemberDepartment,
+} from "@/app/actions/members";
 import { MEMBER_TYPE_LABELS } from "@/lib/constants";
 import { initials, formatDate } from "@/lib/format";
-import { StatusForm, ImportMembersForm } from "./widgets";
+import { StatusForm, ImportMembersForm, RegListForm } from "./widgets";
 
 type SearchParams = Promise<{ q?: string; status?: string }>;
 
@@ -21,7 +27,7 @@ export default async function MembersPage({
 
   const { q = "", status: statusFilter = "" } = await searchParams;
 
-  const [members, statuses, statusCounts] = await Promise.all([
+  const [members, statuses, statusCounts, locations, departments] = await Promise.all([
     prisma.member.findMany({
       where: {
         ...(q
@@ -40,6 +46,8 @@ export default async function MembersPage({
     }),
     prisma.memberStatus.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.member.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.memberLocation.findMany({ orderBy: { name: "asc" } }),
+    prisma.memberDepartment.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const canBorrowByName = new Map(statuses.map((s) => [s.name, s.canBorrow]));
@@ -158,6 +166,67 @@ export default async function MembersPage({
             </ul>
             <div className="mt-4 border-t border-border pt-4">
               <StatusForm />
+            </div>
+          </Card>
+
+          {/* Registration code lists (rows 42-43) */}
+          <Card className="p-5">
+            <h2 className="mb-1 font-display text-lg font-semibold">Locations &amp; departments</h2>
+            <p className="mb-3 text-xs text-muted-foreground">
+              The choices the member form offers at registration. Removing an
+              entry never edits members — they keep the value on their record.
+            </p>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Locations
+                </h3>
+                <ul className="divide-y divide-border">
+                  {locations.length === 0 && (
+                    <li className="py-2 text-xs text-muted-foreground">
+                      None yet — the form falls back to free text.
+                    </li>
+                  )}
+                  {locations.map((l) => (
+                    <li key={l.id} className="flex items-center justify-between gap-2 py-1.5">
+                      <span className="text-sm">{l.name}</span>
+                      <ActionButton action={deleteMemberLocation} fields={{ id: l.id }} variant="ghost"
+                        className="!px-2 !py-1 text-xs text-red-700" pendingLabel="…"
+                        confirm={`Remove "${l.name}" from the list?`}>
+                        Remove
+                      </ActionButton>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 border-t border-border pt-3">
+                  <RegListForm kind="location" />
+                </div>
+              </div>
+              <div>
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Departments
+                </h3>
+                <ul className="divide-y divide-border">
+                  {departments.length === 0 && (
+                    <li className="py-2 text-xs text-muted-foreground">
+                      None yet — the form falls back to free text.
+                    </li>
+                  )}
+                  {departments.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between gap-2 py-1.5">
+                      <span className="text-sm">{d.name}</span>
+                      <ActionButton action={deleteMemberDepartment} fields={{ id: d.id }} variant="ghost"
+                        className="!px-2 !py-1 text-xs text-red-700" pendingLabel="…"
+                        confirm={`Remove "${d.name}" from the list?`}>
+                        Remove
+                      </ActionButton>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 border-t border-border pt-3">
+                  <RegListForm kind="department" />
+                </div>
+              </div>
             </div>
           </Card>
 

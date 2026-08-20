@@ -1,7 +1,12 @@
 "use client";
 
 import { StatefulForm, SubmitButton } from "@/components/forms";
-import { createMemberStatus, importMembers } from "@/app/actions/members";
+import {
+  createMemberStatus,
+  importMembers,
+  createMemberLocation,
+  createMemberDepartment,
+} from "@/app/actions/members";
 
 const fieldCls =
   "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -62,6 +67,32 @@ export function ImportMembersForm() {
             <p className="text-sm text-green-700">{state.message}</p>
           )}
           <div><SubmitButton pendingLabel="Importing…">⇪ Import members</SubmitButton></div>
+        </div>
+      )}
+    </StatefulForm>
+  );
+}
+
+export function RegListForm({ kind }: { kind: "location" | "department" }) {
+  return (
+    <StatefulForm action={kind === "location" ? createMemberLocation : createMemberDepartment}>
+      {(state) => (
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label htmlFor={`rl-${kind}`} className={labelCls}>
+              Add a {kind}
+            </label>
+            <input
+              id={`rl-${kind}`}
+              name="name"
+              placeholder={kind === "location" ? "Depot Road Campus" : "Business School"}
+              className={fieldCls}
+            />
+          </div>
+          <SubmitButton pendingLabel="…">Add</SubmitButton>
+          {state.ok === false && state.message && (
+            <p className="w-full text-xs text-red-700">{state.message}</p>
+          )}
         </div>
       )}
     </StatefulForm>

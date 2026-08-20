@@ -20,7 +20,7 @@ export default async function MemberDetailPage({
 
   const { id } = await params;
 
-  const [member, statuses] = await Promise.all([
+  const [member, statuses, regLocations, regDepartments] = await Promise.all([
     prisma.member.findUnique({
       where: { id },
       include: {
@@ -39,6 +39,8 @@ export default async function MemberDetailPage({
       orderBy: { createdAt: "asc" },
       select: { name: true, canBorrow: true, isDefault: true },
     }),
+    prisma.memberLocation.findMany({ orderBy: { name: "asc" }, select: { name: true } }),
+    prisma.memberDepartment.findMany({ orderBy: { name: "asc" }, select: { name: true } }),
   ]);
 
   if (!member) notFound();
@@ -205,6 +207,8 @@ export default async function MemberDetailPage({
         <MemberForm
           action={updateMember}
           statuses={statuses}
+          locations={regLocations.map((l) => l.name)}
+          departments={regDepartments.map((d) => d.name)}
           defaults={{
             id: member.id,
             name: member.name,

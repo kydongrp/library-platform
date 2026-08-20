@@ -214,6 +214,64 @@ export async function deleteMemberStatus(
   return { ok: true, message: `Status "${s.name}" deleted.` };
 }
 
+/* ---------- Location and department code lists (rows 42-43) ---------- */
+
+type RegListKind = "location" | "department";
+
+async function createRegRow(kind: RegListKind, formData: FormData): Promise<ActionState> {
+  if (!(await canEditMembers()))
+    return { ok: false, message: `You don't have permission to manage member ${kind}s.` };
+  const name = clip(formData.get("name"), 80);
+  if (!name) return { ok: false, message: `Give the ${kind} a name.` };
+  const table = kind === "location" ? prisma.memberLocation : prisma.memberDepartment;
+  try {
+    await (table as typeof prisma.memberLocation).create({ data: { name } });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { ok: false, message: `"${name}" already exists.` };
+    throw e;
+  }
+  await audit({
+    action: `members.${kind}.create`,
+    summary: `Added member ${kind} "${name}"`,
+    entity: kind === "location" ? "MemberLocation" : "MemberDepartment",
+  });
+  revalidatePath("/admin/members");
+  return { ok: true, message: `"${name}" added.` };
+}
+
+export async function createMemberLocation(_p: ActionState, f: FormData): Promise<ActionState> {
+  return createRegRow("location", f);
+}
+export async function createMemberDepartment(_p: ActionState, f: FormData): Promise<ActionState> {
+  return createRegRow("department", f);
+}
+
+async function deleteRegRow(kind: RegListKind, formData: FormData): Promise<ActionState> {
+  if (!(await canEditMembers()))
+    return { ok: false, message: `You don't have permission to manage member ${kind}s.` };
+  const id = clip(formData.get("id"), 40);
+  const table = kind === "location" ? prisma.memberLocation : prisma.memberDepartment;
+  const row = await (table as typeof prisma.memberLocation).findUnique({ where: { id } });
+  if (!row) return { ok: false, message: "That entry no longer exists." };
+  // Members keep their stored value; the list only drives the form's choices.
+  await (table as typeof prisma.memberLocation).delete({ where: { id } });
+  await audit({
+    action: `members.${kind}.delete`,
+    summary: `Removed member ${kind} "${row.name}" from the registration list`,
+    entity: kind === "location" ? "MemberLocation" : "MemberDepartment",
+    entityId: id,
+  });
+  revalidatePath("/admin/members");
+  return { ok: true, message: `"${row.name}" removed. Members that used it keep it on their record.` };
+}
+
+export async function deleteMemberLocation(_p: ActionState, f: FormData): Promise<ActionState> {
+  return deleteRegRow("location", f);
+}
+export async function deleteMemberDepartment(_p: ActionState, f: FormData): Promise<ActionState> {
+  return deleteRegRow("department", f);
+}
+
 /* ---------- Bulk import ---------- */
 
 export async function importMembers(

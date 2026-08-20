@@ -222,6 +222,21 @@ model MemberStatus {
   createdAt DateTime @default(now())
 }
 
+// Managed code lists for membership registration (SDD rows 42-43). Members
+// keep plain-string location/department (bulk import stays free text); these
+// lists drive the choices the member form offers.
+model MemberLocation {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "Depot Road Campus"
+  createdAt DateTime @default(now())
+}
+
+model MemberDepartment {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "Business School"
+  createdAt DateTime @default(now())
+}
+
 /// A library patron who can borrow and reserve resources.
 model Member {
   id            String            @id @default(cuid())
