@@ -567,6 +567,37 @@ async function ensureMemberStatuses() {
   }
 }
 
+// Rows 10-11: default search configuration. Modest English stop list plus
+// the British/American pairs a library catalogue actually hits. Idempotent;
+// staff edits (removals show up as absent rows) are respected because these
+// upserts never delete.
+const DEFAULT_STOP_WORDS = [
+  "a", "an", "the", "and", "or", "of", "in", "on", "for", "to",
+  "with", "by", "at", "from", "as", "is", "are", "be", "its",
+];
+const DEFAULT_VARIANTS: [string, string][] = [
+  ["catalogue", "catalog"], ["colour", "color"], ["organisation", "organization"],
+  ["organise", "organize"], ["analyse", "analyze"], ["centre", "center"],
+  ["defence", "defense"], ["programme", "program"], ["behaviour", "behavior"],
+  ["labour", "labor"], ["grey", "gray"], ["theatre", "theater"],
+];
+
+async function ensureSearchConfig() {
+  // Only seed on first run: an empty StopWord table with a marker row absent
+  // cannot be told apart from "staff deleted everything", so we gate on both
+  // tables being empty (the untouched state).
+  const [sw, vs] = await Promise.all([prisma.stopWord.count(), prisma.variantSpelling.count()]);
+  if (sw > 0 || vs > 0) return;
+  await prisma.stopWord.createMany({
+    data: DEFAULT_STOP_WORDS.map((word) => ({ word })),
+    skipDuplicates: true,
+  });
+  await prisma.variantSpelling.createMany({
+    data: DEFAULT_VARIANTS.map(([word, variant]) => ({ word, variant })),
+    skipDuplicates: true,
+  });
+}
+
 // Rows 42-43: start the registration lists from the values members already
 // carry, so the form's selects reflect reality on day one. Idempotent.
 async function ensureMemberRegLists() {
@@ -606,6 +637,7 @@ async function main() {
   if (process.env.SEED_IF_EMPTY === "1") {
     await ensureMemberStatuses();
     await ensureMemberRegLists();
+    await ensureSearchConfig();
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();
@@ -618,6 +650,7 @@ async function main() {
   } else {
     await ensureMemberStatuses();
     await ensureMemberRegLists();
+    await ensureSearchConfig();
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();

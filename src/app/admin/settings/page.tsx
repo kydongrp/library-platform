@@ -2,6 +2,7 @@ import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { GroupMatrix, NewGroupForm, AdminUsersSection } from "./sections";
+import { SearchConfigSection } from "./search-config";
 
 export const dynamic = "force-dynamic";
 
@@ -9,12 +10,14 @@ export default async function AdminSettingsPage() {
   const admin = await requireAdminView("ADMIN");
   const editable = canEdit(admin, "ADMIN");
 
-  const [groups, users] = await Promise.all([
+  const [groups, users, stopWords, variants] = await Promise.all([
     prisma.adminGroup.findMany({
       include: { permissions: true, _count: { select: { users: true } } },
       orderBy: { name: "asc" },
     }),
     prisma.adminUser.findMany({ include: { group: true }, orderBy: { name: "asc" } }),
+    prisma.stopWord.findMany({ orderBy: { word: "asc" } }),
+    prisma.variantSpelling.findMany({ orderBy: [{ word: "asc" }, { variant: "asc" }] }),
   ]);
 
   return (
@@ -60,6 +63,14 @@ export default async function AdminSettingsPage() {
             />
           ))}
         </div>
+      </div>
+
+      <div className="mt-8">
+        <SearchConfigSection
+          stopWords={stopWords.map((w) => ({ id: w.id, word: w.word }))}
+          variants={variants.map((v) => ({ id: v.id, word: v.word, variant: v.variant }))}
+          readOnly={!editable}
+        />
       </div>
     </div>
   );

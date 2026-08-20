@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { bibSearchWhere } from "@/lib/search-config";
 import { authenticatePortalRequest, apiError } from "@/lib/portal-auth";
 import { toPublicResource, publicResourceSelect } from "@/lib/portal-shapes";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
@@ -42,12 +43,8 @@ export async function GET(request: Request) {
 
   const where: Record<string, unknown> = {};
   if (q) {
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { author: { contains: q, mode: "insensitive" } },
-      { isbn: { contains: q, mode: "insensitive" } },
-      { publisher: { contains: q, mode: "insensitive" } },
-    ];
+    // Token search with stop words dropped and variant spellings expanded.
+    Object.assign(where, await bibSearchWhere(q, ["title", "author", "isbn", "publisher"]));
   }
   if (category) where.category = category;
   if (type) where.type = type;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin, canView } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
+import { bibSearchWhere } from "@/lib/search-config";
 import { audit } from "@/lib/audit";
 import { toMarcRecord, toMarcXml, toMarc2709 } from "@/lib/marc";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
@@ -29,11 +30,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const where: Record<string, unknown> = {};
   if (q) {
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { author: { contains: q, mode: "insensitive" } },
-      { isbn: { contains: q, mode: "insensitive" } },
-    ];
+    // Token search with stop words dropped and variant spellings expanded.
+    Object.assign(where, await bibSearchWhere(q, ["title", "author", "isbn"]));
   }
   if (category && (CATEGORIES as readonly string[]).includes(category)) where.category = category;
   if (type && (RESOURCE_TYPES as readonly string[]).includes(type)) where.type = type;

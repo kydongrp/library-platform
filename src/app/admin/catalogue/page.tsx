@@ -1,6 +1,7 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { bibSearchWhere } from "@/lib/search-config";
 import { Card, Badge, ButtonLink, BookCover, EmptyState } from "@/components/ui";
 import {
   CATEGORIES,
@@ -27,11 +28,8 @@ export default async function CataloguePage({
 
   const where: Record<string, unknown> = {};
   if (q) {
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { author: { contains: q, mode: "insensitive" } },
-      { isbn: { contains: q, mode: "insensitive" } },
-    ];
+    // Token search with stop words dropped and variant spellings expanded.
+    Object.assign(where, await bibSearchWhere(q, ["title", "author", "isbn"]));
   }
   if (category) where.category = category;
   if (type) where.type = type;

@@ -225,6 +225,23 @@ model MemberStatus {
 // Managed code lists for membership registration (SDD rows 42-43). Members
 // keep plain-string location/department (bulk import stays free text); these
 // lists drive the choices the member form offers.
+// Search configuration (SDD rows 10-11). Stop words are dropped from search
+// queries; variant spellings expand a token so either form finds the other.
+model StopWord {
+  id        String   @id @default(cuid())
+  word      String   @unique // stored lowercase
+  createdAt DateTime @default(now())
+}
+
+model VariantSpelling {
+  id        String   @id @default(cuid())
+  word      String // stored lowercase, e.g. "catalogue"
+  variant   String // stored lowercase, e.g. "catalog"
+  createdAt DateTime @default(now())
+
+  @@unique([word, variant])
+}
+
 model MemberLocation {
   id        String   @id @default(cuid())
   name      String   @unique // e.g. "Depot Road Campus"

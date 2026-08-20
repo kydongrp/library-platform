@@ -260,3 +260,77 @@ export async function updateTemplate(
   revalidatePath("/admin/templates");
   return { ok: true, message: "Template saved." };
 }
+
+/* ---------- Search configuration: stop words + variant spellings ---------- */
+
+const wordClip = (v: FormDataEntryValue | null) =>
+  String(v ?? "").trim().toLowerCase().slice(0, 40);
+
+export async function addStopWord(_p: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "ADMIN")) return { ok: false, message: "You don't have permission." };
+  const word = wordClip(formData.get("word")).replace(/[^\p{L}\p{N}]/gu, "");
+  if (!word) return { ok: false, message: "Type a word (letters and digits only)." };
+  try {
+    await prisma.stopWord.create({ data: { word } });
+  } catch (e) {
+    if (typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002")
+      return { ok: false, message: `"${word}" is already a stop word.` };
+    throw e;
+  }
+  await audit({ action: "search.stopword.add", summary: `Added stop word "${word}"`, entity: "StopWord" });
+  revalidatePath("/admin/settings");
+  return { ok: true, message: `"${word}" added to the stop list.` };
+}
+
+export async function removeStopWord(_p: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "ADMIN")) return { ok: false, message: "You don't have permission." };
+  const id = String(formData.get("id") ?? "").slice(0, 40);
+  const row = await prisma.stopWord.findUnique({ where: { id } });
+  if (!row) return { ok: false, message: "Already removed." };
+  await prisma.stopWord.delete({ where: { id } });
+  await audit({ action: "search.stopword.remove", summary: `Removed stop word "${row.word}"`, entity: "StopWord" });
+  revalidatePath("/admin/settings");
+  return { ok: true, message: `"${row.word}" removed.` };
+}
+
+export async function addVariantPair(_p: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "ADMIN")) return { ok: false, message: "You don't have permission." };
+  const clean = (v: FormDataEntryValue | null) => wordClip(v).replace(/[^\p{L}\p{N}]/gu, "");
+  const word = clean(formData.get("word"));
+  const variant = clean(formData.get("variant"));
+  if (!word || !variant) return { ok: false, message: "Both spellings are required." };
+  if (word === variant) return { ok: false, message: "The two spellings are identical." };
+  try {
+    await prisma.variantSpelling.create({ data: { word, variant } });
+  } catch (e) {
+    if (typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002")
+      return { ok: false, message: `${word} ↔ ${variant} is already listed.` };
+    throw e;
+  }
+  await audit({
+    action: "search.variant.add",
+    summary: `Added variant spelling ${word} ↔ ${variant}`,
+    entity: "VariantSpelling",
+  });
+  revalidatePath("/admin/settings");
+  return { ok: true, message: `${word} ↔ ${variant} added. A search for either now finds both.` };
+}
+
+export async function removeVariantPair(_p: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await getCurrentAdmin();
+  if (!canEdit(admin, "ADMIN")) return { ok: false, message: "You don't have permission." };
+  const id = String(formData.get("id") ?? "").slice(0, 40);
+  const row = await prisma.variantSpelling.findUnique({ where: { id } });
+  if (!row) return { ok: false, message: "Already removed." };
+  await prisma.variantSpelling.delete({ where: { id } });
+  await audit({
+    action: "search.variant.remove",
+    summary: `Removed variant spelling ${row.word} ↔ ${row.variant}`,
+    entity: "VariantSpelling",
+  });
+  revalidatePath("/admin/settings");
+  return { ok: true, message: `${row.word} ↔ ${row.variant} removed.` };
+}
