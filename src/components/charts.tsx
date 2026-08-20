@@ -86,12 +86,15 @@ export function BarChart({
   subtitle,
   max,
   emptyLabel = "Nothing to show yet.",
+  valueLabel = "Count",
 }: {
   data: Datum[];
   title: string;
   subtitle?: string;
   max?: number;
   emptyLabel?: string;
+  /** Header for the value column in the table view, e.g. "Order value (S$)". */
+  valueLabel?: string;
 }) {
   const peak = Math.max(max ?? 0, ...data.map((d) => d.value), 1);
   return (
@@ -129,7 +132,7 @@ export function BarChart({
           </div>
           <ChartTable
             caption={title}
-            columns={["Item", "Count"]}
+            columns={["Item", valueLabel]}
             rows={data.map((d) => [d.label, d.value])}
           />
         </>
@@ -162,7 +165,9 @@ export function ColumnChart({
 }) {
   const peak = Math.max(1, ...series.flatMap((s) => s.values));
   const slot = 100 / Math.max(labels.length, 1);
-  const barW = Math.min(slot / series.length - 0.6, 5.5);
+  // Clamped below so many labels × many series can never go negative and
+  // render a blank chart; sliver-width bars still draw and carry tooltips.
+  const barW = Math.max(0.3, Math.min(slot / series.length - 0.6, 5.5));
   const total = series.map((s) => s.values.reduce((a, b) => a + b, 0));
   const allZero = total.every((t) => t === 0);
 

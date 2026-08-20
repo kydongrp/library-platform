@@ -24,6 +24,7 @@ const NAV: (NavItem & { area: string })[] = [
   { href: "/admin/templates", label: "Email Templates", icon: "✉", area: "TEMPLATES" },
   { href: "/admin/dashboards/catalogue", label: "Module Dashboards", icon: "◧", area: "REPORTS" },
   { href: "/admin/reports", label: "Reports", icon: "▥", area: "REPORTS" },
+  { href: "/admin/reports/flexi", label: "FlexiReports", icon: "⊞", area: "REPORTS" },
   { href: "/admin/batch", label: "Batch Processes", icon: "⏱", area: "BATCH" },
   { href: "/admin/access-health", label: "Access Health", icon: "✚", area: "BATCH" },
   { href: "/admin/audit", label: "Audit Trail", icon: "≣", area: "ADMIN" },

@@ -141,7 +141,17 @@ export async function runReport(key: string, c: ReportCriteria): Promise<ReportR
   }
 }
 
+// A cell like "=HYPERLINK(...)" in a title or supplier name would execute as
+// a formula when the CSV opens in Excel. Cells starting with a formula trigger
+// are prefixed with an apostrophe (the OWASP mitigation) unless the whole cell
+// is a plain number/currency, so negative amounts stay numeric.
+const PLAIN_NUMBER = /^-?\$?[\d,]+(\.\d+)?%?$/;
+
 export function toCsv(result: ReportResult): string {
-  const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const esc = (raw: string) => {
+    const v = /^[=+@\t\r-]/.test(raw) && !PLAIN_NUMBER.test(raw) ? `'${raw}` : raw;
+    // \r must be quoted too, or a stray CR inside a value breaks CRLF row framing.
+    return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
   return [result.columns, ...result.rows].map((r) => r.map(esc).join(",")).join("\r\n");
 }

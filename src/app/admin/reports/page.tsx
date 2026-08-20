@@ -87,6 +87,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
             </p>
           </Link>
           <Link
+            href="/admin/reports/flexi"
+            className="rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <p className="text-sm font-semibold">FlexiReports</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Build your own tabular report: pick a cube, choose rows, columns and a measure, view
+              as a graph or export to Excel.
+            </p>
+          </Link>
+          <Link
             href="/admin/dashboards/catalogue"
             className="rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
           >
