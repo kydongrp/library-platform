@@ -13,43 +13,43 @@ datasource db {
 
 /// A bibliographic record in the catalogue (the "title").
 model Resource {
-  id            String        @id @default(cuid())
-  title         String
-  subtitle      String?
-  author        String
-  isbn          String?
-  type          String // BOOK, EBOOK, AUDIOBOOK, JOURNAL, DVD
+  id                    String                 @id @default(cuid())
+  title                 String
+  subtitle              String?
+  author                String
+  isbn                  String?
+  type                  String // BOOK, EBOOK, AUDIOBOOK, JOURNAL, DVD
   /// Bib-level material designation, as the Vibrante ILS tags every record:
   /// MONOGRAPH (standalone work) or SERIAL (journal/magazine/newspaper).
   /// Drives MARC leader/07, catalogue filtering, and serials eligibility.
-  materialDesignation String @default("MONOGRAPH")
-  category      String // Area of Interest: Technology, Business, Science, Arts, Fiction, History, Health
-  publisher     String?
-  publishedYear Int?
-  language      String        @default("English")
-  description   String?
-  coverColor    String        @default("#4F46E5") // used to render a placeholder cover
-  digital       Boolean       @default(false) // digital titles grant instant access, no physical copy
-  digitalUrl    String?       @unique // direct access link; unique so concurrent imports can't double-insert the same link-out (NULLs are exempt)
-  provider      String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
-  licenseSeats  Int? // concurrent-user limit for digital titles; null = unlimited (contract FR 8.2)
-  editorsPick   Boolean       @default(false) // staff-curated highlight (live system: "editorspick" rail)
-  epExternal    Boolean       @default(false) // pick exists ONLY as an Editor's Pick (promoted from outside the collection) — removing it from the picks deletes it from the library (BR-366G); internal picks stay in the catalogue (BR-366I)
-  epBlurb       String? // curator's note shown with the pick
-  epPickedAt    DateTime?
-  epPickedBy    String? // staff name — feeds contribution tracking later
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  copies        Copy[]
-  loans         Loan[]
-  reservations  Reservation[]
-  reviews       Review[]
-  favouritedIn  FavouriteItem[]
-  browsedBy     BrowsingHistory[]
-  epSubmissions EpSubmission[]
+  materialDesignation   String                 @default("MONOGRAPH")
+  category              String // Area of Interest: Technology, Business, Science, Arts, Fiction, History, Health
+  publisher             String?
+  publishedYear         Int?
+  language              String                 @default("English")
+  description           String?
+  coverColor            String                 @default("#4F46E5") // used to render a placeholder cover
+  digital               Boolean                @default(false) // digital titles grant instant access, no physical copy
+  digitalUrl            String?                @unique // direct access link; unique so concurrent imports can't double-insert the same link-out (NULLs are exempt)
+  provider              String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
+  licenseSeats          Int? // concurrent-user limit for digital titles; null = unlimited (contract FR 8.2)
+  editorsPick           Boolean                @default(false) // staff-curated highlight (live system: "editorspick" rail)
+  epExternal            Boolean                @default(false) // pick exists ONLY as an Editor's Pick (promoted from outside the collection) — removing it from the picks deletes it from the library (BR-366G); internal picks stay in the catalogue (BR-366I)
+  epBlurb               String? // curator's note shown with the pick
+  epPickedAt            DateTime?
+  epPickedBy            String? // staff name — feeds contribution tracking later
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  copies                Copy[]
+  loans                 Loan[]
+  reservations          Reservation[]
+  reviews               Review[]
+  favouritedIn          FavouriteItem[]
+  browsedBy             BrowsingHistory[]
+  epSubmissions         EpSubmission[]
   epSuggestionDismissal EpSuggestionDismissal?
-  serial        Serial?
-  marcFields    MarcField[]
+  serial                Serial?
+  marcFields            MarcField[]
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -65,12 +65,13 @@ model Copy {
 
   // Item-level cataloguing (Vibrant "Items" module). All optional so existing
   // copies stay valid; the code lists are what staff actually manage.
-  collectionId String?
-  collection   ItemCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  locationId   String?
-  itemLocation ItemLocation?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  itemTypeId   String?
-  itemType     ItemType?       @relation(fields: [itemTypeId], references: [id], onDelete: SetNull)
+  collectionId   String?
+  collection     ItemCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  locationId     String?
+  itemLocation   ItemLocation?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  itemTypeId     String?
+  itemType       ItemType?       @relation(fields: [itemTypeId], references: [id], onDelete: SetNull)
+  stocktakeScans StocktakeScan[]
 
   @@index([status])
   @@index([collectionId])
@@ -164,23 +165,25 @@ model InterestTopic {
 /// A collection code grouping items (Reference, Reserve, General…). May cap
 /// how many items from it a member can hold at once.
 model ItemCollection {
-  id                String  @id @default(cuid())
-  code              String  @unique
+  id                String      @id @default(cuid())
+  code              String      @unique
   name              String
   loanLimitOverride Int? // overrides the policy's maxLoans for items in this collection
   notes             String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime    @default(now())
   copies            Copy[]
+  stocktakes        Stocktake[]
 }
 
 /// Where a copy physically lives.
 model ItemLocation {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  notes     String?
-  createdAt DateTime @default(now())
-  copies    Copy[]
+  id         String      @id @default(cuid())
+  code       String      @unique
+  name       String
+  notes      String?
+  createdAt  DateTime    @default(now())
+  copies     Copy[]
+  stocktakes Stocktake[]
 }
 
 /// Item-level resource type. Combined with member type this forms the loan
@@ -221,27 +224,27 @@ model MemberStatus {
 
 /// A library patron who can borrow and reserve resources.
 model Member {
-  id           String        @id @default(cuid())
-  name         String
-  email        String        @unique
-  memberType   String        @default("STUDENT") // STAFF, STUDENT, EXTERNAL
-  status       String        @default("Active") // references MemberStatus.name
-  phone        String?
-  language     String        @default("English") // notice/preference language
-  location     String? // campus / site / branch
-  department   String?
-  maxLoans     Int           @default(5)
-  joinedAt     DateTime      @default(now())
-  tcAcceptedAt DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)
-  interests    String[] @default([]) // Areas of Interest (categories) driving recommendations
-  loans        Loan[]
-  reservations Reservation[]
+  id            String            @id @default(cuid())
+  name          String
+  email         String            @unique
+  memberType    String            @default("STUDENT") // STAFF, STUDENT, EXTERNAL
+  status        String            @default("Active") // references MemberStatus.name
+  phone         String?
+  language      String            @default("English") // notice/preference language
+  location      String? // campus / site / branch
+  department    String?
+  maxLoans      Int               @default(5)
+  joinedAt      DateTime          @default(now())
+  tcAcceptedAt  DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)
+  interests     String[]          @default([]) // Areas of Interest (categories) driving recommendations
+  loans         Loan[]
+  reservations  Reservation[]
   notifications Notification[]
-  requests     ResourceRequest[]
-  reviews      Review[]
-  folders      FavouriteFolder[]
-  browsing     BrowsingHistory[]
-  searches     SearchHistory[]
+  requests      ResourceRequest[]
+  reviews       Review[]
+  folders       FavouriteFolder[]
+  browsing      BrowsingHistory[]
+  searches      SearchHistory[]
 }
 
 /// A member-named collection of favourite titles (live system: bookmark
@@ -332,11 +335,11 @@ model Loan {
   fineNote     String?
 
   copyId     String?
-  copy       Copy?     @relation(fields: [copyId], references: [id])
+  copy       Copy?    @relation(fields: [copyId], references: [id])
   resourceId String
-  resource   Resource  @relation(fields: [resourceId], references: [id])
+  resource   Resource @relation(fields: [resourceId], references: [id])
   memberId   String
-  member     Member    @relation(fields: [memberId], references: [id])
+  member     Member   @relation(fields: [memberId], references: [id])
 
   @@index([status, dueAt])
   @@index([returnedAt])
@@ -368,10 +371,10 @@ model AdminUser {
 
 /// A staff role (SDD: AdminGroups) holding per-area permissions.
 model AdminGroup {
-  id          String                @id @default(cuid())
-  name        String                @unique
+  id          String                 @id @default(cuid())
+  name        String                 @unique
   description String?
-  createdAt   DateTime              @default(now())
+  createdAt   DateTime               @default(now())
   users       AdminUser[]
   permissions AdminGroupPermission[]
 }
@@ -394,16 +397,16 @@ model AdminGroupPermission {
 /// real DLS does. A null itemTypeId is the "any item type" row, so existing
 /// per-member-type policies keep working untouched.
 model LoanPolicy {
-  id            String   @id @default(cuid())
-  memberType    String // STUDENT, STAFF, EXTERNAL, DEFAULT
-  itemTypeId    String? // null = applies to every item type
-  itemType      ItemType? @relation(fields: [itemTypeId], references: [id], onDelete: Cascade)
-  loanDays      Int      @default(14)
-  maxLoans      Int      @default(5)
-  maxRenewals   Int      @default(2)
-  renewalDays   Int      @default(14)
-  digitalDays   Int      @default(14)
-  holdPickupDays Int     @default(3) // READY reservations expire after this many days
+  id             String    @id @default(cuid())
+  memberType     String // STUDENT, STAFF, EXTERNAL, DEFAULT
+  itemTypeId     String? // null = applies to every item type
+  itemType       ItemType? @relation(fields: [itemTypeId], references: [id], onDelete: Cascade)
+  loanDays       Int       @default(14)
+  maxLoans       Int       @default(5)
+  maxRenewals    Int       @default(2)
+  renewalDays    Int       @default(14)
+  digitalDays    Int       @default(14)
+  holdPickupDays Int       @default(3) // READY reservations expire after this many days
 
   // Overdue charges. Fines accrue per OPEN day (library closures are not
   // chargeable) after the grace period, capped at maxFineCents.
@@ -411,7 +414,7 @@ model LoanPolicy {
   fineGraceDays   Int  @default(0)
   maxFineCents    Int? // null = uncapped
 
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([memberType, itemTypeId])
 }
@@ -428,9 +431,9 @@ model LibraryClosure {
 
 /// Single-row service calendar: which weekdays the library is routinely shut.
 model ServiceCalendar {
-  id            String   @id @default("singleton")
-  closedWeekdays Int[]   @default([]) // 0 = Sunday … 6 = Saturday
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default("singleton")
+  closedWeekdays Int[]    @default([]) // 0 = Sunday … 6 = Saturday
+  updatedAt      DateTime @updatedAt
 }
 
 /// Editable notification templates (SDD: SystemEmailTemplates). Placeholders
@@ -473,11 +476,11 @@ model MailQueue {
 
 /// One row per EodProcess execution, with a summary of what was generated.
 model BatchRun {
-  id         String   @id @default(cuid())
-  process    String   @default("EOD")
-  summary    String
-  ranAt      DateTime @default(now())
-  ranBy      String?
+  id      String   @id @default(cuid())
+  process String   @default("EOD")
+  summary String
+  ranAt   DateTime @default(now())
+  ranBy   String?
 }
 
 /// A learner's request for a resource the library doesn't hold (contract FR
@@ -610,6 +613,45 @@ model Invoice {
 /// A journal/magazine subscription tracked at issue level (SDD: serials
 /// management). The catalogue Resource is the bibliographic record; this row
 /// carries the publication pattern and vendor claim contact.
+// Stocktake (SDD Items module): tracks item records against physical
+// inventory. A stocktake scopes a slice of the collection (by collection
+// and/or location; both null = everything), staff scan barcodes while it is
+// OPEN, and closing freezes the scan list. "Missing" is always derived:
+// in-scope copies, not on loan, with no scan row.
+model Stocktake {
+  id           String          @id @default(cuid())
+  name         String
+  status       String          @default("OPEN") // OPEN, CLOSED
+  collectionId String?
+  collection   ItemCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  locationId   String?
+  location     ItemLocation?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  note         String?
+  startedBy    String
+  startedAt    DateTime        @default(now())
+  closedBy     String?
+  closedAt     DateTime?
+  // Frozen at close so the report survives later catalogue changes.
+  summary      Json?
+  scans        StocktakeScan[]
+}
+
+model StocktakeScan {
+  id          String    @id @default(cuid())
+  stocktakeId String
+  stocktake   Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  barcode     String
+  copyId      String? // resolved at scan time; null = barcode not in the catalogue (or copy since weeded)
+  copy        Copy?     @relation(fields: [copyId], references: [id], onDelete: SetNull)
+  result      String // FOUND, MISPLACED, UNEXPECTED
+  detail      String? // e.g. "catalogued in REF · Reference" or "recorded as on loan"
+  scannedBy   String
+  scannedAt   DateTime  @default(now())
+
+  @@unique([stocktakeId, barcode])
+  @@index([stocktakeId, result])
+}
+
 model Serial {
   id         String        @id @default(cuid())
   resourceId String        @unique

@@ -85,7 +85,8 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-6">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
         <h1 className="font-display text-3xl font-semibold">Items</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           Every barcoded copy in the collection, with the codes that describe
@@ -93,6 +94,21 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           collections can cap how many a member holds at once, and weeding is
           logged rather than silently deleting history.
         </p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href="/admin/items/stocktake"
+            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted"
+          >
+            ▦ Stocktake
+          </Link>
+          <Link
+            href="/admin/items/import"
+            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted"
+          >
+            ⇪ Import items
+          </Link>
+        </div>
       </div>
 
       {/* Status summary */}

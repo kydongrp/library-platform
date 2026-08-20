@@ -109,6 +109,21 @@ export async function deleteCodeRow(
       };
   }
 
+  // An OPEN stocktake scoped to this code must block the delete: nulling the
+  // FK would silently widen its scope to the whole library, and closing it
+  // with "mark missing as lost" could then flip every unscanned copy to LOST.
+  if (kind === "collection" || kind === "location") {
+    const scopeField = kind === "collection" ? "collectionId" : "locationId";
+    const openCount = await prisma.stocktake.count({
+      where: { status: "OPEN", [scopeField]: id },
+    });
+    if (openCount > 0)
+      return {
+        ok: false,
+        message: `An open stocktake is scoped to this ${kind} — close or discard it first.`,
+      };
+  }
+
   const table =
     kind === "collection" ? prisma.itemCollection
     : kind === "location" ? prisma.itemLocation
@@ -248,5 +263,179 @@ export async function weedItems(
   return {
     ok: true,
     message: `Weeded ${r.count} item${r.count === 1 ? "" : "s"}. Loan history is kept; the weeding log records what went.`,
+  };
+}
+
+/* ---------- Bulk items import (comparison row 36) ---------- */
+
+const IMPORT_MAX_BYTES = 3_500_000;
+
+/**
+ * Import item records from XML (the Vibrant exchange format), CSV or JSON.
+ * Each row carries a barcode plus an ISBN, title or record id to say which
+ * bib the copy belongs to; unknown codes and unmatched bibs are reported per
+ * row, never guessed.
+ */
+export async function importItems(_p: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await requireItemsEditor();
+  if (!admin) return NO_PERMISSION;
+
+  const { parseItemRows } = await import("@/lib/item-import");
+
+  let text = "";
+  let source = "pasted rows";
+  const file = formData.get("file");
+  if (file instanceof File && file.size > 0) {
+    if (file.size > IMPORT_MAX_BYTES)
+      return { ok: false, message: "That file is over 3.5MB — split it and import in parts." };
+    text = await file.text();
+    source = file.name.slice(0, 120) || "upload";
+  } else {
+    text = String(formData.get("pasted") ?? "");
+    if (text.length > IMPORT_MAX_BYTES)
+      return { ok: false, message: "Pasted content is too large — import in parts." };
+  }
+  if (!text.trim())
+    return {
+      ok: false,
+      message: "Upload an XML/CSV/JSON file or paste rows (each needs a barcode plus an ISBN, title or record id).",
+    };
+
+  const parsed = parseItemRows(text, source);
+  if (parsed.rows.length === 0) {
+    const why =
+      parsed.warnings[0] ??
+      parsed.skipped.slice(0, 3).map((s) => `row ${s.line}: ${s.reason}`).join("; ");
+    return { ok: false, message: why || "No importable rows found." };
+  }
+
+  // Resolve the code lists once.
+  const [collections, locations, itemTypes] = await Promise.all([
+    prisma.itemCollection.findMany({ select: { id: true, code: true } }),
+    prisma.itemLocation.findMany({ select: { id: true, code: true } }),
+    prisma.itemType.findMany({ select: { id: true, code: true } }),
+  ]);
+  const collByCode = new Map(collections.map((c) => [c.code, c.id]));
+  const locByCode = new Map(locations.map((c) => [c.code, c.id]));
+  const typeByCode = new Map(itemTypes.map((c) => [c.code, c.id]));
+
+  // Resolve bibs: by record id, then ISBN (normalised), then exact title.
+  const { normaliseIsbn } = await import("@/lib/item-import");
+  const ids = [...new Set(parsed.rows.map((r) => r.resourceId).filter((v): v is string => !!v))];
+  const isbns = [...new Set(parsed.rows.map((r) => r.isbn).filter((v): v is string => !!v))];
+  const titles = [...new Set(parsed.rows.map((r) => r.title).filter((v): v is string => !!v))];
+
+  const [byId, withIsbn, byTitle] = await Promise.all([
+    ids.length
+      ? prisma.resource.findMany({ where: { id: { in: ids } }, select: { id: true } })
+      : Promise.resolve([]),
+    // Normalise the catalogue side in the database so this stays a single
+    // bounded query at any catalogue size, instead of loading every ISBN.
+    isbns.length
+      ? prisma.$queryRaw<{ id: string; isbn: string }[]>`
+          SELECT id, upper(regexp_replace(isbn, '[^0-9Xx]', '', 'g')) AS isbn
+          FROM "Resource"
+          WHERE isbn IS NOT NULL
+            AND upper(regexp_replace(isbn, '[^0-9Xx]', '', 'g')) = ANY(${isbns})`
+      : Promise.resolve([]),
+    titles.length
+      ? prisma.resource.findMany({
+          where: { title: { in: titles, mode: "insensitive" } },
+          select: { id: true, title: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const idSet = new Set(byId.map((r) => r.id));
+  // Collision-aware maps: a key shared by several records must NOT attach the
+  // copy to whichever happened to come back last (e.g. two editions with the
+  // same title) — ambiguity is reported per row instead.
+  const AMBIGUOUS = " ambiguous";
+  const isbnMap = new Map<string, string>();
+  for (const r of withIsbn) {
+    if (!r.isbn) continue;
+    const k = normaliseIsbn(r.isbn);
+    isbnMap.set(k, isbnMap.has(k) && isbnMap.get(k) !== r.id ? AMBIGUOUS : r.id);
+  }
+  const titleMap = new Map<string, string>();
+  for (const r of byTitle) {
+    const k = r.title.toLowerCase();
+    titleMap.set(k, titleMap.has(k) && titleMap.get(k) !== r.id ? AMBIGUOUS : r.id);
+  }
+
+  const skipped = [...parsed.skipped];
+  const data: {
+    barcode: string;
+    resourceId: string;
+    status: string;
+    collectionId: string | null;
+    locationId: string | null;
+    itemTypeId: string | null;
+  }[] = [];
+
+  for (const row of parsed.rows) {
+    const resourceId =
+      (row.resourceId && idSet.has(row.resourceId) && row.resourceId) ||
+      (row.isbn && isbnMap.get(row.isbn)) ||
+      (row.title && titleMap.get(row.title.toLowerCase())) ||
+      null;
+    if (!resourceId) {
+      skipped.push({ line: row.line, reason: `${row.barcode}: no catalogue record matches` });
+      continue;
+    }
+    if (resourceId === AMBIGUOUS) {
+      skipped.push({
+        line: row.line,
+        reason: `${row.barcode}: several catalogue records share this ${row.isbn && isbnMap.get(row.isbn) === AMBIGUOUS ? "ISBN" : "title"} — import with the record id instead`,
+      });
+      continue;
+    }
+    // Unknown codes are rejected, not invented: the code lists are curated.
+    const badCode =
+      (row.collectionCode && !collByCode.has(row.collectionCode) && `collection ${row.collectionCode}`) ||
+      (row.locationCode && !locByCode.has(row.locationCode) && `location ${row.locationCode}`) ||
+      (row.itemTypeCode && !typeByCode.has(row.itemTypeCode) && `item type ${row.itemTypeCode}`);
+    if (badCode) {
+      skipped.push({ line: row.line, reason: `${row.barcode}: unknown ${badCode}` });
+      continue;
+    }
+    data.push({
+      barcode: row.barcode,
+      resourceId,
+      status: row.status,
+      collectionId: row.collectionCode ? collByCode.get(row.collectionCode)! : null,
+      locationId: row.locationCode ? locByCode.get(row.locationCode)! : null,
+      itemTypeId: row.itemTypeCode ? typeByCode.get(row.itemTypeCode)! : null,
+    });
+  }
+
+  const result = data.length
+    ? await prisma.copy.createMany({ data, skipDuplicates: true })
+    : { count: 0 };
+  const dupes = data.length - result.count;
+
+  await audit({
+    action: "items.import",
+    summary: `Bulk items import from ${source}: ${result.count} imported, ${dupes} barcodes already existed, ${skipped.length} skipped`,
+    entity: "Copy",
+    detail: {
+      source,
+      imported: result.count,
+      duplicates: dupes,
+      skipped: skipped.slice(0, 20),
+      warnings: parsed.warnings,
+    },
+  });
+  revalidatePath("/admin/items");
+  revalidatePath("/admin/catalogue");
+
+  const parts = [`${result.count} imported`];
+  if (dupes > 0) parts.push(`${dupes} barcodes already existed`);
+  if (skipped.length > 0) {
+    const sample = skipped.slice(0, 3).map((s) => `row ${s.line}: ${s.reason}`).join("; ");
+    parts.push(`${skipped.length} skipped (${sample}${skipped.length > 3 ? "…" : ""})`);
+  }
+  return {
+    ok: result.count > 0 || skipped.length === 0,
+    message: `${parts.join(" · ")}.${parsed.warnings.length ? ` ${parsed.warnings.join(" ")}` : ""}`,
   };
 }
