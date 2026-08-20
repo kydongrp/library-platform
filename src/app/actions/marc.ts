@@ -407,3 +407,77 @@ export async function deleteDomainOrTopic(
 }
 
 export { parseSubfields };
+
+/* ---------- Merge Bib ---------- */
+
+export async function mergeBibs(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireCataloguer();
+  if (!admin) return NO_PERMISSION;
+
+  const winnerId = clip(formData.get("winnerId"), 40);
+  const loserId = clip(formData.get("loserId"), 40);
+  if (!winnerId || !loserId) return { ok: false, message: "Choose both records." };
+
+  const { executeMerge } = await import("@/lib/bib-merge");
+  const result = await executeMerge(winnerId, loserId, admin.name);
+  if (!result.ok) return { ok: false, message: result.error };
+
+  await audit({
+    action: "marc.merge",
+    summary: `Merged "${result.loserTitle}" into "${result.winnerTitle}"`,
+    entity: "Resource",
+    entityId: winnerId,
+    detail: { winnerId, loserId, moved: result.moved },
+  });
+  emitEventAfter("resource.updated", { id: winnerId, title: result.winnerTitle });
+  emitEventAfter("resource.deleted", { id: loserId, title: result.loserTitle, mergedInto: winnerId });
+
+  revalidatePath("/admin/catalogue");
+  revalidatePath(`/admin/catalogue/${winnerId}`);
+  revalidatePath("/admin/items");
+  return {
+    ok: true,
+    message: `"${result.loserTitle}" merged into "${result.winnerTitle}". Everything attached to it moved across.`,
+  };
+}
+
+/* ---------- Global Change Tags ---------- */
+
+export async function applyGlobalChange(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireCataloguer();
+  if (!admin) return NO_PERMISSION;
+
+  const { applyChange, OPERATIONS } = await import("@/lib/marc-global");
+  const operation = clip(formData.get("operation"), 20);
+  if (!(OPERATIONS as readonly string[]).includes(operation))
+    return { ok: false, message: "Choose an operation." };
+
+  const spec = {
+    operation: operation as (typeof OPERATIONS)[number],
+    tag: clip(formData.get("tag"), 3).toUpperCase(),
+    subfieldCode: clip(formData.get("subfieldCode"), 1),
+    findText: clip(formData.get("findText"), 500),
+    replaceText: clip(formData.get("replaceText"), 500),
+    addCode: clip(formData.get("addCode"), 1),
+    matchCase: formData.get("matchCase") === "on",
+  };
+
+  const result = await applyChange(spec, admin.name);
+  if (!result.ok) return { ok: false, message: result.message };
+
+  await audit({
+    action: "marc.globalChange",
+    summary: `Global change on tag ${spec.tag}: ${operation.toLowerCase().replace("_", " ")}, ${result.changed} field${result.changed === 1 ? "" : "s"} affected`,
+    entity: "MarcField",
+    detail: { ...spec, changed: result.changed },
+  });
+  revalidatePath("/admin/catalogue/global-change");
+  revalidatePath("/admin/catalogue");
+  return { ok: true, message: result.message };
+}

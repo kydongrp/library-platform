@@ -761,3 +761,36 @@ model ImportedFile {
 
   @@unique([source, filename])
 }
+
+/// Tombstone for a merged bibliographic record. Audit rows and Portal API
+/// consumers that cached the absorbed id can follow it here instead of
+/// hitting a dead reference.
+model BibMerge {
+  id         String   @id @default(cuid())
+  loserId    String   @unique
+  loserTitle String
+  winnerId   String
+  mergedBy   String
+  mergedAt   DateTime @default(now())
+  /// Per-relation counts of what was moved, for accountability.
+  moved      Json     @default("{}")
+
+  @@index([winnerId])
+}
+
+/// Append-only record of a Global Change Tags run. Batch MARC edits have no
+/// undo, so the log is written before the change and holds a bounded
+/// before/after sample.
+model MarcChangeLog {
+  id           String   @id @default(cuid())
+  operation    String // REPLACE, DELETE_FIELD, ADD_SUBFIELD
+  tag          String
+  subfieldCode String?
+  findText     String?
+  replaceText  String?
+  matched      Int      @default(0)
+  changed      Int      @default(0)
+  runBy        String
+  ranAt        DateTime @default(now())
+  sample       Json     @default("[]")
+}

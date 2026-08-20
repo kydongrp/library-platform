@@ -81,6 +81,12 @@ export default async function CataloguePage({
           >
             ⇑ MARC .mrc
           </ButtonLink>
+          <ButtonLink href="/admin/catalogue/merge" variant="ghost" className="text-xs">
+            Merge duplicates
+          </ButtonLink>
+          <ButtonLink href="/admin/catalogue/global-change" variant="ghost" className="text-xs">
+            Global change tags
+          </ButtonLink>
           <ButtonLink href="/admin/catalogue/import" variant="outline">⇩ LiveFetch import</ButtonLink>
           <ButtonLink href="/admin/catalogue/new">+ Add title</ButtonLink>
         </div>

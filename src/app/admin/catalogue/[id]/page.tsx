@@ -175,6 +175,22 @@ export default async function ResourceDetailPage({
         tagDefs={tagDefs}
       />
 
+      {/* Merge duplicates */}
+      <Card className="mt-6 p-5">
+        <h2 className="font-display text-lg font-semibold">Merge a duplicate into this record</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          If the same title was catalogued twice, fold the other copy of the
+          record into this one. Everything attached to it moves across and you
+          see the full plan before confirming.
+        </p>
+        <Link
+          href={`/admin/catalogue/merge?winner=${resource.id}`}
+          className="mt-3 inline-flex items-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-muted"
+        >
+          Merge into this record
+        </Link>
+      </Card>
+
       {/* Danger zone */}
       <Card className="mt-6 border-red-200 p-5">
         <h2 className="font-display text-lg font-semibold text-red-700">Delete title</h2>
