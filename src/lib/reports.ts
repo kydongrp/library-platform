@@ -1,18 +1,24 @@
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS, MEMBER_TYPE_LABELS } from "@/lib/constants";
+import { runModuleReport } from "@/lib/reports-modules";
 
 export const REPORTS = [
-  { key: "loans", name: "Loans by period", description: "All loans started in a date range, with member and return details." },
-  { key: "overdue", name: "Overdue loans", description: "Active loans past their due date, oldest first." },
-  { key: "inventory", name: "Catalogue inventory", description: "Every title with copy counts and availability." },
-  { key: "member-activity", name: "Member activity", description: "Loan and reservation counts per member." },
-  { key: "reservations", name: "Reservations", description: "All active holds with queue position." },
+  { key: "loans", group: "Loans", name: "Loans by period", description: "All loans started in a date range, with member and return details." },
+  { key: "overdue", group: "Loans", name: "Overdue loans", description: "Active loans past their due date, oldest first." },
+  { key: "reservations", group: "Loans", name: "Reservations", description: "All active holds with queue position." },
+  { key: "member-activity", group: "Members", name: "Member activity", description: "Loan and reservation counts per member." },
+  { key: "inventory", group: "Catalogue", name: "Catalogue inventory", description: "Every title with copy counts and availability." },
 ] as const;
 export type ReportKey = (typeof REPORTS)[number]["key"];
 
 export type ReportCriteria = { from?: string; to?: string; memberType?: string };
-export type ReportResult = { columns: string[]; rows: string[][] };
+export type ReportResult = {
+  columns: string[];
+  rows: string[][];
+  /** Set when the row cap truncated the result, so the page can say so. */
+  note?: string;
+};
 
 /** Run a standard report and return a flat table (shared by page and CSV export). */
 export async function runReport(key: string, c: ReportCriteria): Promise<ReportResult> {
@@ -131,7 +137,7 @@ export async function runReport(key: string, c: ReportCriteria): Promise<ReportR
       };
     }
     default:
-      return { columns: [], rows: [] };
+      return (await runModuleReport(key, c)) ?? { columns: [], rows: [] };
   }
 }
 

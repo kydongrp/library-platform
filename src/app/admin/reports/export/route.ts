@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin, canView } from "@/lib/admin-session";
 import { runReport, toCsv, REPORTS } from "@/lib/reports";
+import { MODULE_REPORTS } from "@/lib/reports-modules";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const admin = await getCurrentAdmin();
@@ -10,7 +11,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const params = req.nextUrl.searchParams;
   const key = params.get("report") ?? "";
-  if (!REPORTS.some((r) => r.key === key)) {
+  const known = [...REPORTS, ...MODULE_REPORTS].some((r) => r.key === key);
+  if (!known) {
     return new NextResponse("Unknown report", { status: 400 });
   }
 
