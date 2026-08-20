@@ -78,6 +78,26 @@ export default async function AdminDashboard() {
         </p>
       </div>
 
+      {/* The six module dashboards, as the live system splits them. */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        {[
+          ["catalogue", "Catalogue"],
+          ["items", "Items"],
+          ["loans", "Loans"],
+          ["acquisitions", "Purchase orders"],
+          ["serials", "Serials"],
+          ["portal", "Learner portal"],
+        ].map(([slug, label]) => (
+          <Link
+            key={slug}
+            href={`/admin/dashboards/${slug}`}
+            className="rounded-full bg-muted px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {kpis.map((k) => (
