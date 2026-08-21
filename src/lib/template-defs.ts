@@ -21,6 +21,7 @@ export const TEMPLATE_PLACEHOLDERS: Record<string, string[]> = {
   RECALL: ["memberName", "resourceTitle", "newDueDate"],
   DIGITAL_AVAILABLE: ["memberName", "resourceTitle"],
   REQUEST_UPDATE: ["memberName", "requestTitle", "requestStatus"],
+  SERIAL_ISSUE: ["memberName", "resourceTitle", "issueLabel"],
 };
 
 export const DEFAULT_TEMPLATES: {
@@ -100,5 +101,12 @@ export const DEFAULT_TEMPLATES: {
     name: "Resource request update",
     subject: "Your request “{{requestTitle}}” is {{requestStatus}}",
     body: "Hi {{memberName}},\n\nYour information resource request “{{requestTitle}}” has been updated to: {{requestStatus}}.",
+  },
+  {
+    code: "SERIAL_ISSUE",
+    name: "New serial issue arrived",
+    subject: "New issue of “{{resourceTitle}}”: {{issueLabel}}",
+    body: "Hi {{memberName}},\n\n{{issueLabel}} of “{{resourceTitle}}” has arrived in the library.",
+    emailEnabled: true,
   },
 ];

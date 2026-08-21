@@ -235,15 +235,27 @@ export async function reopenIssue(
     data: { status: "EXPECTED", receivedAt: null },
   });
   if (r.count === 0) return { ok: false, message: "That issue can't be reopened." };
+
+  // Undoing the receipt voids any routing run for it: the copy was never
+  // really in hand. Leaving the stops behind would both block a fresh run
+  // (startRouting refuses when stops exist) and show a completed circulation
+  // for an issue the library no longer claims to have received.
+  const stops = await prisma.issueRoutingStop.deleteMany({ where: { issueId } });
+
   const issue = await loadIssue(issueId);
   await audit({
     action: "serials.reopen",
-    summary: `Reopened ${issue?.label ?? "an issue"} of "${issue?.serial.resource.title ?? "?"}" (back to expected)`,
+    summary: `Reopened ${issue?.label ?? "an issue"} of "${issue?.serial.resource.title ?? "?"}" (back to expected)${stops.count ? `; discarded a routing run of ${stops.count} stops` : ""}`,
     entity: "SerialIssue",
     entityId: issueId,
   });
   revalidatePath("/admin/serials");
-  return { ok: true, message: "Issue reopened as expected." };
+  return {
+    ok: true,
+    message: stops.count
+      ? `Issue reopened as expected. Its routing run (${stops.count} stops) was discarded.`
+      : "Issue reopened as expected.",
+  };
 }
 
 export async function skipIssue(

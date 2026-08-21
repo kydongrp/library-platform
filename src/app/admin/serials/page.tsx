@@ -37,7 +37,7 @@ export default async function SerialsPage({
   const editable = canEdit(admin, "CATALOGUE");
   const { edit } = await searchParams;
 
-  const [overview, candidates] = await Promise.all([
+  const [overview, candidates, routingGroups] = await Promise.all([
     getSerialsOverview(),
     prisma.resource.findMany({
       // Eligibility now follows the bib-level designation, so a serial
@@ -47,7 +47,9 @@ export default async function SerialsPage({
       orderBy: { title: "asc" },
       take: 500,
     }),
+    prisma.routingSubscriber.groupBy({ by: ["serialId"], _count: { _all: true } }),
   ]);
+  const routingCounts = new Map(routingGroups.map((g) => [g.serialId, g._count._all]));
 
   const editing: SerialEditValues | null = (() => {
     const s = edit ? overview.serials.find((x) => x.id === edit) : null;
@@ -127,6 +129,14 @@ export default async function SerialsPage({
                   <p className="mt-2 text-sm text-muted-foreground">
                     Holdings: {s.holdings ?? "nothing received yet"} ·{" "}
                     <span style={{ fontVariantNumeric: "tabular-nums" }}>{s.received}</span> received
+                    {(routingCounts.get(s.id) ?? 0) > 0 && (
+                      <>
+                        {" · "}
+                        <Link href={`/admin/serials/${s.id}/routing`} className="hover:underline">
+                          routes to {routingCounts.get(s.id)}
+                        </Link>
+                      </>
+                    )}
                   </p>
                 </div>
                 {editable && (
@@ -141,6 +151,9 @@ export default async function SerialsPage({
                       className="!px-2 !py-1 text-xs" pendingLabel="…">
                       Extend schedule
                     </ActionButton>
+                    <Link href={`/admin/serials/${s.id}/routing`} className="px-1 text-xs text-primary hover:underline">
+                      Routing
+                    </Link>
                     <Link href={`/admin/serials?edit=${s.id}#serial-edit`} className="px-1 text-xs text-primary hover:underline">
                       Edit
                     </Link>

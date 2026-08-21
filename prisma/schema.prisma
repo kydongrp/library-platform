@@ -256,20 +256,22 @@ model MemberDepartment {
 
 /// A library patron who can borrow and reserve resources.
 model Member {
-  id            String            @id @default(cuid())
+  id            String              @id @default(cuid())
   name          String
-  email         String            @unique
-  memberType    String            @default("STUDENT") // STAFF, STUDENT, EXTERNAL
-  status        String            @default("Active") // references MemberStatus.name
+  email         String              @unique
+  memberType    String              @default("STUDENT") // STAFF, STUDENT, EXTERNAL
+  status        String              @default("Active") // references MemberStatus.name
   phone         String?
-  language      String            @default("English") // notice/preference language
+  language      String              @default("English") // notice/preference language
   location      String? // campus / site / branch
   department    String?
-  maxLoans      Int               @default(5)
-  joinedAt      DateTime          @default(now())
+  maxLoans      Int                 @default(5)
+  joinedAt      DateTime            @default(now())
   tcAcceptedAt  DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)
-  interests     String[]          @default([]) // Areas of Interest (categories) driving recommendations
+  interests     String[]            @default([]) // Areas of Interest (categories) driving recommendations
   loans         Loan[]
+  routing       RoutingSubscriber[]
+  routingStops  IssueRoutingStop[]
   reservations  Reservation[]
   notifications Notification[]
   requests      ResourceRequest[]
@@ -568,6 +570,41 @@ model EpSubmission {
 }
 
 /// A vendor the library orders from (SDD: acquisitions).
+// Serials routing (SDD rows 69-71): an ordered per-serial list of members a
+// received issue circulates through, plus alert-only subscribers who are
+// notified on arrival. Row 72 (routing as automatic loans) is deliberately
+// not offered - it is switched off in the deployed Vibrant system too.
+model RoutingSubscriber {
+  id        String   @id @default(cuid())
+  serialId  String
+  serial    Serial   @relation(fields: [serialId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  seq       Int // routing order; alert-only rows keep their seq but are skipped in runs
+  alertOnly Boolean  @default(false) // row 71: alerted on arrival, not routed to
+  createdAt DateTime @default(now())
+
+  @@unique([serialId, memberId])
+  @@index([serialId, seq])
+}
+
+// One stop in a routing run: the snapshot taken when staff start routing a
+// received issue. The list can change later without corrupting a live run.
+model IssueRoutingStop {
+  id        String      @id @default(cuid())
+  issueId   String
+  issue     SerialIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  seq       Int
+  routedOut DateTime?
+  routedIn  DateTime?
+  routedBy  String? // staff member who recorded the movement
+
+  @@unique([issueId, memberId])
+  @@index([issueId, seq])
+}
+
 model Supplier {
   id        String          @id @default(cuid())
   name      String          @unique
@@ -685,33 +722,35 @@ model StocktakeScan {
 }
 
 model Serial {
-  id         String        @id @default(cuid())
-  resourceId String        @unique
-  resource   Resource      @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  id         String              @id @default(cuid())
+  resourceId String              @unique
+  resource   Resource            @relation(fields: [resourceId], references: [id], onDelete: Cascade)
   issn       String?
   frequency  String // WEEKLY, BIWEEKLY, MONTHLY, BIMONTHLY, QUARTERLY, SEMIANNUAL, ANNUAL
-  status     String        @default("ACTIVE") // ACTIVE, PAUSED, CLOSED
+  status     String              @default("ACTIVE") // ACTIVE, PAUSED, CLOSED
   claimEmail String? // vendor contact for missing-issue claims; admins alerted if unset
   notes      String?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
   issues     SerialIssue[]
+  routing    RoutingSubscriber[]
 }
 
 /// One predicted or received issue of a Serial. "Late" is computed
 /// (EXPECTED and past expectedAt + grace); claimedAt records that a
 /// missing-issue claim was queued.
 model SerialIssue {
-  id         String    @id @default(cuid())
-  serialId   String
-  serial     Serial    @relation(fields: [serialId], references: [id], onDelete: Cascade)
-  seq        Int
-  label      String // e.g. "No. 14 (Aug 2026)"
-  expectedAt DateTime
-  receivedAt DateTime?
-  claimedAt  DateTime?
-  status     String    @default("EXPECTED") // EXPECTED, RECEIVED, SKIPPED
-  createdAt  DateTime  @default(now())
+  id           String             @id @default(cuid())
+  serialId     String
+  serial       Serial             @relation(fields: [serialId], references: [id], onDelete: Cascade)
+  seq          Int
+  label        String // e.g. "No. 14 (Aug 2026)"
+  expectedAt   DateTime
+  receivedAt   DateTime?
+  claimedAt    DateTime?
+  status       String             @default("EXPECTED") // EXPECTED, RECEIVED, SKIPPED
+  createdAt    DateTime           @default(now())
+  routingStops IssueRoutingStop[]
 
   @@unique([serialId, seq])
   @@index([status, expectedAt])

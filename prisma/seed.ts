@@ -567,6 +567,27 @@ async function ensureMemberStatuses() {
   }
 }
 
+// Email templates are only created by the destructive seed path, so a NEW
+// template code would never reach an existing database - and notify() silently
+// does nothing when its template row is missing. Upsert the missing ones
+// without touching subject/body, so staff edits survive.
+async function ensureEmailTemplates() {
+  const { DEFAULT_TEMPLATES } = await import("../src/lib/template-defs");
+  for (const t of DEFAULT_TEMPLATES) {
+    await prisma.emailTemplate.upsert({
+      where: { code: t.code },
+      create: {
+        code: t.code,
+        name: t.name,
+        subject: t.subject,
+        body: t.body,
+        emailEnabled: t.emailEnabled ?? false,
+      },
+      update: {},
+    });
+  }
+}
+
 // Rows 10-11: default search configuration. Modest English stop list plus
 // the British/American pairs a library catalogue actually hits. Idempotent;
 // staff edits (removals show up as absent rows) are respected because these
@@ -638,6 +659,7 @@ async function main() {
     await ensureMemberStatuses();
     await ensureMemberRegLists();
     await ensureSearchConfig();
+    await ensureEmailTemplates();
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();
@@ -651,6 +673,7 @@ async function main() {
     await ensureMemberStatuses();
     await ensureMemberRegLists();
     await ensureSearchConfig();
+    await ensureEmailTemplates();
     await ensureServiceCalendar();
     await ensureBackfills();
     await ensureItemCodeLists();
