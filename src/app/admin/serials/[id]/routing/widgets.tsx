@@ -10,6 +10,7 @@ import {
   routeOut,
   routeIn,
   sendIssueAlerts,
+  cancelRouting,
 } from "@/app/actions/routing";
 
 const fieldCls =
@@ -68,24 +69,32 @@ export function SubscriberControls({
     <span className="flex flex-wrap items-center gap-1">
       {!alertOnly && (
         <>
-          <ActionButton
-            action={moveRoutingSubscriber}
-            fields={{ id, dir: "up" }}
-            variant="ghost"
-            className={`!px-1.5 !py-0.5 text-xs ${isFirst ? "opacity-30" : ""}`}
-            pendingLabel="…"
-          >
-            ↑
-          </ActionButton>
-          <ActionButton
-            action={moveRoutingSubscriber}
-            fields={{ id, dir: "down" }}
-            variant="ghost"
-            className={`!px-1.5 !py-0.5 text-xs ${isLast ? "opacity-30" : ""}`}
-            pendingLabel="…"
-          >
-            ↓
-          </ActionButton>
+          {isFirst ? (
+            <span className="px-1.5 py-0.5 text-xs opacity-30" aria-hidden>↑</span>
+          ) : (
+            <ActionButton
+              action={moveRoutingSubscriber}
+              fields={{ id, dir: "up" }}
+              variant="ghost"
+              className="!px-1.5 !py-0.5 text-xs"
+              pendingLabel="…"
+            >
+              ↑
+            </ActionButton>
+          )}
+          {isLast ? (
+            <span className="px-1.5 py-0.5 text-xs opacity-30" aria-hidden>↓</span>
+          ) : (
+            <ActionButton
+              action={moveRoutingSubscriber}
+              fields={{ id, dir: "down" }}
+              variant="ghost"
+              className="!px-1.5 !py-0.5 text-xs"
+              pendingLabel="…"
+            >
+              ↓
+            </ActionButton>
+          )}
         </>
       )}
       <ActionButton
@@ -135,7 +144,15 @@ export function RouteInButton({ issueId, from }: { issueId: string; from: string
   );
 }
 
-export function SendAlertsButton({ issueId, count }: { issueId: string; count: number }) {
+export function SendAlertsButton({
+  issueId,
+  count,
+  alreadySent,
+}: {
+  issueId: string;
+  count: number;
+  alreadySent: boolean;
+}) {
   return (
     <ActionButton
       action={sendIssueAlerts}
@@ -143,9 +160,32 @@ export function SendAlertsButton({ issueId, count }: { issueId: string; count: n
       variant="ghost"
       className="!px-3 !py-1.5 text-xs"
       pendingLabel="Sending…"
-      confirm={`Notify ${count} ${count === 1 ? "person" : "people"} that this issue has arrived?`}
+      confirm={
+        alreadySent
+          ? `Alerts for this issue already went out. Send them again to all ${count}?`
+          : `Notify ${count} ${count === 1 ? "person" : "people"} that this issue has arrived?`
+      }
     >
-      ✉ Send arrival alerts
+      {alreadySent ? "✉ Re-send alerts" : "✉ Send arrival alerts"}
+    </ActionButton>
+  );
+}
+
+export function CancelRoutingButton({ issueId, outWith }: { issueId: string; outWith: string | null }) {
+  return (
+    <ActionButton
+      action={cancelRouting}
+      fields={{ issueId }}
+      variant="ghost"
+      className="!px-2 !py-1 text-xs text-red-700"
+      pendingLabel="…"
+      confirm={
+        outWith
+          ? `This issue is still out with ${outWith}. Cancel the run anyway? The stop record is discarded.`
+          : "Cancel this routing run? Its stop records are discarded and a fresh run can start."
+      }
+    >
+      Cancel run
     </ActionButton>
   );
 }

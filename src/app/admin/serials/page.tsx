@@ -47,7 +47,13 @@ export default async function SerialsPage({
       orderBy: { title: "asc" },
       take: 500,
     }),
-    prisma.routingSubscriber.groupBy({ by: ["serialId"], _count: { _all: true } }),
+    // Alert-only subscribers are never handed the issue, so they must not
+    // be counted in a label that says "routes to".
+    prisma.routingSubscriber.groupBy({
+      by: ["serialId"],
+      where: { alertOnly: false },
+      _count: { _all: true },
+    }),
   ]);
   const routingCounts = new Map(routingGroups.map((g) => [g.serialId, g._count._all]));
 
@@ -159,7 +165,11 @@ export default async function SerialsPage({
                     </Link>
                     <ActionButton action={deleteSerial} fields={{ id: s.id }} variant="ghost"
                       className="!px-2 !py-1 text-xs text-red-700" pendingLabel="…"
-                      confirm={`Stop tracking "${s.title}"? Its issue history is removed; the catalogue record stays.`}>
+                      confirm={`Stop tracking "${s.title}"? Its issue history${
+                        (routingCounts.get(s.id) ?? 0) > 0
+                          ? `, routing list and any run in progress`
+                          : ""
+                      } will be removed; the catalogue record stays.`}>
                       Untrack
                     </ActionButton>
                   </div>

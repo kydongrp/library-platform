@@ -26,6 +26,12 @@ const isUnique = (e: unknown) =>
 
 const ROUTING_LIST_MAX = 100;
 
+/** Both surfaces that show routing state: the list page and the routing page. */
+function revalidateRouting(serialId: string): void {
+  revalidatePath("/admin/serials");
+  revalidatePath(`/admin/serials/${serialId}/routing`);
+}
+
 /* ---------- Routing list management (rows 69, 71) ---------- */
 
 export async function addRoutingSubscriber(
@@ -58,15 +64,21 @@ export async function addRoutingSubscriber(
   if (count >= ROUTING_LIST_MAX)
     return { ok: false, message: `A routing list holds at most ${ROUTING_LIST_MAX} people.` };
 
-  // Append at the end of the order.
-  const last = await prisma.routingSubscriber.findFirst({
-    where: { serialId },
-    orderBy: { seq: "desc" },
-    select: { seq: true },
-  });
+  // Append at the end of the order. Adds to one list are serialised on the
+  // parent Serial row: under READ COMMITTED a plain read-then-write (and even
+  // an INSERT ... SELECT MAX(seq)) lets concurrent adds compute the same seq,
+  // which was measured producing seqs [1,2,2,3,3,3] for six simultaneous adds.
   try {
-    await prisma.routingSubscriber.create({
-      data: { serialId, memberId: member.id, seq: (last?.seq ?? 0) + 1, alertOnly },
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT 1 FROM "Serial" WHERE id = ${serialId} FOR UPDATE`;
+      const last = await tx.routingSubscriber.findFirst({
+        where: { serialId },
+        orderBy: { seq: "desc" },
+        select: { seq: true },
+      });
+      await tx.routingSubscriber.create({
+        data: { serialId, memberId: member.id, seq: (last?.seq ?? 0) + 1, alertOnly },
+      });
     });
   } catch (e) {
     if (isUnique(e))
@@ -76,10 +88,11 @@ export async function addRoutingSubscriber(
   await audit({
     action: "serials.routing.add",
     summary: `Added ${member.name} to the ${alertOnly ? "alert list" : "routing list"} for "${serial.resource.title}"`,
-    entity: "RoutingSubscriber",
+    // The subject of the change is the serial's list, so record the serial.
+    entity: "Serial",
     entityId: serial.id,
   });
-  revalidatePath("/admin/serials");
+  revalidateRouting(serial.id);
   return {
     ok: true,
     message: alertOnly
@@ -104,9 +117,10 @@ export async function removeRoutingSubscriber(
   await audit({
     action: "serials.routing.remove",
     summary: `Removed ${row.member.name} from the routing list for "${row.serial.resource.title}"`,
-    entity: "RoutingSubscriber",
+    entity: "Serial",
+    entityId: row.serialId,
   });
-  revalidatePath("/admin/serials");
+  revalidateRouting(row.serialId);
   return {
     ok: true,
     message: `${row.member.name} removed. Runs already in progress keep their own list.`,
@@ -126,9 +140,13 @@ export async function moveRoutingSubscriber(
   const row = await prisma.routingSubscriber.findUnique({ where: { id } });
   if (!row) return { ok: false, message: "That entry no longer exists." };
 
+  // Swap within the same population. The displayed routing order excludes
+  // alert-only rows, so swapping a routed member with an alert-only
+  // neighbour would renumber the data while the visible order never moved.
   const neighbour = await prisma.routingSubscriber.findFirst({
     where: {
       serialId: row.serialId,
+      alertOnly: row.alertOnly,
       seq: dir === "up" ? { lt: row.seq } : { gt: row.seq },
     },
     orderBy: { seq: dir === "up" ? "desc" : "asc" },
@@ -136,13 +154,12 @@ export async function moveRoutingSubscriber(
   if (!neighbour)
     return { ok: false, message: dir === "up" ? "Already first." : "Already last." };
 
-  // Swap through a free slot: seq is not unique per serial, but keeping the
-  // swap in one transaction stops a half-applied reorder.
+  // Swap in one transaction so a half-applied reorder cannot survive.
   await prisma.$transaction([
     prisma.routingSubscriber.update({ where: { id: row.id }, data: { seq: neighbour.seq } }),
     prisma.routingSubscriber.update({ where: { id: neighbour.id }, data: { seq: row.seq } }),
   ]);
-  revalidatePath("/admin/serials");
+  revalidateRouting(row.serialId);
   return { ok: true, message: `Moved ${dir}.` };
 }
 
@@ -162,7 +179,7 @@ export async function toggleAlertOnly(
     where: { id },
     data: { alertOnly: !row.alertOnly },
   });
-  revalidatePath("/admin/serials");
+  revalidateRouting(row.serialId);
   return {
     ok: true,
     message: row.alertOnly
@@ -188,7 +205,7 @@ export async function startRouting(_prev: ActionState, formData: FormData): Prom
       serial: {
         include: {
           resource: { select: { title: true } },
-          routing: { orderBy: { seq: "asc" } },
+          routing: { orderBy: [{ seq: "asc" }, { id: "asc" }] },
         },
       },
       routingStops: { select: { id: true } },
@@ -207,16 +224,24 @@ export async function startRouting(_prev: ActionState, formData: FormData): Prom
       message: "No one on the routing list receives the issue. Add someone who is not alert-only.",
     };
 
-  await prisma.issueRoutingStop.createMany({
-    data: plan.map((p) => ({ issueId, memberId: p.memberId, seq: p.runSeq })),
-  });
+  try {
+    await prisma.issueRoutingStop.createMany({
+      data: plan.map((p) => ({ issueId, memberId: p.memberId, seq: p.runSeq })),
+    });
+  } catch (e) {
+    // Two staff starting at once: the unique (issueId, memberId) rejects the
+    // loser rather than duplicating the run.
+    if (isUnique(e))
+      return { ok: false, message: "Someone just started routing this issue. Reload to see it." };
+    throw e;
+  }
   await audit({
     action: "serials.routing.start",
     summary: `Started routing ${issue.label} of "${issue.serial.resource.title}" through ${plan.length} ${plan.length === 1 ? "person" : "people"}`,
     entity: "SerialIssue",
     entityId: issueId,
   });
-  revalidatePath("/admin/serials");
+  revalidateRouting(issue.serialId);
   return { ok: true, message: `Routing started: ${plan.length} stops. Route it out to the first person.` };
 }
 
@@ -228,7 +253,7 @@ export async function routeOut(_prev: ActionState, formData: FormData): Promise<
   const stops = await prisma.issueRoutingStop.findMany({
     where: { issueId },
     include: { member: { select: { id: true, name: true, email: true } } },
-    orderBy: { seq: "asc" },
+    orderBy: [{ seq: "asc" }, { id: "asc" }],
   });
   const verdict = canRouteOut(stops);
   if (!verdict.ok) return { ok: false, message: verdict.why };
@@ -253,7 +278,7 @@ export async function routeOut(_prev: ActionState, formData: FormData): Promise<
     entity: "IssueRoutingStop",
     entityId: target.id,
   });
-  revalidatePath("/admin/serials");
+  if (issue) revalidateRouting(issue.serialId);
   return { ok: true, message: `Routed out to ${target.member.name} (stop ${target.seq} of ${stops.length}).` };
 }
 
@@ -265,7 +290,7 @@ export async function routeIn(_prev: ActionState, formData: FormData): Promise<A
   const stops = await prisma.issueRoutingStop.findMany({
     where: { issueId },
     include: { member: { select: { name: true } } },
-    orderBy: { seq: "asc" },
+    orderBy: [{ seq: "asc" }, { id: "asc" }],
   });
   const verdict = canRouteIn(stops);
   if (!verdict.ok) return { ok: false, message: verdict.why };
@@ -289,7 +314,7 @@ export async function routeIn(_prev: ActionState, formData: FormData): Promise<A
     entity: "IssueRoutingStop",
     entityId: current.id,
   });
-  revalidatePath("/admin/serials");
+  if (issue) revalidateRouting(issue.serialId);
   return {
     ok: true,
     message: remaining > 0
@@ -325,20 +350,99 @@ export async function sendIssueAlerts(_prev: ActionState, formData: FormData): P
   if (issue.serial.routing.length === 0)
     return { ok: false, message: "No one is on this serial's list yet." };
 
-  let sent = 0;
-  for (const sub of issue.serial.routing) {
-    await notify("SERIAL_ISSUE", sub.member, {
-      resourceTitle: issue.serial.resource.title,
-      issueLabel: issue.label,
-    });
-    sent++;
+  // notify() is fire-and-forget: it silently does nothing when the template
+  // row is missing or both channels are switched off. Counting loop turns
+  // would report alerts that were never sent, so measure the writes instead.
+  const template = await prisma.emailTemplate.findUnique({
+    where: { code: "SERIAL_ISSUE" },
+    select: { inAppEnabled: true, emailEnabled: true },
+  });
+  if (!template)
+    return {
+      ok: false,
+      message: "The 'New serial issue arrived' template is missing, so nothing would be sent.",
+    };
+  if (!template.inAppEnabled && !template.emailEnabled)
+    return {
+      ok: false,
+      message: "Both channels are switched off for that template. Enable one under Email Templates.",
+    };
+
+  const before = await prisma.notification.count({ where: { type: "SERIAL_ISSUE" } });
+  const mailBefore = await prisma.mailQueue.count({ where: { template: "SERIAL_ISSUE" } });
+  // notify() is two writes per person and runs in the request, so a full
+  // 100-name list would be 200 sequential round trips. Send in bounded
+  // parallel batches to keep one click well inside the function timeout.
+  const BATCH = 10;
+  const recipients = issue.serial.routing;
+  for (let i = 0; i < recipients.length; i += BATCH) {
+    await Promise.all(
+      recipients.slice(i, i + BATCH).map((sub) =>
+        notify("SERIAL_ISSUE", sub.member, {
+          resourceTitle: issue.serial.resource.title,
+          issueLabel: issue.label,
+        }),
+      ),
+    );
   }
+  const inApp = (await prisma.notification.count({ where: { type: "SERIAL_ISSUE" } })) - before;
+  const mailed = (await prisma.mailQueue.count({ where: { template: "SERIAL_ISSUE" } })) - mailBefore;
+  const sent = Math.max(inApp, mailed);
+  // Record the send so the page can show the list was already told; a second
+  // click then reads as a deliberate re-send rather than an accident.
+  await prisma.serialIssue.update({ where: { id: issueId }, data: { alertsSentAt: new Date() } });
   await audit({
     action: "serials.routing.alert",
     summary: `Sent ${sent} arrival ${sent === 1 ? "alert" : "alerts"} for ${issue.label} of "${issue.serial.resource.title}"`,
     entity: "SerialIssue",
     entityId: issueId,
   });
-  revalidatePath("/admin/serials");
+  revalidateRouting(issue.serialId);
   return { ok: true, message: `Alerted ${sent} ${sent === 1 ? "person" : "people"} that ${issue.label} has arrived.` };
+}
+
+/**
+ * Abandon a routing run (row 70, the exit path). Real circulation stalls:
+ * the recipient goes on leave, or the copy is lost mid-round. Clearing the
+ * stops returns the issue to "not routed" so a fresh run can start, and the
+ * audit trail records what was discarded.
+ */
+export async function cancelRouting(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const admin = await requireRoutingEditor();
+  if (!admin) return NO_PERMISSION;
+  const issueId = clip(formData.get("issueId"), 40);
+
+  const issue = await prisma.serialIssue.findUnique({
+    where: { id: issueId },
+    include: {
+      serial: { include: { resource: { select: { title: true } } } },
+      routingStops: { include: { member: { select: { name: true } } }, orderBy: { seq: "asc" } },
+    },
+  });
+  if (!issue) return { ok: false, message: "Issue not found." };
+  if (issue.routingStops.length === 0)
+    return { ok: false, message: "This issue has no routing run." };
+
+  const out = issue.routingStops.find((s) => s.routedOut && !s.routedIn);
+  const done = issue.routingStops.filter((s) => s.routedIn).length;
+  await prisma.issueRoutingStop.deleteMany({ where: { issueId } });
+
+  await audit({
+    action: "serials.routing.cancel",
+    summary: `Cancelled the routing run for ${issue.label} of "${issue.serial.resource.title}" after ${done} of ${issue.routingStops.length} stops${out ? `; it was out with ${out.member.name}` : ""}`,
+    entity: "SerialIssue",
+    entityId: issueId,
+    detail: {
+      completed: done,
+      total: issue.routingStops.length,
+      outWith: out?.member.name ?? null,
+    },
+  });
+  revalidateRouting(issue.serialId);
+  return {
+    ok: true,
+    message: out
+      ? `Run cancelled. It was still out with ${out.member.name} — chase the copy separately.`
+      : "Run cancelled. You can start a fresh run for this issue.",
+  };
 }

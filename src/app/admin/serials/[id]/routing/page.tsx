@@ -13,12 +13,15 @@ import {
   RouteOutButton,
   RouteInButton,
   SendAlertsButton,
+  CancelRoutingButton,
 } from "./widgets";
 
 export const dynamic = "force-dynamic";
 
 /** Received issues shown for routing; older ones stay in the serials list. */
 const RECENT_ISSUES = 8;
+/** Plus in-flight runs beyond that window, bounded so the page stays cheap. */
+const IN_FLIGHT_MAX = 20;
 
 export default async function SerialRoutingPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminView("CATALOGUE");
@@ -31,22 +34,40 @@ export default async function SerialRoutingPage({ params }: { params: Promise<{ 
       resource: { select: { id: true, title: true } },
       routing: {
         include: { member: { select: { name: true, email: true, department: true } } },
-        orderBy: { seq: "asc" },
-      },
-      issues: {
-        where: { status: "RECEIVED" },
-        orderBy: { seq: "desc" },
-        take: RECENT_ISSUES,
-        include: {
-          routingStops: {
-            include: { member: { select: { name: true } } },
-            orderBy: { seq: "asc" },
-          },
-        },
+        // id breaks ties so an equal-seq pair still renders in a stable order.
+        orderBy: [{ seq: "asc" }, { id: "asc" }],
       },
     },
   });
   if (!serial) notFound();
+
+  // Two bounded queries rather than one unbounded read: the newest issues,
+  // plus any issue still carrying a routing run. An unfinished circulation
+  // must not fall off the page once newer issues arrive, and a serial with
+  // years of history must not be loaded whole to prove it.
+  const issueInclude = {
+    routingStops: {
+      include: { member: { select: { name: true } } },
+      orderBy: [{ seq: "asc" as const }, { id: "asc" as const }],
+    },
+  };
+  const [recent, inFlight] = await Promise.all([
+    prisma.serialIssue.findMany({
+      where: { serialId: serial.id, status: "RECEIVED" },
+      orderBy: { seq: "desc" },
+      take: RECENT_ISSUES,
+      include: issueInclude,
+    }),
+    prisma.serialIssue.findMany({
+      where: { serialId: serial.id, status: "RECEIVED", routingStops: { some: {} } },
+      orderBy: { seq: "desc" },
+      take: IN_FLIGHT_MAX,
+      include: issueInclude,
+    }),
+  ]);
+  const byId = new Map(recent.map((i) => [i.id, i]));
+  for (const i of inFlight) byId.set(i.id, i);
+  const shown = [...byId.values()].sort((a, b) => b.seq - a.seq);
 
   const routed = serial.routing.filter((r) => !r.alertOnly);
   const alertOnly = serial.routing.filter((r) => r.alertOnly);
@@ -76,13 +97,13 @@ export default async function SerialRoutingPage({ params }: { params: Promise<{ 
         {/* Received issues and their runs */}
         <div className="space-y-4">
           <h2 className="font-display text-xl font-semibold">Received issues</h2>
-          {serial.issues.length === 0 ? (
+          {shown.length === 0 ? (
             <EmptyState
               title="Nothing received yet"
               description="Check an issue in from the Serials page, then route it from here."
             />
           ) : (
-            serial.issues.map((issue) => {
+            shown.map((issue) => {
               const stops = issue.routingStops;
               const state = runState(stops);
               const out = currentStop(stops);
@@ -97,6 +118,7 @@ export default async function SerialRoutingPage({ params }: { params: Promise<{ 
                       <p className="text-xs text-muted-foreground">
                         Received {issue.receivedAt ? formatDate(issue.receivedAt) : "—"}
                         {stops.length > 0 && ` · ${done} of ${stops.length} stops complete`}
+                        {issue.alertsSentAt && ` · alerts sent ${formatDate(issue.alertsSentAt)}`}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -148,7 +170,14 @@ export default async function SerialRoutingPage({ params }: { params: Promise<{ 
                       {out && <RouteInButton issueId={issue.id} from={out.member.name} />}
                       {!out && next && <RouteOutButton issueId={issue.id} to={next.member.name} />}
                       {serial.routing.length > 0 && (
-                        <SendAlertsButton issueId={issue.id} count={serial.routing.length} />
+                        <SendAlertsButton
+                          issueId={issue.id}
+                          count={serial.routing.length}
+                          alreadySent={!!issue.alertsSentAt}
+                        />
+                      )}
+                      {stops.length > 0 && state !== "COMPLETE" && (
+                        <CancelRoutingButton issueId={issue.id} outWith={out?.member.name ?? null} />
                       )}
                     </div>
                   )}

@@ -748,6 +748,9 @@ model SerialIssue {
   expectedAt   DateTime
   receivedAt   DateTime?
   claimedAt    DateTime?
+  // Row 71: when arrival alerts last went out, so the UI can show the list was
+  // already told and a second send is a deliberate re-send, not a slip.
+  alertsSentAt DateTime?
   status       String             @default("EXPECTED") // EXPECTED, RECEIVED, SKIPPED
   createdAt    DateTime           @default(now())
   routingStops IssueRoutingStop[]
