@@ -44,3 +44,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Database backups: personal data, never committed (this repo is public).
+backups/

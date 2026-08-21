@@ -10,7 +10,14 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma db push --force-reset && npm run db:seed"
+    "db:reset": "prisma db push --force-reset && npm run db:seed",
+    "backup": "tsx --env-file=.env scripts/backup.ts",
+    "backup:drill": "tsx --env-file=.env scripts/backup-drill.ts",
+    "backup:restore": "tsx --env-file=.env scripts/restore.ts",
+    "db:which": "tsx --env-file=.env scripts/which-db.ts",
+    "db:test:provision": "tsx --env-file=.env scripts/provision-test-db.ts",
+    "db:test:which": "tsx --env-file=.env.test scripts/which-db.ts",
+    "test:crypt": "tsx scripts/test-crypt.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
