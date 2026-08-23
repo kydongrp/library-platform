@@ -5,12 +5,20 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/sftp-fetch",
-      "schedule": "0 3 * * *"
-    },
-    {
       "path": "/api/cron/link-check",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/renewal-alerts",
+      "schedule": "20 2 * * *"
+    },
+    {
+      "path": "/api/cron/serial-claims",
+      "schedule": "40 2 * * *"
+    },
+    {
+      "path": "/api/cron/sftp-fetch",
+      "schedule": "0 3 * * *"
     }
   ]
 }
