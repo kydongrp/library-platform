@@ -63,6 +63,8 @@ automatic backup.
 | `npm run db:test:which` | Same for `.env.test` |
 | `npm run db:test:provision` | Creates/refreshes `neondb_test` and writes `.env.test` |
 | `npm run test:crypt` | Encryption round-trip tests |
+| `npm run db:compare` | Prove two databases hold the same thing (read only) |
+| `npm run test:compare` | Proves the comparison actually detects damage |
 | `npm run neon:retention` | Show or set the Neon history window (recovery range) |
 
 ### Taking a backup
@@ -98,14 +100,37 @@ An untested backup is a guess. The drill:
 2. creates a throwaway database on the same server,
 3. applies the current Prisma schema to it,
 4. restores the dump into it,
-5. checks every table's row count against the manifest, then compares real
-   values (resource titles, member emails, copy barcodes, loan due dates,
-   audit timestamps, JSON detail, MARC subfield arrays), confirms timestamps
-   and integers came back as timestamps and integers rather than strings, and
-   confirms no orphaned rows,
+5. compares the restored copy against the live database **in full** — tables,
+   columns and types, indexes, constraints, sequences, extensions, row counts,
+   and an md5 over every row of every table — then spot checks a few real
+   values because a hash is not readable,
 6. drops the throwaway database.
 
 It exits non-zero if any check fails. Run it after any schema change.
+
+### Why the full comparison is there
+
+Until 24 Aug 2026 the drill compared row counts and null counts, and passed
+every time — while the restore path was shifting **every timestamp in the
+database by eight hours**.
+
+node-postgres reads `timestamp without time zone` as a *local* time, and the
+dump wrote it back with `Date.toISOString()`, which is UTC. Inserting
+`2026-08-09T00:59:08.954Z` into a naive timestamp column stores the UTC wall
+clock, so `08:59` came back as `00:59`. The schema has 91 naive timestamp
+columns: due dates, fine calculations, audit trails, loan history, hold expiry,
+booking windows. Restoring twice shifted them twice.
+
+Dumps now keep date and time values as the server's own text and pin the
+session to UTC, so a dump taken anywhere restores identically. Two consequences:
+
+- The dump format is now `dls-ndjson-2`. Restoring a `dls-ndjson-1` dump fails
+  with an explanation instead of silently shifting time. Any dump in `backups/`
+  from before this date is a v1 dump and is wrong about time.
+- `npm run test:compare` exists to keep the verifier honest. It builds a real
+  copy, proves it compares clean, then damages it six ways and proves each one
+  is caught. A checker that only ever says "identical" is worse than none,
+  because it launders a bad restore into a signed-off one.
 
 ### Restoring
 

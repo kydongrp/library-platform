@@ -2,3 +2,14 @@ node_modules
 .next
 .git
 *.tgz
+
+# Vercel's default ignore list covers .env.local and .env.*.local but NOT a
+# plain .env or .env.test. Without these lines, `vercel --prod` from this
+# directory uploads live database credentials into the deployment source, where
+# any team member can read them at /_src.
+.env
+.env.*
+!.env.example
+
+# Local database dumps: member names and email addresses.
+backups/

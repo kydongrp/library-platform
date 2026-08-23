@@ -78,8 +78,10 @@ type Project = {
 };
 type Org = { id: string; name: string; plan?: string };
 
+// Top-level is where the API actually reports it; the settings fallback is
+// only there in case a future response moves it.
 const retention = (p: Project): number =>
-  p.settings?.history_retention_seconds ?? p.history_retention_seconds ?? 0;
+  p.history_retention_seconds ?? p.settings?.history_retention_seconds ?? 0;
 
 void (async () => {
   const wanted = process.argv[2];
@@ -159,9 +161,12 @@ void (async () => {
   }
 
   console.log(`Setting  : ${target}s — ${describe(target)}`);
+  // history_retention_seconds is a top-level member of `project`. Nesting it
+  // under `project.settings` — where most other project options live — is
+  // accepted and does nothing.
   await must(`/projects/${id.projectId}`, key, {
     method: "PATCH",
-    body: JSON.stringify({ project: { settings: { history_retention_seconds: target } } }),
+    body: JSON.stringify({ project: { history_retention_seconds: target } }),
   });
 
   // Read it back rather than trusting the write.

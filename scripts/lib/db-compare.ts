@@ -21,12 +21,16 @@
  * were added over time does not lay them out the same way as one created in a
  * single schema push.
  *
- * Caveat worth knowing: row-to-text rendering depends on the server's type
- * output functions, so a digest is only comparable between servers on the same
- * Postgres major version. Session-level rendering settings (TimeZone,
- * DateStyle, IntervalStyle) are pinned on connect so they cannot differ;
- * anything left over, notably a different major version, downgrades the digest
- * comparison to a warning rather than reporting a false mismatch.
+ * Rendering settings that would change the text (TimeZone, DateStyle,
+ * IntervalStyle) are pinned on connect, so they cannot drift. A different
+ * Postgres major version is reported but does not disable the digest: only
+ * per-column output functions are involved, and those are stable across
+ * versions for every type this schema uses. That is deliberate — the move this
+ * was written for crosses from Postgres 17 to 18, and a check that switches
+ * itself off at the moment it is needed is not a check.
+ *
+ * When a table's digest does differ, the per-column digests are compared too,
+ * so the report names the columns rather than just printing two hashes.
  */
 
 import { Client } from "pg";
@@ -208,6 +212,32 @@ async function rowCount(c: Client, table: string): Promise<number> {
  * this catches a changed value in any column — including ones the app rarely
  * reads. Sorting by the rendered text is what makes it order independent.
  */
+/**
+ * A NULL-distinguishing text rendering of one column.
+ *
+ * concat_ws drops NULL arguments outright, which would make a NULL and an
+ * empty string hash identically, so NULLs get an explicit sentinel. Postgres
+ * text cannot contain a NUL byte, and 0x01 is not something this data holds.
+ */
+function nullSafeText(col: string): string {
+  return `coalesce("${col}"::text, E'\x01NULL\x01')`;
+}
+
+/**
+ * One row rendered as text, column by column.
+ *
+ * Deliberately not `t::text`. A whole-row cast also encodes composite quoting
+ * rules, which is extra surface that can differ between Postgres major
+ * versions; casting each column and joining with a separator depends only on
+ * each type's own output function. That is what lets a database on Postgres 17
+ * be compared against its copy on Postgres 18 — which is the actual situation
+ * here, and without it the strongest check would be unavailable exactly when
+ * it is needed most.
+ */
+function rowExpression(cols: string[]): string {
+  return `concat_ws(E'\x1f', ${cols.map(nullSafeText).join(", ")})`;
+}
+
 async function contentDigest(
   c: Client,
   table: string,
@@ -215,12 +245,7 @@ async function contentDigest(
   cols: string[],
 ): Promise<string> {
   if (rows === 0) return "empty";
-  // ROW(...) in a fixed alphabetical order rather than `t::text`, because the
-  // physical column order differs between a database whose columns were added
-  // over time and one created in a single schema push. That is cosmetic in
-  // Postgres, but it changes how a row renders and so would change every
-  // digest.
-  const projection = `ROW(${cols.map((k) => `"${k}"`).join(", ")})::text`;
+  const projection = rowExpression(cols);
   if (rows <= CHUNK_THRESHOLD) {
     const { rows: r } = await c.query<{ d: string | null }>(
       `SELECT md5(string_agg(x, E'\n' ORDER BY x)) AS d FROM (SELECT ${projection} AS x FROM "${table}") s`,
@@ -233,6 +258,23 @@ async function contentDigest(
     `SELECT md5(string_agg(h, '' ORDER BY h)) AS d FROM (SELECT md5(${projection}) AS h FROM "${table}") s`,
   );
   return `chunked:${r[0].d ?? "empty"}`;
+}
+
+/** Per-column digests for one table, to name which column actually differs. */
+async function columnDigests(
+  c: Client,
+  table: string,
+  cols: string[],
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const k of cols) {
+    const { rows } = await c.query<{ d: string | null }>(
+      `SELECT md5(string_agg(h, '' ORDER BY h)) AS d
+         FROM (SELECT md5(${nullSafeText(k)}) AS h FROM "${table}") s`,
+    );
+    out[k] = rows[0].d ?? "empty";
+  }
+  return out;
 }
 function diffMaps(
   kind: Difference["kind"],
@@ -267,18 +309,21 @@ export async function compareDatabases(a: Side, b: Side): Promise<CompareResult>
     const [sa, sb] = [await settings(ca), await settings(cb)];
     let digestsComparable = true;
     for (const name of RENDER_SETTINGS) {
-      if (sa[name] !== sb[name]) {
-        // A different major version is not itself a data problem; it just
-        // means the digest can no longer prove equality on its own.
-        differences.push({
-          kind: "settings",
-          subject: name,
-          a: sa[name] ?? "?",
-          b: sb[name] ?? "?",
-          blocking: false,
-        });
-        digestsComparable = false;
-      }
+      if (sa[name] === sb[name]) continue;
+      differences.push({
+        kind: "settings",
+        subject: name,
+        a: sa[name] ?? "?",
+        b: sb[name] ?? "?",
+        blocking: false,
+      });
+      // A different Postgres major version is worth reporting but does not
+      // invalidate the digest: it is built from per-column text output, which
+      // is stable across versions for every type this schema uses. The
+      // rendering settings below are pinned on connect, so if one of those
+      // still differs something is overriding the session and the digest can
+      // no longer be trusted.
+      if (name !== "server_version_num") digestsComparable = false;
     }
 
     // 2. Shape.
@@ -355,8 +400,22 @@ export async function compareDatabases(a: Side, b: Side): Promise<CompareResult>
         await contentDigest(ca, t, na, cols),
         await contentDigest(cb, t, nb, cols),
       ];
-      if (da !== db)
-        differences.push({ kind: "content", subject: t, a: da, b: db, blocking: true });
+      if (da !== db) {
+        // A bare hash mismatch is not actionable, so find out which columns
+        // carry the difference before reporting it.
+        const [ka, kb] = [
+          await columnDigests(ca, t, cols),
+          await columnDigests(cb, t, cols),
+        ];
+        const culprits = cols.filter((k) => ka[k] !== kb[k]);
+        differences.push({
+          kind: "content",
+          subject: culprits.length ? `${t} (${culprits.join(", ")})` : t,
+          a: da,
+          b: db,
+          blocking: true,
+        });
+      }
     }
 
     return {
