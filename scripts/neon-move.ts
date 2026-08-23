@@ -39,9 +39,16 @@ const API = "https://console.neon.tech/api/v2";
 const THIRTY_DAYS = 2_592_000;
 const CRED_FILE = resolve(".env.migration");
 
-/** Neon needs TLS; mirror the parameters the existing connection strings use. */
-const POOLED_PARAMS = "sslmode=require&channel_binding=require";
-const DIRECT_PARAMS = "sslmode=require&channel_binding=require";
+/**
+ * Neon needs TLS; mirror the parameters the existing connection strings use.
+ * `verify-full` is spelled out rather than `require` deliberately. pg currently
+ * treats `require` as an alias for `verify-full`, but pg 9 and
+ * pg-connection-string 3 will move it to libpq semantics, which skip
+ * certificate and hostname verification. Naming the strong mode means that
+ * upgrade cannot silently downgrade TLS on a database holding learner records.
+ */
+const POOLED_PARAMS = "sslmode=verify-full&channel_binding=require";
+const DIRECT_PARAMS = "sslmode=verify-full&channel_binding=require";
 
 type Project = {
   id: string;
