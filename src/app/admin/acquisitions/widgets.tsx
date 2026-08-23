@@ -6,6 +6,7 @@ import {
   createFund,
   createPurchaseOrder,
   recordInvoice,
+  createAccount,
 } from "@/app/actions/acquisitions";
 
 const fieldCls =
@@ -13,6 +14,23 @@ const fieldCls =
 const labelCls = "mb-1 block text-xs font-medium text-muted-foreground";
 
 export type IdName = { id: string; name: string };
+export type AccountOption = { id: string; code: string; name: string };
+
+/** Optional account picker — blank means the spend carries no finance code. */
+function AccountField({ accounts }: { accounts: AccountOption[] }) {
+  if (accounts.length === 0) return null;
+  return (
+    <div>
+      <label className={labelCls}>Account</label>
+      <select name="accountId" defaultValue="" className={fieldCls}>
+        <option value="">No account</option>
+        {accounts.map((a) => (
+          <option key={a.id} value={a.id}>{a.code} · {a.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 function Err({ state }: { state: { ok?: boolean; message?: string } }) {
   return state.ok === false && state.message ? (
@@ -82,7 +100,15 @@ export function FundForm() {
 
 const LINE_SLOTS = [1, 2, 3, 4, 5];
 
-export function PurchaseOrderForm({ suppliers, funds }: { suppliers: IdName[]; funds: IdName[] }) {
+export function PurchaseOrderForm({
+  suppliers,
+  funds,
+  accounts = [],
+}: {
+  suppliers: IdName[];
+  funds: IdName[];
+  accounts?: AccountOption[];
+}) {
   return (
     <StatefulForm action={createPurchaseOrder}>
       {(state) => (
@@ -103,6 +129,11 @@ export function PurchaseOrderForm({ suppliers, funds }: { suppliers: IdName[]; f
               </select>
             </div>
           </div>
+          {accounts.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              <AccountField accounts={accounts} />
+            </div>
+          )}
           <div>
             <span className={labelCls}>Order lines (title · qty · unit price) — fill what you need</span>
             <div className="grid gap-1.5">
@@ -135,10 +166,12 @@ export function InvoiceForm({
   suppliers,
   funds,
   openOrders,
+  accounts = [],
 }: {
   suppliers: IdName[];
   funds: IdName[];
   openOrders: { id: string; label: string }[];
+  accounts?: AccountOption[];
 }) {
   return (
     <StatefulForm action={recordInvoice}>
@@ -160,6 +193,11 @@ export function InvoiceForm({
               </select>
             </div>
           </div>
+          {accounts.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              <AccountField accounts={accounts} />
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label htmlFor="in-number" className={labelCls}>Invoice no. *</label>
@@ -185,6 +223,36 @@ export function InvoiceForm({
           </div>
           <Err state={state} />
           <div><SubmitButton pendingLabel="Recording…" variant="outline">＋ Record invoice</SubmitButton></div>
+        </div>
+      )}
+    </StatefulForm>
+  );
+}
+
+/** Row 60: the finance-side code list. */
+export function AccountForm() {
+  return (
+    <StatefulForm action={createAccount}>
+      {(state) => (
+        <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
+          <div>
+            <label className={labelCls}>Code</label>
+            <input name="code" required maxLength={32} placeholder="GL-5200" className={`${fieldCls} font-mono`} />
+          </div>
+          <div>
+            <label className={labelCls}>Name</label>
+            <input name="name" required maxLength={120} placeholder="Library materials" className={fieldCls} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Notes (optional)</label>
+            <input name="notes" maxLength={200} placeholder="What this code covers" className={fieldCls} />
+          </div>
+          {state.ok === false && state.message && (
+            <p className="sm:col-span-2 text-sm text-red-700">{state.message}</p>
+          )}
+          <div className="sm:col-span-2">
+            <SubmitButton pendingLabel="Adding…" variant="outline">Add account</SubmitButton>
+          </div>
         </div>
       )}
     </StatefulForm>

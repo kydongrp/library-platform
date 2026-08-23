@@ -648,15 +648,33 @@ model AcqFund {
 
 /// A purchase order: commits fund money while ORDERED/RECEIVED, stops on
 /// CANCELLED, and CLOSED once fully received and its invoice is paid.
+// Acquisition accounts (SDD row 60). A fund is a BUDGET line — how much may
+// be spent on monographs this year. An account is the finance-side code the
+// spend is booked against, which is what the finance team reconciles on. They
+// are different axes: one fund can be charged to several accounts, and one
+// account carries spend from several funds.
+model AcqAccount {
+  id        String          @id @default(cuid())
+  code      String          @unique // e.g. "GL-5200"
+  name      String
+  notes     String?
+  status    String          @default("ACTIVE") // ACTIVE, CLOSED
+  createdAt DateTime        @default(now())
+  orders    PurchaseOrder[]
+  invoices  Invoice[]
+}
+
 model PurchaseOrder {
-  id         String    @id @default(cuid())
-  poNumber   String    @unique // PO-2026-0001
+  id         String      @id @default(cuid())
+  poNumber   String      @unique // PO-2026-0001
   supplierId String
-  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+  supplier   Supplier    @relation(fields: [supplierId], references: [id])
   fundId     String
-  fund       AcqFund   @relation(fields: [fundId], references: [id])
-  status     String    @default("ORDERED") // ORDERED, RECEIVED, CLOSED, CANCELLED
-  orderedAt  DateTime  @default(now())
+  fund       AcqFund     @relation(fields: [fundId], references: [id])
+  accountId  String?
+  account    AcqAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  status     String      @default("ORDERED") // ORDERED, RECEIVED, CLOSED, CANCELLED
+  orderedAt  DateTime    @default(now())
   orderedBy  String
   notes      String?
   lines      PoLine[]
@@ -683,6 +701,8 @@ model Invoice {
   po            PurchaseOrder? @relation(fields: [poId], references: [id], onDelete: SetNull)
   fundId        String
   fund          AcqFund        @relation(fields: [fundId], references: [id])
+  accountId     String?
+  account       AcqAccount?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
   amountCents   Int
   invoiceDate   DateTime
   status        String         @default("PENDING") // PENDING, PAID

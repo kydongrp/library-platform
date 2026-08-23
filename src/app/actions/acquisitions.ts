@@ -172,6 +172,10 @@ export async function createPurchaseOrder(
     return { ok: false, message: `"${supplier.name}" is inactive — reactivate it before ordering.` };
   if (!fund) return { ok: false, message: "That fund no longer exists." };
 
+  const acct = await resolveAccountId(formData);
+  if ("error" in acct) return { ok: false, message: acct.error };
+  const { accountId } = acct;
+
   const notes = clip(formData.get("notes"), 1000) || null;
   const total = poTotalCents(lines);
 
@@ -181,7 +185,7 @@ export async function createPurchaseOrder(
     const poNumber = await nextPoNumber();
     try {
       const po = await prisma.purchaseOrder.create({
-        data: { poNumber, supplierId, fundId, orderedBy: admin.name, notes, lines: { create: lines } },
+        data: { poNumber, supplierId, fundId, accountId, orderedBy: admin.name, notes, lines: { create: lines } },
       });
       await audit({
         action: "acq.po.create",
@@ -291,9 +295,13 @@ export async function recordInvoice(
   if (po && po.supplierId !== supplierId)
     return { ok: false, message: `${po.poNumber} belongs to a different supplier.` };
 
+  const acct = await resolveAccountId(formData);
+  if ("error" in acct) return { ok: false, message: acct.error };
+  const { accountId } = acct;
+
   try {
     const inv = await prisma.invoice.create({
-      data: { invoiceNumber, supplierId, fundId, poId, amountCents: amount, invoiceDate, notes: clip(formData.get("notes"), 1000) || null },
+      data: { invoiceNumber, supplierId, fundId, poId, accountId, amountCents: amount, invoiceDate, notes: clip(formData.get("notes"), 1000) || null },
     });
     await audit({
       action: "acq.invoice.record",
@@ -347,4 +355,118 @@ export async function markInvoicePaid(
   });
   revalidatePath("/admin/acquisitions");
   return { ok: true, message: `Invoice paid.${closed ? ` ${inv?.po?.poNumber} closed.` : ""}` };
+}
+
+/**
+ * Row 60: resolve the optional account from a form. Returns undefined for
+ * "no account", or an error when the submitted id is stale or closed — a form
+ * left open while someone closed the account must not book spend to it.
+ */
+async function resolveAccountId(
+  formData: FormData,
+): Promise<{ accountId: string | null } | { error: string }> {
+  const id = clip(formData.get("accountId"), 40);
+  if (!id) return { accountId: null };
+  const a = await prisma.acqAccount.findUnique({ where: { id }, select: { status: true, code: true } });
+  if (!a) return { error: "That account no longer exists — reload and pick again." };
+  if (a.status !== "ACTIVE") return { error: `Account ${a.code} is closed; pick an open one.` };
+  return { accountId: id };
+}
+
+/* ---------- Accounts (SDD row 60) ---------- */
+
+/**
+ * A fund is a budget line (how much may be spent); an account is the
+ * finance-side code the spend is booked against. Different axes: one fund can
+ * be charged to several accounts, and one account carries spend from several
+ * funds, which is why this is a separate list rather than a field on AcqFund.
+ */
+export async function createAccount(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireAcqEditor();
+  if (!admin) return NO_PERMISSION;
+
+  const code = clip(formData.get("code"), 32).toUpperCase().replace(/\s+/g, "-");
+  const name = clip(formData.get("name"), 120);
+  if (!code) return { ok: false, message: "An account code is required (e.g. GL-5200)." };
+  if (!name) return { ok: false, message: "An account name is required." };
+
+  try {
+    const a = await prisma.acqAccount.create({
+      data: { code, name, notes: clip(formData.get("notes"), 1000) || null },
+    });
+    await audit({
+      action: "acq.account.create",
+      summary: `Added acquisition account ${code} — ${name}`,
+      entity: "AcqAccount",
+      entityId: a.id,
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { ok: false, message: `Account "${code}" already exists.` };
+    throw e;
+  }
+  revalidatePath("/admin/acquisitions");
+  return { ok: true, message: `Account ${code} added.` };
+}
+
+export async function toggleAccount(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireAcqEditor();
+  if (!admin) return NO_PERMISSION;
+
+  const id = clip(formData.get("id"), 40);
+  const a = await prisma.acqAccount.findUnique({ where: { id } });
+  if (!a) return { ok: false, message: "That account no longer exists." };
+  const status = a.status === "ACTIVE" ? "CLOSED" : "ACTIVE";
+  await prisma.acqAccount.update({ where: { id }, data: { status } });
+  await audit({
+    action: "acq.account.toggle",
+    summary: `${status === "ACTIVE" ? "Reopened" : "Closed"} acquisition account ${a.code}`,
+    entity: "AcqAccount",
+    entityId: id,
+  });
+  revalidatePath("/admin/acquisitions");
+  return {
+    ok: true,
+    message:
+      status === "CLOSED"
+        ? `${a.code} closed — it stays on existing orders and invoices but is no longer offered.`
+        : `${a.code} reopened.`,
+  };
+}
+
+export async function deleteAccount(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireAcqEditor();
+  if (!admin) return NO_PERMISSION;
+
+  const id = clip(formData.get("id"), 40);
+  const a = await prisma.acqAccount.findUnique({
+    where: { id },
+    include: { _count: { select: { orders: true, invoices: true } } },
+  });
+  if (!a) return { ok: false, message: "That account no longer exists." };
+  // Deleting would null the code off historical spend, which is exactly the
+  // record finance reconciles against. Close it instead.
+  const used = a._count.orders + a._count.invoices;
+  if (used > 0)
+    return {
+      ok: false,
+      message: `${a.code} is on ${used} order${used === 1 ? "" : "s"}/invoice${used === 1 ? "" : "s"} — close it instead of deleting, so the history keeps its code.`,
+    };
+  await prisma.acqAccount.delete({ where: { id } });
+  await audit({
+    action: "acq.account.delete",
+    summary: `Deleted unused acquisition account ${a.code}`,
+    entity: "AcqAccount",
+    entityId: id,
+  });
+  revalidatePath("/admin/acquisitions");
+  return { ok: true, message: `${a.code} deleted.` };
 }

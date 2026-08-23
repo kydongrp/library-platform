@@ -7,10 +7,13 @@ import {
   cancelPurchaseOrder,
   markInvoicePaid,
   toggleSupplier,
+  toggleAccount,
+  deleteAccount,
 } from "@/app/actions/acquisitions";
+import { prisma } from "@/lib/db";
 import { getAcquisitionsOverview, type FundRow } from "@/lib/acquisitions";
 import { formatDate } from "@/lib/format";
-import { SupplierForm, FundForm, PurchaseOrderForm, InvoiceForm } from "./widgets";
+import { SupplierForm, FundForm, PurchaseOrderForm, InvoiceForm, AccountForm } from "./widgets";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +63,14 @@ export default async function AcquisitionsPage() {
   const finance = canEdit(admin, "ADMIN");
 
   const o = await getAcquisitionsOverview();
+  // Row 60: accounts are a separate axis from funds — a fund is the budget,
+  // an account is the finance code the spend is booked against.
+  const accounts = await prisma.acqAccount.findMany({
+    orderBy: [{ status: "asc" }, { code: "asc" }],
+    include: { _count: { select: { orders: true, invoices: true } } },
+  });
+  const activeAccounts = accounts.filter((a) => a.status === "ACTIVE").map(({ id, code, name }) => ({ id, code, name }));
+
   const activeSuppliers = o.suppliers.filter((s) => s.status === "ACTIVE").map(({ id, name }) => ({ id, name }));
   const fundOptions = o.funds.map((f) => ({ id: f.id, name: `${f.name} (${f.fiscalYear})` }));
   const openOrders = o.orders
@@ -190,7 +201,7 @@ export default async function AcquisitionsPage() {
         )}
         {editable && (
           <div className="mt-4 border-t border-border pt-4">
-            <PurchaseOrderForm suppliers={activeSuppliers} funds={fundOptions} />
+            <PurchaseOrderForm suppliers={activeSuppliers} funds={fundOptions} accounts={activeAccounts} />
           </div>
         )}
       </Card>
@@ -236,7 +247,66 @@ export default async function AcquisitionsPage() {
           )}
           {editable && (
             <div className="mt-4 border-t border-border pt-4">
-              <InvoiceForm suppliers={activeSuppliers} funds={fundOptions} openOrders={openOrders} />
+              <InvoiceForm suppliers={activeSuppliers} funds={fundOptions} openOrders={openOrders} accounts={activeAccounts} />
+            </div>
+          )}
+        </Card>
+
+        {/* Accounts (row 60) */}
+        <Card className="p-5">
+          <h2 className="mb-1 font-display text-lg font-semibold">Accounts</h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            The finance codes spend is booked against. A fund is the budget; an
+            account is what finance reconciles on, so one fund can be charged to
+            several accounts and vice versa.
+          </p>
+          {accounts.length === 0 ? (
+            <p className="py-3 text-sm text-muted-foreground">
+              No accounts yet. Orders and invoices simply carry no code until one exists.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {accounts.map((a) => {
+                const used = a._count.orders + a._count.invoices;
+                return (
+                  <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        <span className="font-mono text-xs">{a.code}</span> · {a.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {used === 0
+                          ? "not used yet"
+                          : `${a._count.orders} order${a._count.orders === 1 ? "" : "s"} · ${a._count.invoices} invoice${a._count.invoices === 1 ? "" : "s"}`}
+                        {a.notes ? ` · ${a.notes}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {a.status === "ACTIVE" ? <Badge tone="success">Active</Badge> : <Badge tone="muted">Closed</Badge>}
+                      {editable && (
+                        <>
+                          <ActionButton action={toggleAccount} fields={{ id: a.id }} variant="ghost"
+                            className="!px-2 !py-1 text-xs" pendingLabel="…">
+                            {a.status === "ACTIVE" ? "Close" : "Reopen"}
+                          </ActionButton>
+                          {used === 0 && (
+                            <ActionButton action={deleteAccount} fields={{ id: a.id }} variant="ghost"
+                              className="!px-2 !py-1 text-xs text-red-700" pendingLabel="…"
+                              confirm={`Delete account ${a.code}?`}>
+                              Delete
+                            </ActionButton>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {editable && (
+            <div className="mt-4 border-t border-border pt-4">
+              <AccountForm />
             </div>
           )}
         </Card>
