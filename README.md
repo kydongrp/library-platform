@@ -122,6 +122,11 @@ test.** The pure rule libraries (`calendar-core`, `fines`, `booking-core`,
 `stocktake-core`, `item-import`, `member-import`, `routing-core`, `flexi-core`) take no
 database and were written to be testable, so they are the cheapest place to start.
 
+CI (`.github/workflows/ci.yml`) runs lint and a production build on every push and pull
+request against `master`, on Node 24 to match the Vercel builder. It points the three
+connection strings at a closed port, so a green run proves the build never needed a
+database. It does not run the `test:*` suites, which need one.
+
 ---
 
 ## What is in it
