@@ -70,7 +70,7 @@ export function ItemTypeForm() {
   return (
     <StatefulForm action={createItemType}>
       {(state) => (
-        <div className="grid grid-cols-[6rem_1fr_auto_auto] items-end gap-2">
+        <div className="grid grid-cols-[6rem_1fr_5.5rem_auto_auto] items-end gap-2">
           <div>
             <label className={labelCls}>Code</label>
             <input name="code" required maxLength={24} placeholder="AV" className={fieldCls} />
@@ -79,13 +79,24 @@ export function ItemTypeForm() {
             <label className={labelCls}>Name</label>
             <input name="name" required maxLength={80} placeholder="Audio-visual" className={fieldCls} />
           </div>
+          <div>
+            {/* Row 56: set this and the type circulates by the hour. */}
+            <label className={labelCls}>Loan hours</label>
+            <input name="loanHours" type="number" min={1} max={720} placeholder="—" className={fieldCls} />
+          </div>
           <label className="flex items-center gap-1.5 pb-2 text-sm">
             <input type="checkbox" name="loanable" defaultChecked
               className="h-4 w-4 rounded border-border accent-primary" />
             Loanable
           </label>
           <SubmitButton pendingLabel="…" variant="outline">Add</SubmitButton>
-          <div className="col-span-4"><Err state={state} /></div>
+          <div className="col-span-5">
+            <Err state={state} />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Leave loan hours blank for the usual day-based policy. Set it (for
+              example 4) to circulate equipment by the hour.
+            </p>
+          </div>
         </div>
       )}
     </StatefulForm>

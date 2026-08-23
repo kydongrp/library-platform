@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState, ButtonLink } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { checkin, renewLoan, recallLoan } from "@/app/actions/circulation";
+import { ClaimReturnButton, WithdrawClaimButton, WriteOffClaimButton } from "./claim-widgets";
 import { formatDate, dueLabel, isOverdue } from "@/lib/format";
 import { getAccruingFines } from "@/lib/loan-history";
 import { formatFine } from "@/lib/fines";
@@ -22,15 +23,26 @@ export default async function LoansPage({
   const { filter = "all" } = await searchParams;
   const now = new Date();
 
-  const where =
+  // Row 51 adds a claims worklist and row 56 an hourly view; both are
+  // filters over active loans rather than separate pages, because that is
+  // what they are.
+  const where: Record<string, unknown> =
     filter === "overdue"
-      ? { status: "ACTIVE", dueAt: { lt: now } }
-      : { status: "ACTIVE" };
+      ? { status: "ACTIVE", dueAt: { lt: now }, claimedReturnedAt: null }
+      : filter === "claims"
+        ? { status: "ACTIVE", claimedReturnedAt: { not: null } }
+        : filter === "hourly"
+          ? { status: "ACTIVE", copy: { itemType: { loanHours: { not: null } } } }
+          : { status: "ACTIVE" };
 
   const [loans, accruing] = await Promise.all([
     prisma.loan.findMany({
       where,
-      include: { member: true, resource: true, copy: true },
+      include: {
+        member: true,
+        resource: true,
+        copy: { include: { itemType: true } },
+      },
       orderBy: { dueAt: "asc" },
     }),
     // Live figures — nothing is charged until the item is checked in.
@@ -39,9 +51,18 @@ export default async function LoansPage({
   const accruedByLoan = new Map(accruing.map((a) => [a.loanId, a]));
   const accruedTotal = accruing.reduce((n, a) => n + a.accruedCents, 0);
 
+  const [claimCount, hourlyCount] = await Promise.all([
+    prisma.loan.count({ where: { status: "ACTIVE", claimedReturnedAt: { not: null } } }),
+    prisma.loan.count({
+      where: { status: "ACTIVE", copy: { itemType: { loanHours: { not: null } } } },
+    }),
+  ]);
+
   const tabs = [
     { key: "all", label: "All active" },
     { key: "overdue", label: "Overdue only" },
+    { key: "hourly", label: hourlyCount > 0 ? `Hourly (${hourlyCount})` : "Hourly" },
+    { key: "claims", label: claimCount > 0 ? `Claimed returns (${claimCount})` : "Claimed returns" },
   ];
 
   return (
@@ -83,8 +104,24 @@ export default async function LoansPage({
 
       {loans.length === 0 ? (
         <EmptyState
-          title={filter === "overdue" ? "Nothing overdue" : "No active loans"}
-          description={filter === "overdue" ? "Every loan is within its due date." : "Check something out at the Circulation Desk."}
+          title={
+            filter === "overdue"
+              ? "Nothing overdue"
+              : filter === "claims"
+                ? "No open claims"
+                : filter === "hourly"
+                  ? "No hourly loans out"
+                  : "No active loans"
+          }
+          description={
+            filter === "overdue"
+              ? "Every loan is within its due date."
+              : filter === "claims"
+                ? "Nobody is disputing a return. Claims are raised from the All active tab."
+                : filter === "hourly"
+                  ? "Give an item type an hourly loan period under Items to circulate equipment by the hour."
+                  : "Check something out at the Circulation Desk."
+          }
         />
       ) : (
         <Card className="divide-y divide-border overflow-hidden">
@@ -96,9 +133,32 @@ export default async function LoansPage({
                   <Link href={`/admin/members/${l.memberId}`} className="hover:underline">{l.member.name}</Link>
                   {l.copy ? ` · ${l.copy.barcode}` : " · digital"} · borrowed {formatDate(l.borrowedAt)}
                 </p>
+                {l.claimedReturnedAt && (
+                  <p className="truncate text-xs text-amber-700">
+                    Fines frozen since {formatDate(l.claimedReturnedAt)}
+                    {l.claimedReturnBy ? ` · recorded by ${l.claimedReturnBy}` : ""}
+                    {l.claimedReturnNote ? ` · ${l.claimedReturnNote}` : ""}
+                  </p>
+                )}
               </div>
               {l.recalledAt && <Badge tone="accent">Recalled</Badge>}
-              <Badge tone={isOverdue(l.dueAt) ? "danger" : "muted"}>{dueLabel(l.dueAt)}</Badge>
+              {l.copy?.itemType?.loanHours && (
+                <Badge tone="neutral">{l.copy.itemType.loanHours}h loan</Badge>
+              )}
+              {/* An hourly loan is due at a time of day, so a date alone is
+                  useless — show the clock, and compare instants for lateness. */}
+              {l.copy?.itemType?.loanHours ? (
+                <Badge tone={l.dueAt.getTime() < now.getTime() ? "danger" : "muted"}>
+                  {l.dueAt.getTime() < now.getTime() ? "overdue since " : "due "}
+                  {l.dueAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                  {formatDate(l.dueAt) !== formatDate(now) ? ` ${formatDate(l.dueAt)}` : ""}
+                </Badge>
+              ) : (
+                <Badge tone={isOverdue(l.dueAt) ? "danger" : "muted"}>{dueLabel(l.dueAt)}</Badge>
+              )}
+              {l.claimedReturnedAt && (
+                <Badge tone="accent">claimed returned {formatDate(l.claimedReturnedAt)}</Badge>
+              )}
               {(() => {
                 const a = accruedByLoan.get(l.id);
                 if (!a) return null;
@@ -110,12 +170,27 @@ export default async function LoansPage({
                   <Badge tone="muted">no fine yet</Badge>
                 );
               })()}
-              <div className="flex items-center gap-2">
-                {!l.recalledAt && (
-                  <ActionButton action={recallLoan} fields={{ loanId: l.id }} variant="outline" className="!px-3 !py-1.5 text-xs" confirm="Recall this loan? The member will be notified and the due date shortened." pendingLabel="…">Recall</ActionButton>
+              <div className="flex flex-wrap items-center gap-2">
+                {l.claimedReturnedAt ? (
+                  <>
+                    {/* Resolving a claim: it turns up (Found), the member
+                        accepts they have it (Withdraw), or it is written off. */}
+                    <ActionButton action={checkin} fields={{ loanId: l.id }} variant="primary" className="!px-3 !py-1.5 text-xs" pendingLabel="…">
+                      Found — check in
+                    </ActionButton>
+                    <WithdrawClaimButton loanId={l.id} />
+                    <WriteOffClaimButton loanId={l.id} title={l.resource.title} />
+                  </>
+                ) : (
+                  <>
+                    {!l.recalledAt && (
+                      <ActionButton action={recallLoan} fields={{ loanId: l.id }} variant="outline" className="!px-3 !py-1.5 text-xs" confirm="Recall this loan? The member will be notified and the due date shortened." pendingLabel="…">Recall</ActionButton>
+                    )}
+                    <ActionButton action={renewLoan} fields={{ loanId: l.id }} variant="outline" className="!px-3 !py-1.5 text-xs" pendingLabel="…">Renew</ActionButton>
+                    <ClaimReturnButton loanId={l.id} />
+                    <ActionButton action={checkin} fields={{ loanId: l.id }} variant="primary" className="!px-3 !py-1.5 text-xs" pendingLabel="…">Return</ActionButton>
+                  </>
                 )}
-                <ActionButton action={renewLoan} fields={{ loanId: l.id }} variant="outline" className="!px-3 !py-1.5 text-xs" pendingLabel="…">Renew</ActionButton>
-                <ActionButton action={checkin} fields={{ loanId: l.id }} variant="primary" className="!px-3 !py-1.5 text-xs" pendingLabel="…">Return</ActionButton>
               </div>
             </div>
           ))}

@@ -160,20 +160,25 @@ export async function checkout(
   if (!copy) return { ok: false, message: "No copies available to loan." };
 
   // Reference-only item types are never issued.
-  if (copy.itemTypeId) {
-    const itemType = await prisma.itemType.findUnique({ where: { id: copy.itemTypeId } });
-    if (itemType && !itemType.loanable)
-      return {
-        ok: false,
-        message: `${copy.barcode} is catalogued as "${itemType.name}" — that item type cannot be loaned.`,
-      };
-  }
+  const itemType = copy.itemTypeId
+    ? await prisma.itemType.findUnique({ where: { id: copy.itemTypeId } })
+    : null;
+  if (itemType && !itemType.loanable)
+    return {
+      ok: false,
+      message: `${copy.barcode} is catalogued as "${itemType.name}" — that item type cannot be loaned.`,
+    };
 
   // Physical items resolve the policy on the member-type x item-type matrix.
   const itemPolicy = copy.itemTypeId
     ? await policyFor(member.memberType, copy.itemTypeId)
     : policy;
-  const dueAt = dueDateFrom(new Date(), itemPolicy.loanDays, await loadCalendar());
+  // Row 56 (Hourly Loans): an hourly item type is due N hours from now. The
+  // day-based calendar walk deliberately does not apply — a 4-hour equipment
+  // loan is due this afternoon, not at the end of the next open day.
+  const dueAt = itemType?.loanHours
+    ? new Date(Date.now() + itemType.loanHours * 3_600_000)
+    : dueDateFrom(new Date(), itemPolicy.loanDays, await loadCalendar());
 
   await prisma.$transaction([
     prisma.loan.create({
@@ -236,11 +241,17 @@ export async function checkin(
     policyFor(loan.member.memberType),
     loadCalendar(),
   ]);
-  const fine = assessFine(loan.dueAt, returnedAt, policy, cal);
+  // Row 51: if the member claimed this back weeks ago and it has only now
+  // surfaced on the shelf, the fine is assessed as of the claim, not today.
+  // Charging the search time would make the freeze meaningless.
+  const fineAsOf = loan.claimedReturnedAt ?? returnedAt;
+  const fine = assessFine(loan.dueAt, fineAsOf, policy, cal);
   // Lateness is judged on calendar DAYS, matching the fine counter. dueAt
   // carries the checkout time-of-day, so comparing instants would stamp an
   // item returned the morning it is due as LATE.
-  const returnStatus = dateKey(returnedAt) > dateKey(loan.dueAt) ? "LATE" : "ON_TIME";
+  // Judged as of the same moment the fine is, so an item claimed back on time
+  // and later found mis-shelved is not recorded as a late return.
+  const returnStatus = dateKey(fineAsOf) > dateKey(loan.dueAt) ? "LATE" : "ON_TIME";
 
   // Atomic close: a second scan of the same barcode must not re-return it.
   const claimed = await prisma.loan.updateMany({
@@ -251,6 +262,11 @@ export async function checkin(
       returnStatus,
       returnCondition: condition,
       returnedBy: admin.name,
+      // The claim is settled by the item turning up; clear it so the loan
+      // does not linger on the claims worklist.
+      claimedReturnedAt: null,
+      claimedReturnNote: null,
+      claimedReturnBy: null,
       fineCents: fine.cents,
       fineNote:
         fine.cents > 0
@@ -366,10 +382,18 @@ export async function renewLoan(
   const loanId = String(formData.get("loanId") ?? "");
   const loan = await prisma.loan.findUnique({
     where: { id: loanId },
-    include: { resource: true, member: true },
+    include: { resource: true, member: true, copy: { include: { itemType: true } } },
   });
   if (!loan || loan.status !== "ACTIVE")
     return { ok: false, message: "Loan not found." };
+
+  // Row 51: a loan the member says they returned is under investigation, not
+  // in their hands. Renewing it would assert they still hold it.
+  if (loan.claimedReturnedAt)
+    return {
+      ok: false,
+      message: "Cannot renew — this loan is marked as a claimed return. Resolve the claim first.",
+    };
 
   const policy = await policyFor(loan.member.memberType);
   if (loan.renewals >= policy.maxRenewals)
@@ -381,18 +405,28 @@ export async function renewLoan(
   if (waiting > 0)
     return { ok: false, message: "Cannot renew — another member has reserved this title." };
 
+  // Row 56: for an hourly loan "overdue" is a moment, not a day — a 2pm item
+  // is late at 4pm even though the calendar day has not turned.
+  const hours = loan.copy?.itemType?.loanHours ?? null;
+  const overdue = hours
+    ? loan.dueAt.getTime() < Date.now()
+    : dateKey(loan.dueAt) < dateKey(new Date());
+
   // An overdue loan cannot be renewed: rebasing off a past due date would
   // retroactively erase the fine that has already accrued, and may not even
   // clear the overdue state. Staff check it in (freezing the fine) instead.
-  if (dateKey(loan.dueAt) < dateKey(new Date()))
+  if (overdue)
     return {
       ok: false,
       message: "Cannot renew — this loan is overdue. Check it in to settle the fine, then check it out again.",
     };
 
-  // Renewal extends from the existing due date (unused days are not lost),
-  // then rolls off any closed day.
-  const dueAt = dueDateFrom(loan.dueAt, policy.renewalDays, await loadCalendar());
+  // Renewal extends from the existing due date (unused time is not lost).
+  // An hourly loan extends by its own hours; extending it by renewalDays
+  // would turn a 4-hour equipment loan into a fortnight.
+  const dueAt = hours
+    ? new Date(loan.dueAt.getTime() + hours * 3_600_000)
+    : dueDateFrom(loan.dueAt, policy.renewalDays, await loadCalendar());
   await prisma.loan.update({
     where: { id: loan.id },
     data: { dueAt, renewals: loan.renewals + 1 },

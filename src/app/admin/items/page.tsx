@@ -178,7 +178,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           { title: "Locations", rows: locations, kind: "location", form: <LocationForm />,
             hint: "Where a copy physically lives." },
           { title: "Item types", rows: itemTypes, kind: "itemType", form: <ItemTypeForm />,
-            hint: "Drives the loan policy matrix. Non-loanable = reference only." },
+            hint: "Drives the loan policy matrix. Non-loanable = reference only; an hourly period circulates by the hour." },
         ] as const).map((list) => (
           <Card key={list.title} className="p-5">
             <h2 className="mb-1 font-display text-lg font-semibold">{list.title}</h2>
@@ -197,6 +197,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
                         {r._count.copies} item{r._count.copies === 1 ? "" : "s"}
                         {"loanLimitOverride" in r && r.loanLimitOverride != null && ` · max ${r.loanLimitOverride} per member`}
                         {"loanable" in r && !r.loanable && " · reference only"}
+                        {"loanHours" in r && r.loanHours ? ` · ${r.loanHours}h loan` : ""}
                       </p>
                     </div>
                     {editable && (

@@ -183,7 +183,10 @@ export type LiveOverdue = {
  */
 export async function getAccruingFines(now = new Date()): Promise<LiveOverdue[]> {
   const overdue = await prisma.loan.findMany({
-    where: { status: "ACTIVE", dueAt: { lt: now } },
+    // Row 51: a claimed return freezes the fine clock. Leaving these in would
+    // keep charging a member for an item the library is still looking for,
+    // which is the whole thing the claim exists to stop.
+    where: { status: "ACTIVE", dueAt: { lt: now }, claimedReturnedAt: null },
     include: {
       resource: { select: { title: true } },
       member: { select: { id: true, name: true, memberType: true } },

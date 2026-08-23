@@ -59,7 +59,19 @@ async function createCodeRow(kind: ListKind, formData: FormData): Promise<Action
       });
     } else {
       await prisma.itemType.create({
-        data: { code, name, loanable: formData.get("loanable") === "on" },
+        data: {
+          code,
+          name,
+          loanable: formData.get("loanable") === "on",
+          // Row 56: blank means the usual day-based policy. Clamped to a
+          // sane range so a typo cannot create a 100,000-hour loan.
+          loanHours: (() => {
+            const raw = clip(formData.get("loanHours"), 6);
+            if (!raw) return null;
+            const n = parseInt(raw, 10);
+            return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : null;
+          })(),
+        },
       });
     }
   } catch (e) {

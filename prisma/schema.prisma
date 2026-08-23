@@ -193,6 +193,10 @@ model ItemType {
   code      String       @unique
   name      String
   loanable  Boolean      @default(true) // false = reference-only, never issued
+  // Row 56 (Hourly Loans): when set, this type circulates by the hour rather
+  // than by days — equipment, reserve-shelf items. Drives the due time at
+  // checkout and the hourly-loans view. null = the usual day-based policy.
+  loanHours Int?
   createdAt DateTime     @default(now())
   copies    Copy[]
   policies  LoanPolicy[]
@@ -361,6 +365,13 @@ model Loan {
   returnStatus    String? // ON_TIME, LATE
   returnCondition String? // GOOD, DAMAGED, LOST
   returnedBy      String? // staff member who checked it in
+
+  // Row 51 (Claimed Return): the member says they returned it, the shelf says
+  // otherwise. The loan stays ACTIVE — nothing came back — but fines stop
+  // accruing while it is investigated, and it appears on the claims list.
+  claimedReturnedAt DateTime?
+  claimedReturnNote String?
+  claimedReturnBy   String? // staff member who recorded the claim
 
   // Fines: accrue live while overdue, assessed onto the loan at check-in.
   fineCents    Int       @default(0)
