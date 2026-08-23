@@ -72,6 +72,7 @@ model Copy {
   itemTypeId     String?
   itemType       ItemType?       @relation(fields: [itemTypeId], references: [id], onDelete: SetNull)
   stocktakeScans StocktakeScan[]
+  bookings       Booking[]
 
   @@index([status])
   @@index([collectionId])
@@ -274,6 +275,7 @@ model Member {
   tcAcceptedAt  DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)
   interests     String[]            @default([]) // Areas of Interest (categories) driving recommendations
   loans         Loan[]
+  bookings      Booking[]
   routing       RoutingSubscriber[]
   routingStops  IssueRoutingStop[]
   reservations  Reservation[]
@@ -379,6 +381,7 @@ model Loan {
   fineWaivedAt DateTime?
   fineNote     String?
 
+  booking    Booking?
   copyId     String?
   copy       Copy?    @relation(fields: [copyId], references: [id])
   resourceId String
@@ -730,6 +733,38 @@ model StocktakeScan {
 
   @@unique([stocktakeId, barcode])
   @@index([stocktakeId, result])
+}
+
+// Bookings (SDD rows 52-53). A booking is NOT a reservation: a reservation
+// queues for a title that is currently out, while a booking holds one SPECIFIC
+// copy for a definite window — the projector on Tuesday 2-4pm. This is what
+// makes hourly item types usable, and no two live bookings for the same copy
+// may overlap.
+model Booking {
+  id        String    @id @default(cuid())
+  copyId    String
+  copy      Copy      @relation(fields: [copyId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  startAt   DateTime
+  endAt     DateTime
+  // REQUESTED  asked for, awaiting approval
+  // CONFIRMED  approved; the copy is committed for that window
+  // COLLECTED  handed over — loanId points at the resulting loan
+  // CANCELLED  withdrawn before collection
+  // NO_SHOW    the window passed without collection
+  status    String    @default("REQUESTED")
+  note      String?
+  // Set when collected, so the booking and the loan it became stay linked.
+  loanId    String?   @unique
+  loan      Loan?     @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  createdBy String
+  createdAt DateTime  @default(now())
+  decidedBy String?
+  decidedAt DateTime?
+
+  @@index([copyId, startAt])
+  @@index([status, startAt])
 }
 
 model Serial {
