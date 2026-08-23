@@ -125,7 +125,7 @@ export default async function AccessHealthPage() {
             <div className="border-b border-border px-5 py-4">
               <h2 className="font-display text-lg font-semibold">Providers</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Worst first. Down = at least 3 failing links and half the provider's
+                Worst first. Down = at least 3 failing links and half the provider&apos;s
                 links unreachable — usually an outage or subscription problem, not
                 individual titles.
               </p>

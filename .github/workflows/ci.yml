@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint and build
+    runs-on: ubuntu-latest
+
+    env:
+      # `prisma generate` and `next build` both want a syntactically valid URL,
+      # but neither opens a connection: every route is dynamic except
+      # /_not-found, so nothing queries the database while building. Pointing at
+      # a closed port is deliberate rather than lazy. It makes it impossible for
+      # CI to reach a real database, and the build was verified against this
+      # exact value before this workflow was committed.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:1/nodb
+      POSTGRES_URL_NON_POOLING: postgresql://ci:ci@127.0.0.1:1/nodb
+      DATABASE_URL_UNPOOLED: postgresql://ci:ci@127.0.0.1:1/nodb
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 24.x is what the Vercel project builds on, so a green run here means the
+      # same thing it will mean at deploy time.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # postinstall runs `prisma generate`. src/generated/prisma is gitignored,
+      # so without this nothing can resolve @/generated/prisma.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npx eslint .
+
+      # Deliberately NOT `npm run build`. That script is
+      # `prisma db push && tsx prisma/seed-if-empty.ts && next build`, and the
+      # first two mutate a real database; Vercel runs those against production
+      # at deploy time. CI compiles only. `next build` type-checks the whole
+      # project against tsconfig, so this covers scripts/ and prisma/ as well.
+      - name: Build
+        run: npx next build

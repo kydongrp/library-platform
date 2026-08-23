@@ -345,7 +345,7 @@ export default async function EresourcesPage({
               <h2 className="mb-1 font-display text-lg font-semibold">Import COUNTER usage</h2>
               <p className="mb-4 text-xs text-muted-foreground">
                 Upload a COUNTER R5 / R5.1 report (TR works best) exported from the
-                provider's admin portal, or a simple period,count sheet. Re-importing
+                provider&apos;s admin portal, or a simple period,count sheet. Re-importing
                 a month overwrites it.
               </p>
               <UsageUploadForm />
@@ -355,7 +355,7 @@ export default async function EresourcesPage({
             <Card className="p-5">
               <h2 className="mb-1 font-display text-lg font-semibold">Record a month by hand</h2>
               <p className="mb-4 text-xs text-muted-foreground">
-                For providers without COUNTER exports — sets that month's item requests directly.
+                For providers without COUNTER exports — sets that month&apos;s item requests directly.
               </p>
               <ManualUsageForm />
             </Card>

@@ -136,7 +136,7 @@ export default async function ContributionsPage() {
         <div>
           <h1 className="font-display text-3xl font-semibold">Staff Contributions</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Who curates Editor's Picks, decides learner nominations, and writes
+            Who curates Editor&apos;s Picks, decides learner nominations, and writes
             reviews — all-time and for the trailing three calendar months.
             Follower counts live in the Learner Portal and will appear here once
             the portal integration lands.
