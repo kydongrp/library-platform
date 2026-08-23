@@ -44,6 +44,9 @@ next-env.d.ts
 
 .vercel
 .env*
+# ...but the template must ship, or `cp .env.example .env` fails on a fresh
+# clone. It holds placeholders only.
+!.env.example
 
 # Database backups: personal data, never committed (this repo is public).
 backups/

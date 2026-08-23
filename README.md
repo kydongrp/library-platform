@@ -1,158 +1,309 @@
-# Athenaeum — Library Management Platform
+# DLS Admin
 
-A modern library system with **two front doors** built as a single Next.js app:
+An integrated library system for library staff, built for KLSI to replace the Vibrant
+ILS. The functional shape follows the DSTA DLS@Internet System Design Document v1.8.
 
-- **Learner Portal** (`/portal`) — a discovery experience for patrons: search & browse,
-  borrow digital titles instantly, reserve titles that are out, and track loans & holds.
-- **Admin Panel** (`/admin`) — a back-office for staff: manage the catalogue and members,
-  run the circulation desk (check-out / check-in), and watch loans, holds, and overdues.
+**This is the staff side only.** The learner-facing portal is a separate system that
+already exists; this application serves it through a read-only REST API at
+`/api/portal/v1`. There is no patron interface here.
 
-It's a from-scratch variation on the reference functional specs (Admin Panel + Learner
-Portal), scoped to the **core loop**: Catalogue → Members → Circulation (loans, returns,
-renewals, reservations) → Search & discovery.
+Live at <https://library.zillearn.com>.
+
+---
+
+## Status, honestly
+
+The system is broad: 24 staff modules, 61 database tables, roughly 194 distinct
+capabilities. A full capability register, compiled by reading the code rather than the
+specification, records which of those are complete and which are not.
+
+Five things to know before treating any of it as production-ready:
+
+1. **There is no authentication.** `/admin/signin` lists the active staff accounts and one
+   click becomes that person. The session cookie holds the account id, unsigned. This is a
+   deliberate placeholder: authorisation on top of it is fully built and enforced
+   server-side on every page and every action, so swapping in Azure AD replaces the
+   sign-in flow without touching the permission model. Nothing should reach a real
+   deployment until it is replaced.
+2. **Two pages disclose data without a session**, both consequences of (1): the sign-in
+   page lists staff names and email addresses, and `/` shows live counts of titles,
+   copies, members and active loans. There is no `middleware.ts`; each page guards itself.
+3. **No mail is sent.** Notices are generated and recorded in an outbox. No SMTP is
+   configured, so email is simulated end to end.
+4. **Nothing sets a timezone.** Due-today and overdue calculations use the server clock, so
+   on a UTC runtime a loan due today reads as overdue between midnight and 8am Singapore
+   time. The scheduled jobs are pinned to the Singapore region but their cron expressions
+   are UTC.
+5. **`Resource` and `Member` carry no indexes.** Fine for the demo dataset, not for the
+   528,000-record parity target. Index design has not been done.
 
 ---
 
 ## Tech stack
 
-| Layer     | Choice                                              |
-| --------- | --------------------------------------------------- |
-| Framework | Next.js 16 (App Router, React 19, Server Actions)   |
-| Language  | TypeScript                                          |
-| Database  | Postgres via Prisma 7 (node-postgres adapter); Neon in production |
-| Styling   | Tailwind CSS v4, hand-built component set           |
+| Layer     | Choice                                                            |
+| --------- | ----------------------------------------------------------------- |
+| Framework | Next.js 16 (App Router, React 19, Server Components and Actions)  |
+| Language  | TypeScript                                                        |
+| Database  | Postgres via Prisma 7 driver adapters (`@prisma/adapter-pg`), Neon in production |
+| Styling   | Tailwind CSS v4, hand-built component set                         |
+| Hosting   | Vercel, functions pinned to `sin1` (Singapore)                    |
 
-There is no separate backend — pages read the database directly in Server Components, and
-all mutations go through type-safe **Server Actions** in `src/app/actions/`.
+There is no separate backend. Pages read the database directly in Server Components and
+every mutation goes through a server action in `src/app/actions/`. The Prisma client is
+generated to `src/generated/prisma` and the schema ships via `prisma db push` in the build
+command, so there is no migrations directory.
+
+> **Working on this codebase?** See `AGENTS.md`. This is Next.js 16, and the guides in
+> `node_modules/next/dist/docs/` are the reference, not what you remember of Next 14.
 
 ---
 
 ## Getting started
 
-You need a Postgres database. The quickest free option is [Neon](https://neon.tech).
+You need a Postgres database. [Neon](https://neon.tech) is the quickest free option.
 
 ```bash
 npm install
-# put your Postgres connection string in .env (see .env.example):
-#   DATABASE_URL="postgresql://user:pass@host/db?sslmode=require"
-npm run db:push     # create the tables
-npm run db:seed     # load demo catalogue, members, loans, holds
-npm run dev         # http://localhost:3000
+cp .env.example .env      # then fill in DATABASE_URL
+npm run db:push           # create the tables
+npm run db:seed           # load the demo catalogue, members, loans and holds
+npm run dev               # http://localhost:3000/admin
 ```
 
-Open **/** for the landing page, then enter either portal.
+`npm run db:reset` returns the database to the seeded demo state. It runs
+`prisma db push --force-reset`, which **drops every table first**, so never point it at
+data you want to keep.
 
-> To reset the database back to the demo state: `npm run db:reset`.
+### Environment
 
-## Deploy to Vercel
+Only `DATABASE_URL` is required. Everything in `.env.example` beyond it is optional and
+each feature it gates degrades to a clear "not configured" state rather than failing.
 
-1. **Create a Postgres database** at [neon.tech](https://neon.tech) (free tier) and copy the
-   **pooled** connection string.
-2. **Deploy the code** — either import the repo on [vercel.com/new](https://vercel.com/new),
-   or from this folder run `npx vercel` (then `npx vercel --prod`).
-3. In the Vercel project, add an environment variable **`DATABASE_URL`** = your Neon string.
-4. The build runs `prisma db push`, so the schema is created on first deploy.
-5. **Seed once**: locally set `DATABASE_URL` to the same Neon string and run `npm run db:seed`
-   (or run it from Vercel's build once). Your live URL now has the demo data.
+Three connection-string variables exist and are not interchangeable:
 
-### Useful scripts
+| Variable                   | Used by                                              |
+| -------------------------- | ---------------------------------------------------- |
+| `DATABASE_URL`             | the application at runtime; use the **pooled** host  |
+| `POSTGRES_URL_NON_POOLING` | `prisma.config.ts`, so every Prisma CLI command      |
+| `DATABASE_URL_UNPOOLED`    | the backup and restore scripts                       |
 
-| Command             | What it does                                  |
-| ------------------- | --------------------------------------------- |
-| `npm run dev`       | Start the dev server                          |
-| `npm run build`     | Production build (also type-checks)           |
-| `npm run db:seed`   | Reset demo data to a known state              |
-| `npm run db:reset`  | Drop & re-create the database from migrations |
-| `npx prisma studio` | Browse/edit the database in a GUI             |
+`prisma.config.ts` prefers `POSTGRES_URL_NON_POOLING` and the dump library prefers
+`DATABASE_URL_UNPOOLED`. Changing only `DATABASE_URL` therefore leaves `db push` and every
+backup pointed at whatever the other two still name. Change all three together.
 
 ---
 
-## How to drive the demo
+## Scripts
 
-**As staff (`/admin`):**
+| Command                            | What it does                                             |
+| ---------------------------------- | -------------------------------------------------------- |
+| `npm run dev`                      | Dev server                                               |
+| `npm run build`                    | `prisma db push`, seed-if-empty, then the production build |
+| `npm run lint`                     | ESLint                                                   |
+| `npm run db:push`                  | Apply the schema                                         |
+| `npm run db:seed`                  | Load demo data                                           |
+| `npm run db:reset`                 | Drop everything, re-apply, re-seed                       |
+| `npm run db:which`                 | Print which database `.env` resolves to                  |
+| `npm run db:test:provision`        | Create `neondb_test` and write `.env.test`               |
+| `npm run db:test:which`            | Same as `db:which`, for `.env.test`                      |
+| `npm run backup`                   | Full logical backup to `backups/` (git-ignored)          |
+| `npm run backup:drill`             | Prove a backup restores, end to end, then clean up       |
+| `npm run backup:restore -- <file>` | Restore a dump into `RESTORE_URL`                        |
+| `npm run db:compare`               | Prove two databases hold the same thing (read only)      |
+| `npm run test:crypt`               | Backup encryption round-trip tests                       |
+| `npm run test:compare`             | Prove the comparison detects six kinds of damage         |
+| `npm run test:fidelity`            | Prove the dump round-trips awkward values                |
+| `npm run neon:retention`           | Show or set the point-in-time recovery window            |
+| `npm run neon:move`                | Move the database to another Neon project                |
 
-Staff sign in via an act-as switcher (Azure AD is stubbed). Three seeded accounts
-demonstrate the **user access matrix**: Sarah Admin (Administrators — everything),
-Liam Librarian (operations only), Rita Reports (read-only dashboards/reports).
-
-1. **Circulation Desk** — pick a member, paste one of the listed *available barcodes*
-   (e.g. `LIB-001004`) into **Check out**. Return it via **Check in** with the same barcode.
-2. **Catalogue** — search/filter, open a title to edit it, add/remove copies, mark a copy
-   lost/maintenance, or add a brand-new title (with a live cover preview).
-3. **Members** — add members, see each member's active loans/holds, renew or return for them.
-4. **Current Loans / Reservations** — renew, return, or cancel holds; overdue items are flagged.
-5. **Loan Policies** — edit circulation rules per member type (loan days, limits, renewals,
-   hold pickup window); checkout/renewal reads these live.
-6. **Email Templates** — edit the 8 system notices with `{{placeholder}}` substitution;
-   toggle in-app vs email per template.
-7. **Batch Processes** — run the **EodProcess** (predue/overdue reminders, expiry of
-   uncollected holds with queue promotion, welcome/inactive nudges) and inspect the
-   run history, mail outbox, and in-app notification feed.
-8. **Reports** — five standard reports with criteria and Excel-compatible CSV export.
-9. **Admin Settings** — manage staff accounts, admin groups, and the per-module
-   view/edit access matrix (enforced server-side on every page).
-
-**As a learner (`/portal`):**
-
-1. **Sign in** — pick an account to act as (no real auth in this MVP).
-2. **Browse / search** — filter by category, format, and availability; sort results.
-3. **Open a title** — borrow a digital title instantly, borrow an available physical copy,
-   or **place a hold** when everything is out. The action adapts to live availability.
-4. **My Loans / My Holds** — renew, return digital loans, or cancel holds.
-
-The two portals share one database, so a checkout at the admin desk immediately changes a
-title's availability in the learner portal, and a learner's hold shows up in the staff
-reservations queue.
+The three `test:*` suites cover the operational tooling. **Nothing under `src/` has a
+test.** The pure rule libraries (`calendar-core`, `fines`, `booking-core`,
+`stocktake-core`, `item-import`, `member-import`, `routing-core`, `flexi-core`) take no
+database and were written to be testable, so they are the cheapest place to start.
 
 ---
 
-## Domain model
+## What is in it
 
-```
-Resource  ──< Copy            a catalogue title and its physical holdings
-Resource  ──< Loan            a borrowing transaction (digital loans have no Copy)
-Resource  ──< Reservation     a hold placed when no copy is available
-Member    ──< Loan, Reservation
-```
+Twenty-four modules, gated by a per-module view/edit matrix.
 
-Business rules live in `src/app/actions/circulation.ts`:
+**Catalogue and metadata.** Bibliographic records with a full MARC 21 field editor working
+against a staff-editable tag dictionary (33 seeded tags including the five DSTA local 9XX
+fields). Authority types and headings. Batch find-and-replace across one tag, with a run
+history because it has no undo. Duplicate detection and record merging, with a merge log.
+Six ways in: hand entry, external scholarly search across Crossref, OpenAlex and IEEE, an
+AI-assisted draft from a DOI or citation, bulk CSV/JSON/XML/MARCXML file import, a
+scheduled SFTP vendor drop, and MARCXML or ISO 2709 export back out.
 
-- Loan periods by member type (Student 14d, Staff 30d, External 7d); digital 14d.
-- Loan limits per member; suspended members can't borrow.
-- Returns auto-promote the next hold in the queue to **Ready for pickup**.
-- Renewals are blocked when someone else is waiting (max 2 renewals).
+**Items and stocktake.** Copies and generated barcodes, collection, location and item-type
+code lists, batch property changes, weeding with a permanent log, and a scan-based
+stocktake that reconciles the shelf against the catalogue and freezes the result.
 
-See `src/lib/constants.ts` for the tunable vocabulary and policies.
+**Circulation.** Check out, check in with a condition, renew, recall. A loan policy matrix
+keyed on member type and item type. Due dates rolled off days the library is closed.
+Hourly loans for equipment. Fines that accrue only on open days, with grace and cap, and
+settlement by payment or a recorded waiver. Claimed returns, which freeze the fine clock
+at the claim date rather than the day the item turns up. A hold shelf with queue promotion
+and pickup expiry. Bookings of one specific item over a definite window.
+
+**Members.** Records, staff-defined statuses with a borrowing flag, member types, per-member
+loan ceilings, location and department code lists, CSV import, and a per-member account
+view.
+
+**Serials and acquisitions.** Issue prediction from the publication pattern, receipting,
+late detection and vendor claims, routing lists that move an issue between named
+subscribers, and the money trail from fund and account through purchase order to invoice.
+
+**E-resources and integration.** Subscription registry with renewal runway, COUNTER R5
+usage import and cost-per-use, a nightly link scan that finds broken access before a
+learner does, licence-seat limits on digital loans, the read-only portal API, API client
+keys, and outbound signed webhooks with a delivery log.
+
+**Reporting.** Thirteen standard reports (five core: loans by period, overdue loans,
+reservations, member activity, catalogue inventory; eight module reports: fines ledger,
+item inventory, weeding log, fund utilisation, purchase orders, invoices, subscription
+holdings, issue arrivals), six operational dashboards, FlexiReports for cross-tab
+questions nobody anticipated, contribution tracking, and CSV export on everything that
+lists.
+
+**Administration.** Staff accounts and groups, a twelve-area view/edit permission matrix
+enforced server-side on every page and re-checked inside every action, an append-only
+audit trail with over 130 recording points across 20 action families, twelve editable
+notice templates, the batch console, and the search vocabulary (stop words and variant
+spellings) that decides what a catalogue search matches.
 
 ---
 
-## Project layout
+## Driving the demo
 
-```
-prisma/
-  schema.prisma        data model
-  seed.ts              demo data
-src/
-  app/
-    page.tsx           landing gateway
-    admin/             Admin Panel (dashboard, circulation, catalogue, members, loans, reservations)
-    portal/            Learner Portal (home, search, resource, my-loans, my-reservations, signin)
-    actions/           server actions: circulation, catalogue, members, session
-  components/          UI primitives, forms, toasts, nav, cards
-  lib/                 db client, constants, formatting, availability, session
-```
+Sign in at `/admin/signin`. Three seeded accounts show the access matrix from three angles:
+
+| Account          | Group         | Sees                                  |
+| ---------------- | ------------- | ------------------------------------- |
+| Sarah Admin      | Administrators | everything                            |
+| Liam Librarian   | Librarians     | operations, not admin settings        |
+| Rita Reports     | Reports Only   | dashboards and reports, read-only     |
+
+Signing in as Rita is the fastest way to see the permission model working: the sidebar
+shrinks, pages render disabled with a read-only banner, and the export endpoints return
+403.
+
+1. **Circulation Desk.** Pick a member, paste an available barcode from the panel into
+   Check out, then return it with the same barcode and a condition.
+2. **Catalogue.** Search, open a title, edit its MARC fields, add copies, then try
+   **Global change** and **Merge** from the same module.
+3. **Current Loans.** Four tabs: all active, overdue, hourly, and claimed returns. Overdue
+   rows show the fine accruing live with the open-day count behind it.
+4. **Library Calendar.** Add a closure, then check out something: the due date rolls past
+   it, and a fine stops counting across it.
+5. **Items > Stocktake.** Open a stocktake scoped to a collection or location, scan
+   barcodes, and watch the missing list build.
+6. **Batch Processes.** Run the end-of-day process and inspect the run history, the mail
+   outbox and the notification feed.
+7. **FlexiReports.** Build a cross-tab, then export it.
+8. **Audit Trail.** Everything above is there, with a before-and-after extract where the
+   calling code passed one.
 
 ---
 
-## What's MVP vs. later
+## Data model
 
-**Built:** catalogue & copy management, members, full circulation (check-out/in, renew,
-reserve, hold queue), search with filters/sort, dashboards, and a polished two-portal UI.
-Also supports **externally-subscribed content** — IEEE Xplore journals, transactions,
-conference papers, and standards (plus ACM / JSTOR) — catalogued with a `provider` and
-access URL. These are accessed via the provider (a "Read on IEEE Xplore" link) rather than
-loaned, and staff can filter the catalogue by source.
+61 tables. The core of it:
 
-**Deliberately deferred** (natural next steps, mirroring the reference spec):
-real authentication (Azure AD / email sign-up), reviews & ratings, notifications &
-email templates, acquisitions & serials modules, fines/payments, and richer reporting.
+```
+Resource ──< Copy              a catalogue title and its physical holdings
+Resource ──< MarcField         the MARC record, against MarcTagDef
+Resource ──< Loan              digital loans have no Copy
+Resource ──< Reservation       a hold, queued by the time it was placed
+Copy     ──< Booking           one item held for a definite window
+Member   ──< Loan, Reservation, Booking
+Serial   ──< SerialIssue ──< IssueRoutingStop
+AcqFund  ──< PurchaseOrder ──< PoLine, Invoice
+Stocktake ──< StocktakeScan
+```
+
+Every controlled vocabulary is stored as a plain `String`. There are no Prisma enums and
+no database check constraints, so `src/lib/constants.ts` is the only place a status is
+defined and the only thing enforcing it is application code.
+
+Where the rules live:
+
+| Concern                              | File                          |
+| ------------------------------------ | ----------------------------- |
+| Loan periods, limits, renewals, fines | `src/lib/policies.ts` plus the `LoanPolicy` table |
+| Due dates and open-day counting      | `src/lib/calendar-core.ts`    |
+| Fine accrual, grace and cap          | `src/lib/fines.ts`            |
+| Booking windows and overlap          | `src/lib/booking-core.ts`     |
+| Search tokenising and variants       | `src/lib/search-terms.ts`     |
+| Controlled vocabularies              | `src/lib/constants.ts`        |
+
+Seeded policies: Default and Student 14 days / 5 loans / 2 renewals, Staff 30 / 10 / 3,
+External 7 / 3 / 1. Fine rates seed at zero, so fines are off until a rate is entered on
+the Loan Policies page.
+
+---
+
+## Operations
+
+The database has no traditional backups: Neon's recovery rests on the project's history
+window. `docs/BACKUP.md` is the runbook, and it leads with the thing that catches people,
+which is that buying a bigger plan does not widen that window.
+
+What is in place: a portable logical backup that does not depend on `pg_dump`, optional
+AES-256-GCM encryption at source, a drill that restores into a throwaway database and
+compares every row of every table against the live one, and a comparison tool that is
+itself tested against six kinds of deliberate damage.
+
+`docs/NEON-MOVE.md` covers relocating the database to another Neon project, which is
+currently outstanding: the production database sits in a project no reachable account
+owns.
+
+`/api/diagnostics/database` (bearer `CRON_SECRET`) makes the deployed application report
+which Neon project, branch and endpoint it is actually talking to. Checking locally only
+proves what `.env` says.
+
+---
+
+## Deploying
+
+The repo is git-connected to the Vercel project, so **`git push origin master` deploys to
+production**. The build runs `prisma db push`, then a seed that skips itself when the
+database already holds data, then the Next build.
+
+For a fresh deployment: import the repo on Vercel, set `DATABASE_URL` and
+`POSTGRES_URL_NON_POOLING` in the project environment, and deploy. `vercel.json` pins
+`framework: nextjs` (without it the routes 404 despite a green build), pins functions to
+`sin1`, and schedules four cron jobs.
+
+Note that `CRON_SECRET` must be set for those four jobs to run at all: the shared guard is
+fail-closed and refuses rather than executing anonymously.
+
+---
+
+## Known gaps
+
+Beyond the five at the top:
+
+- **No screen places a hold.** The queueing, promotion, expiry and notification logic is
+  complete and correct; nothing calls it.
+- **Digital loans cannot be started from any screen.** The licence-seat logic works and the
+  return-side seat handover runs, but the desk form posts a barcode where the digital path
+  needs a title.
+- **The end-of-day process is a manual button.** Overdue notices, due-soon reminders and
+  hold expiry only advance when someone presses it.
+- **The catalogue and member lists are unpaginated**, and the catalogue list loads every
+  matching record with all its copies plus a second full-table scan for the provider
+  filter.
+- **No error or not-found boundaries**, so a stale bookmark lands on the framework's bare
+  404 outside the admin chrome.
+- **No mobile navigation.** Below 768px the sidebar and the sign-out control are hidden, so
+  a staff member on a phone can open a page by URL but cannot navigate or sign out.
+- **No print path and no PDF.** Data leaves as CSV and MARC only.
+- **No live region for assistive technology.** Toasts are the only feedback channel for
+  every mutation and they carry no role, so a screen-reader user gets no confirmation of a
+  save, a refusal or an import result.
+- **The acquisitions budget position reads only the 100 most recent orders and invoices.**
+  The Fund utilisation report is the authoritative figure.
+- Two remaining rows from the client parity workbook: importing a PDF to create a
+  bibliographic record, and the PDF help guides.
