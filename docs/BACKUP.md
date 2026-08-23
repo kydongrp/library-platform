@@ -7,20 +7,27 @@ Applies to the DLS Admin database (Neon Postgres, `neondb`, region
 
 **Neon takes no traditional backups.** There is no nightly dump to download.
 Recovery on Neon rests entirely on the project's *history window* (instant
-restore / point-in-time restore), and that window is short by default:
+restore / point-in-time restore), and **the default is short on every plan**:
 
 | Neon plan | History window default | Maximum |
 | --- | --- | --- |
 | Free | 6 hours | 6 hours (also capped at 1 GB of change history) |
 | Launch | 1 day | 7 days |
-| Scale | 1 day | 30 days |
+| Scale | **1 day** | **30 days** |
 
-If this project is on Free, a destructive mistake discovered the next morning
-is **not recoverable from Neon**. That is the gap the scripts here close, and
-it is why the checklist at the bottom matters.
+This project is on **Scale** (upgraded 23 Aug 2026), so 30 days is available.
 
-Scheduled snapshots (daily/weekly/monthly, 35-day retention) exist on paid
-plans only.
+> **The upgrade does not apply it.** The default stays at 1 day until someone
+> raises it. Buying Scale and not moving the slider leaves you with the same
+> 1-day window you had before — check it, do not assume it.
+
+Set it in Neon console -> project -> Settings -> Instant restore, or via the
+API (see the checklist below). Values: `86400` = 1 day, `604800` = 7 days,
+`2592000` = 30 days. It is a project-wide setting, not per branch.
+
+Scheduled snapshots (daily/weekly/monthly, 35-day retention, $0.09/GB-month)
+are available on paid plans and are the closest thing Neon has to an
+automatic backup.
 
 ## What is in place
 
@@ -125,12 +132,11 @@ Prisma CLI will send `db push` at production. Override all three
 
 These need a person, not a script.
 
-### 1. Confirm the Neon plan and widen the history window
+### 1. Raise the history window to 30 days  *(still outstanding)*
 
-Neon console → project → Settings → Instant restore. Check the plan and set
-the window as wide as it allows (Launch: 7 days, Scale: 30 days). On Free the
-ceiling is 6 hours, which is not a backup story for a system holding
-circulation records.
+The plan is Scale, so 30 days is available — but the window is still at the
+1-day default until it is changed. Neon console → project → Settings →
+Instant restore.
 
 Via API, once a key exists (Neon console → Account settings → API keys; the
 Vercel integration does **not** expose one):
@@ -138,10 +144,28 @@ Vercel integration does **not** expose one):
 ```bash
 curl -X PATCH "https://console.neon.tech/api/v2/projects/$PROJECT_ID" \
   -H "Authorization: Bearer $NEON_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"project":{"settings":{"history_retention_seconds":604800}}}'
+  -d '{"project":{"settings":{"history_retention_seconds":2592000}}}'   # 2592000 = 30 days
 ```
 
-### 2. Decide where offsite copies live
+### 2. IP Allow is available now, but cannot protect the app tier yet
+
+Scale includes IP Allow, and the instinct is to lock the database to the
+application's addresses. That does not work here: Vercel does not give
+functions static egress IPs below Enterprise **Secure Compute**, so there is
+no stable address to allowlist. Applying IP Allow now would lock out the app
+itself.
+
+Two things it *can* usefully do today:
+
+- restrict access to known administrator machines for direct `psql`/tooling
+  access, while leaving the application path open, or
+- become genuinely useful once the app runs somewhere with a fixed egress
+  address (Secure Compute, or a small proxy with a static IP).
+
+Private networking has the same shape: it needs the compute side to support
+it.
+
+### 3. Decide where offsite copies live
 
 The repo is **public**, so GitHub Actions artifacts are effectively public —
 anyone with a free GitHub account can download them, and services exist that
@@ -154,7 +178,7 @@ the file already encrypted by `BACKUP_KEY` before upload. S3 is the only
 common option that gives a hard Singapore residency guarantee — Cloudflare R2
 treats APAC as a best-effort location hint, not a commitment.
 
-### 3. Get the IM8 parameters in writing from KLSI
+### 4. Get the IM8 parameters in writing from KLSI
 
 IM8 binds KLSI and reaches this project through the contract. Ask the system
 owner for:
@@ -171,12 +195,12 @@ The relevant public control catalog is
 modification/deletion), DP-1 (residency), DP-2/3 (encryption at rest and in
 transit).
 
-### 4. Scheduling
+### 5. Scheduling
 
 Vercel's Hobby cron quota is full (2/2: `sftp-fetch` 03:00 UTC, `link-check`
 02:00 UTC, the latter already chaining renewal alerts and serial claims). A
 serverless function also has no persistent disk to write a dump to, so the
-backup job belongs wherever the offsite target is decided — a GitHub Actions
+backup job belongs wherever the offsite target is decided (the Vercel cron quota is no longer the constraint — Pro allows 40) — a GitHub Actions
 schedule pushing to S3 is the natural home once (2) is settled.
 
 Until then, the honest position: **backups are verified but manual.** Run
