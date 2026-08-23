@@ -40,6 +40,7 @@ automatic backup.
 | `npm run db:test:which` | Same for `.env.test` |
 | `npm run db:test:provision` | Creates/refreshes `neondb_test` and writes `.env.test` |
 | `npm run test:crypt` | Encryption round-trip tests |
+| `npm run neon:retention` | Show or set the Neon history window (recovery range) |
 
 ### Taking a backup
 
@@ -138,14 +139,18 @@ The plan is Scale, so 30 days is available — but the window is still at the
 1-day default until it is changed. Neon console → project → Settings →
 Instant restore.
 
-Via API, once a key exists (Neon console → Account settings → API keys; the
-Vercel integration does **not** expose one):
+Or use the script, which finds the right project by matching the compute
+endpoint in `DATABASE_URL` (so a multi-project account cannot get the wrong
+one reconfigured) and reads the value back instead of trusting the write:
 
 ```bash
-curl -X PATCH "https://console.neon.tech/api/v2/projects/$PROJECT_ID" \
-  -H "Authorization: Bearer $NEON_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"project":{"settings":{"history_retention_seconds":2592000}}}'   # 2592000 = 30 days
+npm run neon:retention                 # show the current window
+npm run neon:retention -- 30d          # set it, then confirm
 ```
+
+It needs `NEON_API_KEY` — create one at Neon console -> Account settings ->
+API keys and add it to `.env` (git-ignored). The Vercel/Neon integration does
+**not** expose a key. Accepted spans: `0`, `6h`, `1d`, `7d`, `14d`, `30d`.
 
 ### 2. IP Allow is available now, but cannot protect the app tier yet
 
