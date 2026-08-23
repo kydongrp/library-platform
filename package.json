@@ -29,12 +29,12 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "fast-xml-parser": "^5.10.1",
-    "next": "16.2.9",
+    "next": "16.2.12",
     "pg": "^8.22.0",
-    "prisma": "^7.8.0",
+    "prisma": "^7.9.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "ssh2-sftp-client": "^12.1.1"
@@ -47,9 +47,16 @@
     "@types/ssh2-sftp-client": "^9.0.6",
     "dotenv": "^17.4.2",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2",
+    "nanoid": "^3.3.18",
+    "postcss": "^8.5.26",
+    "js-yaml": "^4.3.1",
+    "sharp": "^0.35.3"
   }
 }
