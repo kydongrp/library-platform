@@ -5,6 +5,33 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      // CI runs eslint with --max-warnings 0, so this rule gates the build.
+      // The `_` prefix is how this codebase already marks a binding as
+      // deliberately unused, and these two cases cannot be written any other
+      // way:
+      //   - Server actions must accept (prevState, formData) to be usable with
+      //     useActionState, even when the action ignores both. That is
+      //     argsIgnorePattern.
+      //   - `const { secret: _s, ...rest } = obj` is how a field gets omitted
+      //     from `rest`. Deleting the binding would silently put the field
+      //     back. That is ignoreRestSiblings.
+      // Anything genuinely dead still fails, which is the point: the two real
+      // dead bindings found when this was turned on were deleted rather than
+      // renamed.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

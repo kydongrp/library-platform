@@ -46,7 +46,7 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npx eslint .
+        run: npx eslint . --max-warnings 0
 
       # Deliberately NOT `npm run build`. That script is
       # `prisma db push && tsx prisma/seed-if-empty.ts && next build`, and the

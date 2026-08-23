@@ -14,7 +14,6 @@ export default async function AdminDashboard() {
 
   const [
     titleCount,
-    copyCount,
     availableCopies,
     memberCount,
     activeLoans,
@@ -25,7 +24,6 @@ export default async function AdminDashboard() {
     recentLoans,
   ] = await Promise.all([
     prisma.resource.count(),
-    prisma.copy.count(),
     prisma.copy.count({ where: { status: "AVAILABLE" } }),
     prisma.member.count(),
     prisma.loan.count({ where: { status: "ACTIVE" } }),

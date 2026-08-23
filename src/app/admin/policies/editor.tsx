@@ -43,11 +43,9 @@ function displayValue(policy: Policy, name: keyof Policy, kind: FieldKind): stri
 
 export function PolicyEditor({
   policy,
-  itemTypes,
   readOnly,
 }: {
   policy: Policy;
-  itemTypes: { id: string; code: string; name: string }[];
   readOnly: boolean;
 }) {
   const label =

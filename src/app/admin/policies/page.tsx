@@ -45,7 +45,7 @@ export default async function PoliciesPage() {
       <div className="grid gap-4">
         {policies.map((p) => (
           <Card key={p.id} className="p-5">
-            <PolicyEditor policy={p} itemTypes={itemTypes} readOnly={!editable} />
+            <PolicyEditor policy={p} readOnly={!editable} />
           </Card>
         ))}
       </div>
