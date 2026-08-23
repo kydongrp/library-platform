@@ -18,7 +18,9 @@
     "db:test:provision": "tsx --env-file=.env scripts/provision-test-db.ts",
     "db:test:which": "tsx --env-file=.env.test scripts/which-db.ts",
     "test:crypt": "tsx scripts/test-crypt.ts",
-    "neon:retention": "tsx --env-file=.env scripts/neon-retention.ts"
+    "neon:retention": "tsx --env-file=.env scripts/neon-retention.ts",
+    "db:compare": "tsx --env-file=.env scripts/db-compare.ts",
+    "test:compare": "tsx --env-file=.env scripts/test-db-compare.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

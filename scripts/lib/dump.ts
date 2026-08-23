@@ -12,13 +12,22 @@
  * holds the whole database in memory.
  */
 
-import { Client } from "pg";
+import { Client, types as pgTypes } from "pg";
+import type { TypeFormat } from "pg-types";
 import { encrypt, decrypt, isEncrypted, hasBackupKey } from "./crypt";
 
-export const DUMP_FORMAT = "dls-ndjson-1";
+/**
+ * v2 stores temporal columns as the server's own text, never as a UTC ISO
+ * string. v1 did the latter, which silently shifted every naive timestamp by
+ * the UTC offset of the machine that took the dump (see clientFor below).
+ */
+export const DUMP_FORMAT = "dls-ndjson-2";
+/** v1 dumps are readable but their naive timestamps are offset. */
+export const LEGACY_DUMP_FORMAT = "dls-ndjson-1";
 
 export type Manifest = {
-  format: typeof DUMP_FORMAT;
+  /** v1 dumps still read, so a manifest may carry either version. */
+  format: typeof DUMP_FORMAT | typeof LEGACY_DUMP_FORMAT;
   takenAt: string;
   database: string;
   serverVersion: string;
@@ -121,9 +130,66 @@ export async function foreignKeyOrder(c: Client): Promise<string[]> {
 }
 
 /**
- * Encode one row for JSON. Dates go to ISO strings, Buffers to base64,
- * bigints to strings — all reversed on restore using the column types, so a
- * timestamp does not come back as text.
+ * Postgres OIDs for every date/time type, including the array forms.
+ *
+ * These are handed a pass-through parser below so the driver never converts
+ * them to a JS Date. That conversion is where a backup quietly corrupts data:
+ * node-postgres reads `timestamp without time zone` as a LOCAL time, and
+ * `Date.toISOString()` then writes it back as UTC. Inserting that string into
+ * a naive timestamp column stores the UTC wall clock, so every timestamp in
+ * the database moves by the dumping machine's UTC offset — eight hours in
+ * Singapore, and eight more on every further round trip. The schema has 91
+ * naive timestamp columns, so that is due dates, fines, audit trails and loan
+ * history all silently wrong, while row counts and null checks still pass.
+ *
+ * Keeping them as text removes the timezone from the round trip entirely.
+ */
+const TEMPORAL_OIDS = [
+  1082, // date
+  1083, // time
+  1114, // timestamp
+  1184, // timestamptz
+  1266, // timetz
+  1186, // interval
+  1115, // timestamp[]
+  1182, // date[]
+  1183, // time[]
+  1185, // timestamptz[]
+  1187, // interval[]
+  1270, // timetz[]
+];
+
+const passThrough = (v: string) => v;
+
+/**
+ * A client that reads and writes values byte-faithfully.
+ *
+ * Two things matter: temporal types come back as the server's own text (see
+ * above), and the session is pinned to UTC with ISO output so that text is
+ * canonical no matter where the dump is taken from or restored to.
+ */
+export async function clientFor(url: string, label = "connection"): Promise<Client> {
+  const c = new Client({
+    connectionString: url,
+    types: {
+      getTypeParser: ((oid: number, format?: TypeFormat) =>
+        TEMPORAL_OIDS.includes(oid) ? passThrough : pgTypes.getTypeParser(oid, format)) as never,
+    },
+  });
+  c.on("error", (e) => console.error(`  [${label}] ${e.message}`));
+  await c.connect();
+  // Canonical rendering, so a dump taken anywhere restores identically.
+  await c.query("SET TIME ZONE 'UTC'");
+  await c.query("SET DateStyle = 'ISO, MDY'");
+  await c.query("SET IntervalStyle = 'postgres'");
+  return c;
+}
+
+/**
+ * Encode one row for JSON. Buffers go to base64 and bigints to strings, both
+ * reversed on restore. Temporal values arrive as text and stay text. The Date
+ * branch is a backstop: with the parser overrides above nothing should reach
+ * it, and if something does, it is better to keep the value than to drop it.
  */
 function encodeValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -147,9 +213,7 @@ function decodeValue(v: unknown, dataType?: string): unknown {
 export type BackupResult = { manifest: Manifest; bytes: number; path: string; encrypted: boolean };
 
 export async function backup(outPath: string, url: string): Promise<BackupResult> {
-  const c = new Client({ connectionString: url });
-  c.on("error", (e) => console.error(`  [backup connection] ${e.message}`));
-  await c.connect();
+  const c = await clientFor(url, "backup connection");
   try {
     // One consistent snapshot for the whole dump: without this, a dump taken
     // while staff are working can capture a child row whose parent it missed.
@@ -225,7 +289,8 @@ export async function readManifest(path: string): Promise<Manifest> {
   const lines = await readLines(path);
   if (lines.length === 0) throw new Error("Dump file is empty.");
   const m = JSON.parse(lines[0]) as Manifest;
-  if (m.format !== DUMP_FORMAT) throw new Error(`Unexpected dump format: ${m.format}`);
+  if (m.format !== DUMP_FORMAT && m.format !== LEGACY_DUMP_FORMAT)
+    throw new Error(`Unexpected dump format: ${m.format}`);
   return m;
 }
 
@@ -236,11 +301,20 @@ export type RestoreResult = { manifest: Manifest; inserted: Record<string, numbe
  * reloads them. Constraints are deferred for the transaction so row order
  * within a table cannot trip a self-referencing foreign key.
  */
-export async function restore(path: string, url: string): Promise<RestoreResult> {
+export async function restore(
+  path: string,
+  url: string,
+  opts: { allowLegacyTimestamps?: boolean } = {},
+): Promise<RestoreResult> {
   const manifest = await readManifest(path);
-  const c = new Client({ connectionString: url });
-  c.on("error", (e) => console.error(`  [restore connection] ${e.message}`));
-  await c.connect();
+  if (manifest.format === LEGACY_DUMP_FORMAT && !opts.allowLegacyTimestamps)
+    throw new Error(
+      `This is a ${LEGACY_DUMP_FORMAT} dump. Its naive timestamps were written as UTC by ` +
+        `the machine that took it, so restoring shifts every timestamp by that machine's ` +
+        `UTC offset. Take a fresh backup instead, or pass allowLegacyTimestamps if you ` +
+        `genuinely accept the shift.`,
+    );
+  const c = await clientFor(url, "restore connection");
   const inserted: Record<string, number> = {};
   let total = 0;
   try {

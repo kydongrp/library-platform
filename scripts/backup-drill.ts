@@ -7,10 +7,14 @@
  * 2. Creates a throwaway database on the same server.
  * 3. Applies the current Prisma schema to it.
  * 4. Restores the dump into it.
- * 5. Compares every table's row count against the dump manifest, and spot
- *    checks real field values so "the right number of rows" cannot pass for
- *    "the right data".
+ * 5. Compares the restored database against the live one in full: shape,
+ *    indexes and constraints, row counts, and an md5 over every row of every
+ *    table. Then spot checks a few real field values, which are easier to read
+ *    in the output than a hash.
  * 6. Drops the throwaway database.
+ *
+ * Step 5's full comparison exists because the spot checks alone once passed a
+ * restore that shifted all 91 timestamp columns by eight hours.
  *
  * An untested backup is a guess. This is the test.
  */
@@ -20,6 +24,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { Client } from "pg";
 import { backup, restore, connectionString, describeTarget } from "./lib/dump";
+import { compareDatabases } from "./lib/db-compare";
 
 /** Swap the database name in a connection URL, keeping every other param. */
 function withDatabase(url: string, dbName: string): string {
@@ -133,6 +138,25 @@ void (async () => {
       check(typed.rows[0].due instanceof Date, "timestamps restored as timestamps");
       check(typeof typed.rows[0].cents === "number", "integers restored as integers");
     }
+
+    // The authoritative check: every row of every table, hashed. The probes
+    // above are a readable sample; this is the proof. It is what caught the
+    // restore path writing naive timestamps as UTC.
+    const cmp = await compareDatabases(
+      { label: "live", url: live },
+      { label: "restored", url: drillUrl },
+    );
+    const blocking = cmp.differences.filter((d) => d.blocking);
+    check(
+      cmp.digestsCompared,
+      "row digests were comparable",
+      cmp.digestsCompared ? "" : "server rendering settings differ",
+    );
+    check(
+      blocking.length === 0,
+      "restored database matches live in full",
+      blocking.map((d) => `${d.kind}:${d.subject}`).slice(0, 6).join(", "),
+    );
 
     // Relations must still join: a restore that loses a foreign key leaves
     // orphans that only show up later as broken pages.
