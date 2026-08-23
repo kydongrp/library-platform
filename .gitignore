@@ -47,3 +47,8 @@ next-env.d.ts
 
 # Database backups: personal data, never committed (this repo is public).
 backups/
+
+# Claude Code: personal per-machine overrides. settings.json and launch.json
+# are shared, but settings.local.json can grant this machine permissions
+# (e.g. push-to-master, which auto-deploys) that must not apply team-wide.
+.claude/settings.local.json
