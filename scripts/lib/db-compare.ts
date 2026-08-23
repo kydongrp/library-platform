@@ -62,31 +62,82 @@ export type CompareResult = {
   digestSkipped: Record<string, string>;
 };
 
-/** Settings that change how a row renders as text, so digests need them equal. */
+/** Settings that change how a row renders as text, plus the server version. */
 const RENDER_SETTINGS = ["DateStyle", "IntervalStyle", "TimeZone", "extra_float_digits", "server_version_num"];
+
+/** The subset connect() pins. If these still differ afterwards, stop trusting digests. */
+const PINNED_SETTINGS = ["DateStyle", "IntervalStyle", "TimeZone", "extra_float_digits"];
 
 /** Above this many rows, hash in key-ordered chunks instead of one aggregate. */
 const CHUNK_THRESHOLD = 200_000;
 
-async function connect(url: string): Promise<Client> {
+async function connect(url: string): Promise<{ client: Client; asFound: Record<string, string> }> {
   const c = new Client({ connectionString: url });
   // An unhandled 'error' event kills the process and hides the real failure.
   c.on("error", () => {});
   await c.connect();
-  // Pin the settings that decide how a row renders as text, so a digest means
-  // the same thing on both sides regardless of how each server is configured.
+
+  // Read the rendering settings BEFORE overriding them. Pinning first and
+  // comparing afterwards would report agreement this had itself created —
+  // and a per-database `ALTER DATABASE ... SET TimeZone` on one side but not
+  // the other is exactly the kind of difference worth knowing about, because
+  // the application never pins anything.
+  const asFound = await readSettings(c);
+
+  // Then pin, so the digests below cannot be thrown off by a server default.
   await c.query("SET TIME ZONE 'UTC'");
   await c.query("SET DateStyle = 'ISO, MDY'");
   await c.query("SET IntervalStyle = 'postgres'");
-  return c;
+  await c.query("SET extra_float_digits = 3");
+  return { client: c, asFound };
 }
 
-async function settings(c: Client): Promise<Record<string, string>> {
+async function readSettings(c: Client): Promise<Record<string, string>> {
   const { rows } = await c.query<{ name: string; setting: string }>(
     `SELECT name, setting FROM pg_settings WHERE name = ANY($1::text[])`,
     [RENDER_SETTINGS],
   );
   return Object.fromEntries(rows.map((r) => [r.name, r.setting]));
+}
+
+/**
+ * Collation, ctype, locale provider and encoding.
+ *
+ * These decide text ordering and case folding, so a difference changes what
+ * `ORDER BY title` returns and what a case-insensitive search matches — and
+ * the content digest is deliberately order-independent, so it cannot see any
+ * of it. Blocking, because there is no benign version of this differing.
+ */
+async function locale(c: Client): Promise<Record<string, string>> {
+  const { rows } = await c.query<Record<string, string>>(
+    `SELECT datcollate, datctype, datlocprovider::text AS datlocprovider,
+            pg_encoding_to_char(encoding) AS encoding
+       FROM pg_database WHERE datname = current_database()`,
+  );
+  return rows[0] ?? {};
+}
+
+/** Per-database and per-role settings, which no dump carries. */
+async function roleSettings(c: Client): Promise<Record<string, string>> {
+  const { rows } = await c.query<{ k: string; v: string }>(
+    `SELECT coalesce(setdatabase::regclass::text, '-') || '/' ||
+            coalesce(setrole::regrole::text, '-') AS k,
+            array_to_string(setconfig, ',') AS v
+       FROM pg_db_role_setting`,
+  );
+  return Object.fromEntries(rows.map((r) => [r.k, r.v]));
+}
+
+/** Schemas other than public, which the dump does not cover at all. */
+async function schemas(c: Client): Promise<Record<string, string>> {
+  const { rows } = await c.query<{ k: string; v: string }>(
+    `SELECT n.nspname AS k, count(t.tablename)::text AS v
+       FROM pg_namespace n
+       LEFT JOIN pg_tables t ON t.schemaname = n.nspname
+      WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema'
+      GROUP BY n.nspname`,
+  );
+  return Object.fromEntries(rows.map((r) => [r.k, `${r.v} table(s)`]));
 }
 
 async function tableList(c: Client): Promise<string[]> {
@@ -118,6 +169,17 @@ async function columnNames(c: Client): Promise<Record<string, string[]>> {
   return Object.fromEntries(rows.map((r) => [r.k, r.v]));
 }
 
+/** table -> text column names, alphabetical, for the ordering probe. */
+async function textColumnNames(c: Client): Promise<Record<string, string[]>> {
+  const { rows } = await c.query<{ k: string; v: string[] }>(
+    `SELECT table_name::text AS k, array_agg(column_name::text ORDER BY column_name) AS v
+       FROM information_schema.columns
+      WHERE table_schema = 'public' AND data_type IN ('text', 'character varying')
+      GROUP BY table_name`,
+  );
+  return Object.fromEntries(rows.map((r) => [r.k, r.v]));
+}
+
 /** column -> "type|nullable|default", per table. */
 async function columns(c: Client): Promise<Record<string, string>> {
   const { rows } = await c.query<{ k: string; v: string }>(
@@ -127,7 +189,8 @@ async function columns(c: Client): Promise<Record<string, string>> {
             is_nullable || '|' ||
             coalesce(column_default,'-') || '|' ||
             coalesce(character_maximum_length::text,'-') || '|' ||
-            coalesce(numeric_precision::text,'-') || ',' || coalesce(numeric_scale::text,'-') AS v
+            coalesce(numeric_precision::text,'-') || ',' || coalesce(numeric_scale::text,'-') || '|' ||
+            coalesce(collation_name,'default') AS v
        FROM information_schema.columns
       WHERE table_schema = 'public'`,
   );
@@ -213,14 +276,18 @@ async function rowCount(c: Client, table: string): Promise<number> {
  * reads. Sorting by the rendered text is what makes it order independent.
  */
 /**
- * A NULL-distinguishing text rendering of one column.
+ * A length-prefixed rendering of one column: `<bytes>:<value>`, or `-1:` for
+ * NULL.
  *
- * concat_ws drops NULL arguments outright, which would make a NULL and an
- * empty string hash identically, so NULLs get an explicit sentinel. Postgres
- * text cannot contain a NUL byte, and 0x01 is not something this data holds.
+ * Length-prefixing rather than a separator character, because any separator
+ * can appear in the data and then two different rows hash the same. The
+ * obvious choice, 0x1F, is the ISO 2709 subfield delimiter — in a cataloguing
+ * system that is a plausible value, not an impossible one. Prefixing the
+ * octet length makes the encoding injective whatever the bytes are, and gives
+ * NULL a form no value can imitate.
  */
 function nullSafeText(col: string): string {
-  return `coalesce("${col}"::text, E'\x01NULL\x01')`;
+  return `coalesce(octet_length("${col}"::text)::text || ':' || "${col}"::text, '-1:')`;
 }
 
 /**
@@ -228,14 +295,14 @@ function nullSafeText(col: string): string {
  *
  * Deliberately not `t::text`. A whole-row cast also encodes composite quoting
  * rules, which is extra surface that can differ between Postgres major
- * versions; casting each column and joining with a separator depends only on
- * each type's own output function. That is what lets a database on Postgres 17
+ * versions; casting each column separately depends only on each type's own
+ * output function. That is what lets a database on Postgres 17
  * be compared against its copy on Postgres 18 — which is the actual situation
  * here, and without it the strongest check would be unavailable exactly when
  * it is needed most.
  */
 function rowExpression(cols: string[]): string {
-  return `concat_ws(E'\x1f', ${cols.map(nullSafeText).join(", ")})`;
+  return cols.map(nullSafeText).join(" || ");
 }
 
 async function contentDigest(
@@ -276,6 +343,28 @@ async function columnDigests(
   }
   return out;
 }
+/**
+ * An order-SENSITIVE digest: ids concatenated in the order the server sorts a
+ * text column.
+ *
+ * The content digest is order-independent on purpose, so it would not notice
+ * if `ORDER BY title` started returning a different sequence. That sequence is
+ * what the catalogue UI shows, so it is worth a check of its own. Uses the
+ * first text column alphabetically, which is arbitrary but stable, and only
+ * for tables that have the `id` primary key every model here uses.
+ */
+async function orderingDigest(
+  c: Client,
+  table: string,
+  idCol: string,
+  textCol: string,
+): Promise<string> {
+  const { rows } = await c.query<{ d: string | null }>(
+    `SELECT md5(string_agg("${idCol}"::text, ',' ORDER BY "${textCol}", "${idCol}")) AS d FROM "${table}"`,
+  );
+  return rows[0].d ?? "empty";
+}
+
 function diffMaps(
   kind: Difference["kind"],
   prefix: string,
@@ -300,14 +389,14 @@ function diffMaps(
 }
 
 export async function compareDatabases(a: Side, b: Side): Promise<CompareResult> {
-  const ca = await connect(a.url);
-  const cb = await connect(b.url);
+  const { client: ca, asFound: sa } = await connect(a.url);
+  const { client: cb, asFound: sb } = await connect(b.url);
   try {
     const differences: Difference[] = [];
 
-    // 1. Rendering settings. Digests are only meaningful when these match.
-    const [sa, sb] = [await settings(ca), await settings(cb)];
-    let digestsComparable = true;
+    // 1. Rendering settings, as each server had them before this connection
+    //    pinned anything. Reported, never blocking: a difference here is
+    //    information about the two servers, not about the data.
     for (const name of RENDER_SETTINGS) {
       if (sa[name] === sb[name]) continue;
       differences.push({
@@ -317,14 +406,44 @@ export async function compareDatabases(a: Side, b: Side): Promise<CompareResult>
         b: sb[name] ?? "?",
         blocking: false,
       });
-      // A different Postgres major version is worth reporting but does not
-      // invalidate the digest: it is built from per-column text output, which
-      // is stable across versions for every type this schema uses. The
-      // rendering settings below are pinned on connect, so if one of those
-      // still differs something is overriding the session and the digest can
-      // no longer be trusted.
-      if (name !== "server_version_num") digestsComparable = false;
     }
+
+    // 1a. Whether the digests can be trusted is a question about the settings
+    //     AFTER pinning, not before. Everything that affects text rendering is
+    //     pinned on connect; if it did not take on both sides, something is
+    //     overriding the session and the digest means nothing. A different
+    //     major version is not in that category: the digest is built from
+    //     per-column output functions, stable across versions for every type
+    //     this schema uses.
+    const [pa, pb] = [await readSettings(ca), await readSettings(cb)];
+    const digestsComparable = PINNED_SETTINGS.every((n) => pa[n] === pb[n]);
+    for (const n of PINNED_SETTINGS)
+      if (pa[n] !== pb[n])
+        differences.push({
+          kind: "settings",
+          subject: `${n} (after pinning)`,
+          a: pa[n] ?? "?",
+          b: pb[n] ?? "?",
+          blocking: true,
+        });
+
+    // 1b. Locale. Nothing else here can see a collation change: the content
+    //     digest sorts by rendered text precisely so that row order does not
+    //     matter, which also means a reordering is invisible to it.
+    for (const d of diffMaps("settings", "locale", await locale(ca), await locale(cb), a.label, b.label))
+      differences.push({ ...d, blocking: true });
+
+    // 1c. Per-database and per-role settings. No dump carries these, and the
+    //     application never pins its session, so one of these on one side only
+    //     changes how the app behaves.
+    differences.push(
+      ...diffMaps("settings", "db setting", await roleSettings(ca), await roleSettings(cb), a.label, b.label),
+    );
+
+    // 1d. Schemas outside public. The dump only covers public, so anything
+    //     else is data that does not travel.
+    for (const d of diffMaps("shape", "schema", await schemas(ca), await schemas(cb), a.label, b.label))
+      differences.push({ ...d, blocking: false });
 
     // 2. Shape.
     const [ta, tb] = [await tableList(ca), await tableList(cb)];
@@ -367,6 +486,7 @@ export async function compareDatabases(a: Side, b: Side): Promise<CompareResult>
     // 4. Counts and content, over the tables both sides have.
     const shared = ta.filter((t) => tb.includes(t));
     const [namesA, namesB] = [await columnNames(ca), await columnNames(cb)];
+    const textColumns = await textColumnNames(ca);
     const rowCounts: Record<string, { a: number; b: number }> = {};
     const digestSkipped: Record<string, string> = {};
     for (const t of shared) {
@@ -400,6 +520,24 @@ export async function compareDatabases(a: Side, b: Side): Promise<CompareResult>
         await contentDigest(ca, t, na, cols),
         await contentDigest(cb, t, nb, cols),
       ];
+      // Order-sensitive check on the same table, when it has something to sort.
+      const idCol = cols.includes("id") ? "id" : null;
+      const textCol = (textColumns[t] ?? []).filter((k) => cols.includes(k))[0];
+      if (idCol && textCol) {
+        const [oa, ob] = [
+          await orderingDigest(ca, t, idCol, textCol),
+          await orderingDigest(cb, t, idCol, textCol),
+        ];
+        if (oa !== ob)
+          differences.push({
+            kind: "content",
+            subject: `${t} ORDER BY ${textCol}`,
+            a: oa,
+            b: ob,
+            blocking: true,
+          });
+      }
+
       if (da !== db) {
         // A bare hash mismatch is not actionable, so find out which columns
         // carry the difference before reporting it.

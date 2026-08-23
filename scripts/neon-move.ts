@@ -381,6 +381,14 @@ async function cmdSync(): Promise<void> {
   const { direct } = readCreds();
   const source = connectionString();
 
+  // A restore truncates before it loads. If .env.migration ever named the
+  // source, this would wipe production and reload it from its own dump — which
+  // would probably even succeed, and would still be an outage.
+  if (describeTarget(direct) === describeTarget(source)) {
+    console.error(`Refusing to sync: ${CRED_FILE} points at the source itself (${describeTarget(source)}).`);
+    process.exit(2);
+  }
+
   const src = await clientFor(source, "source");
   const ro = await src.query<{ ro: string }>(`SELECT current_setting('transaction_read_only') AS ro`);
   await src.end();
@@ -423,8 +431,131 @@ async function cmdVerify(): Promise<void> {
   console.log("\nThe new database matches the old one. Safe to repoint production.");
 }
 
+/**
+ * A watermark for the source database.
+ *
+ * A clean comparison before cutover says nothing about writes that land between
+ * the comparison and the switch, and "we told everyone to stop" is not
+ * evidence. Every admin mutation in src/app/actions/ calls audit(), so AuditLog
+ * is a near-complete write log; the WAL position catches everything else,
+ * including paths nobody thought about (the portal bumps ApiClient.lastUsedAt
+ * on an authenticated read). Take one at freeze, one at cutover, and compare.
+ */
+async function cmdWatermark(): Promise<void> {
+  const url = connectionString();
+  const c = await clientFor(url, "watermark");
+  try {
+    const r = await c.query<{
+      audits: string;
+      last_audit: string | null;
+      lsn: string;
+      tuples: string | null;
+      stats_reset: string | null;
+      read_only: string;
+    }>(
+      `SELECT (SELECT count(*)::text FROM "AuditLog")                  AS audits,
+              (SELECT max(at)::text FROM "AuditLog")                   AS last_audit,
+              pg_current_wal_lsn()::text                               AS lsn,
+              (SELECT sum(n_tup_ins + n_tup_upd + n_tup_del)::text
+                 FROM pg_stat_user_tables)                             AS tuples,
+              (SELECT stats_reset::text FROM pg_stat_database
+                WHERE datname = current_database())                      AS stats_reset,
+              current_setting('transaction_read_only')                 AS read_only`,
+    );
+    const w = r.rows[0];
+    console.log(`Watermark for ${describeTarget(url)}`);
+    console.log(`  read only  : ${w.read_only}`);
+    console.log(`  audit rows : ${w.audits}`);
+    console.log(`  last audit : ${w.last_audit ?? "(none)"}`);
+    console.log(`  WAL lsn    : ${w.lsn}`);
+    console.log(`  tuples w/r : ${w.tuples ?? "?"} (since ${w.stats_reset ?? "?"}, resets on compute restart)`);
+    console.log("");
+    console.log("Movement in audit rows or WAL position between the final dump and the");
+    console.log("switch is a write that did not travel. Compare, do not assume.");
+  } finally {
+    await c.end().catch(() => {});
+  }
+}
+
+/**
+ * A Neon branch on the TARGET, as a restore point independent of the history
+ * window.
+ *
+ * The Vercel build runs `prisma db push && seed-if-empty`, and the seed has a
+ * destructive branch that fires when the resource count is zero. A branch taken
+ * once the data is verified turns that from "restore the whole dump again" into
+ * a seconds-long rollback.
+ */
+async function cmdBranch(): Promise<void> {
+  const key = requireKey();
+  const { direct } = readCreds();
+  const target = await neonIdentity(direct);
+  const name = arg("branch-name") ?? `verified-restore-${new Date().toISOString().slice(0, 10)}`;
+  console.log(`Creating branch "${name}" on ${target.projectId}`);
+  await api(`/projects/${target.projectId}/branches`, key, {
+    method: "POST",
+    body: JSON.stringify({ branch: { name, parent_id: target.branchId } }),
+  });
+  await waitForOperations(target.projectId, key);
+  const { branches } = await api<{ branches: { id: string; name: string }[] }>(
+    `/projects/${target.projectId}/branches`,
+    key,
+  );
+  const made = branches.find((b) => b.name === name);
+  console.log(made ? `  created ${made.id}` : "  WARNING: branch not visible after creation");
+  console.log("Restore from it in the Neon console if the cutover goes wrong.");
+}
+
+/**
+ * Everything in the source database that a public-schema table dump does not
+ * carry. All of it is empty or platform-owned today; the point is to say so out
+ * loud rather than find out otherwise afterwards.
+ */
+async function reportUncoveredObjects(): Promise<void> {
+  const c = await clientFor(connectionString(), "audit");
+  try {
+    const rows = async (sql: string) => (await c.query<Record<string, string>>(sql)).rows;
+    const schemas = await rows(
+      `SELECT n.nspname AS name, count(t.tablename)::text AS tables
+         FROM pg_namespace n LEFT JOIN pg_tables t ON t.schemaname = n.nspname
+        WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema'
+          AND n.nspname <> 'public'
+        GROUP BY n.nspname ORDER BY n.nspname`,
+    );
+    const roles = await rows(
+      `SELECT rolname AS name FROM pg_roles
+        WHERE rolcanlogin AND rolname NOT LIKE 'pg_%' ORDER BY rolname`,
+    );
+    const other = await rows(
+      `SELECT table_name AS name, table_type AS kind FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type <> 'BASE TABLE'`,
+    );
+    const ext = await rows(`SELECT extname AS name FROM pg_extension ORDER BY extname`);
+    const fns = await rows(
+      `SELECT count(*)::text AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'`,
+    );
+
+    console.log("Objects a public-table dump does not carry");
+    console.log(`  other schemas  : ${schemas.map((r) => `${r.name} (${r.tables} tables)`).join(", ") || "none"}`);
+    console.log(`  login roles    : ${roles.map((r) => r.name).join(", ")}`);
+    console.log(`  views/matviews : ${other.map((r) => `${r.name}:${r.kind}`).join(", ") || "none"}`);
+    console.log(`  extensions     : ${ext.map((r) => r.name).join(", ")}`);
+    console.log(`  functions      : ${fns[0]?.n ?? "?"}`);
+    if (schemas.length)
+      console.log(
+        "  NOTE: a non-public schema exists. Confirm it holds no application data\n" +
+          "        before relying on this move (neon_auth is Neon's own, unused here).",
+      );
+  } finally {
+    await c.end().catch(() => {});
+  }
+}
+
 async function cmdPlan(): Promise<void> {
   await describeSource();
+  console.log("");
+  await reportUncoveredObjects();
   const key = process.env.NEON_API_KEY;
   if (!key) {
     console.log("\nSet NEON_API_KEY to list the organisations available as a destination.");
@@ -446,6 +577,8 @@ async function cmdPlan(): Promise<void> {
         `    - ${p.name} (${p.id}) pg${p.pg_version ?? "?"} ${p.region_id ?? ""} window=${p.history_retention_seconds ?? "?"}s`,
       );
   }
+  console.log("");
+  await reportUncoveredObjects();
   console.log(
     "\nA 30-day history window needs the Scale plan. Create with:\n" +
       '  npm run neon:move -- create --org <org-id> --name "DLS Admin"',
@@ -467,13 +600,21 @@ void (async () => {
       return cmdSync();
     case "verify":
       return cmdVerify();
+    case "watermark":
+      return cmdWatermark();
+    case "branch":
+      return cmdBranch();
     default:
-      console.error("Usage: npm run neon:move -- <plan|create|freeze|sync|verify|thaw>");
+      console.error(
+        "Usage: npm run neon:move -- <plan|create|freeze|watermark|sync|verify|branch|thaw>",
+      );
       console.error("  plan    show the source database and the destinations the key can see");
       console.error("  create  create the target project, set a 30-day window, apply the schema");
       console.error("  freeze  stop the OLD database accepting writes");
       console.error("  sync    dump the old, restore into the new, compare");
       console.error("  verify  compare old and new (read only)");
+      console.error("  watermark  the source's write position, to prove nothing leaked past the dump");
+      console.error("  branch  a Neon branch of the new database, as a restore point");
       console.error("  thaw    let the OLD database accept writes again");
       process.exit(2);
   }

@@ -664,9 +664,23 @@ async function main() {
     await ensureBackfills();
     await ensureItemCodeLists();
     await ensureMarcTagDefs();
-    const existing = await prisma.resource.count();
+    // "Is this database fresh?" decides whether the build proceeds into the
+    // clear-everything branch below, so ask about more than the catalogue. A
+    // database mid-migration, or one whose catalogue was deliberately emptied,
+    // still holds members, staff accounts and loan history that must not be
+    // deleted because `Resource` happened to be at zero.
+    const [resources, members, admins, loans] = await Promise.all([
+      prisma.resource.count(),
+      prisma.member.count(),
+      prisma.adminUser.count(),
+      prisma.loan.count(),
+    ]);
+    const existing = resources + members + admins + loans;
     if (existing > 0) {
-      console.log(`Database already has ${existing} resources — skipping seed.`);
+      console.log(
+        `Database already has data (resources ${resources}, members ${members}, ` +
+          `staff ${admins}, loans ${loans}) — skipping seed.`,
+      );
       return;
     }
   } else {

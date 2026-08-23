@@ -209,6 +209,11 @@ Consequences, stated plainly:
 - `npm run backup` still works — it only needs the connection string — so the
   verified logical backups are, for now, the *only* recovery path we control.
 
+**The move is planned and the tooling is built** — see
+[NEON-MOVE.md](NEON-MOVE.md) for the runbook and `npm run neon:move`. It needs a
+Neon API key for the account that owns the Kydon organisation; nothing else is
+outstanding.
+
 To resolve, one of:
 
 1. **Log into the Neon account that owns `autumn-frog-86115224`**, create an API

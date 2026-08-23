@@ -21,7 +21,8 @@
     "neon:retention": "tsx --env-file=.env scripts/neon-retention.ts",
     "db:compare": "tsx --env-file=.env scripts/db-compare.ts",
     "test:compare": "tsx --env-file=.env scripts/test-db-compare.ts",
-    "neon:move": "tsx --env-file=.env scripts/neon-move.ts"
+    "neon:move": "tsx --env-file=.env scripts/neon-move.ts",
+    "test:fidelity": "tsx --env-file=.env scripts/test-dump-fidelity.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

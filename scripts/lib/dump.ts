@@ -130,10 +130,11 @@ export async function foreignKeyOrder(c: Client): Promise<string[]> {
 }
 
 /**
- * Postgres OIDs for every date/time type, including the array forms.
+ * Postgres OIDs the driver must not convert: every date/time type, json and
+ * jsonb, including the array forms.
  *
  * These are handed a pass-through parser below so the driver never converts
- * them to a JS Date. That conversion is where a backup quietly corrupts data:
+ * them to a JS value. That conversion is where a backup quietly corrupts data:
  * node-postgres reads `timestamp without time zone` as a LOCAL time, and
  * `Date.toISOString()` then writes it back as UTC. Inserting that string into
  * a naive timestamp column stores the UTC wall clock, so every timestamp in
@@ -144,7 +145,7 @@ export async function foreignKeyOrder(c: Client): Promise<string[]> {
  *
  * Keeping them as text removes the timezone from the round trip entirely.
  */
-const TEMPORAL_OIDS = [
+const PASS_THROUGH_OIDS = [
   1082, // date
   1083, // time
   1114, // timestamp
@@ -157,6 +158,16 @@ const TEMPORAL_OIDS = [
   1185, // timestamptz[]
   1187, // interval[]
   1270, // timetz[]
+  // json and jsonb for the same reason: node-postgres runs JSON.parse on
+  // them, and JavaScript numbers are IEEE-754 doubles. An integer beyond
+  // 2^53 comes back imprecise, and 1.0 comes back as 1 — then gets
+  // re-serialised on restore, so the dump is quietly not what was dumped.
+  // Nothing in the data hits that today (checked), but MARC subfields and
+  // acquisition amounts are exactly where it would appear.
+  114, // json
+  3802, // jsonb
+  199, // json[]
+  3807, // jsonb[]
 ];
 
 const passThrough = (v: string) => v;
@@ -173,7 +184,7 @@ export async function clientFor(url: string, label = "connection"): Promise<Clie
     connectionString: url,
     types: {
       getTypeParser: ((oid: number, format?: TypeFormat) =>
-        TEMPORAL_OIDS.includes(oid) ? passThrough : pgTypes.getTypeParser(oid, format)) as never,
+        PASS_THROUGH_OIDS.includes(oid) ? passThrough : pgTypes.getTypeParser(oid, format)) as never,
     },
   });
   c.on("error", (e) => console.error(`  [${label}] ${e.message}`));
@@ -205,8 +216,11 @@ function decodeValue(v: unknown, dataType?: string): unknown {
     return Buffer.from(String((v as Record<string, unknown>).__b64), "base64");
   }
   // json/jsonb must go back as a JSON string. Left as a JS value, an array
-  // would be sent as a Postgres array literal and rejected.
-  if (dataType === "json" || dataType === "jsonb") return JSON.stringify(v);
+  // would be sent as a Postgres array literal and rejected. Dumps taken with
+  // the pass-through parser already hold the server's own text, so only an
+  // older dump needs re-serialising.
+  if (dataType === "json" || dataType === "jsonb")
+    return typeof v === "string" ? v : JSON.stringify(v);
   return v;
 }
 
@@ -262,6 +276,17 @@ export async function backup(outPath: string, url: string): Promise<BackupResult
     // readable personal data.
     const encrypted = hasBackupKey();
     writeFileSync(outPath, encrypted ? encrypt(gz) : gz);
+
+    // Read it back. A backup that reports success and cannot be opened is the
+    // worst possible outcome, and with BACKUP_KEY passed inline a typo produces
+    // exactly that: a well-formed file nobody can decrypt, discovered months
+    // later when it is needed.
+    const readBack = await readManifest(outPath);
+    if (readBack.totalRows !== manifest.totalRows)
+      throw new Error(
+        `Wrote ${manifest.totalRows} rows but the file reads back as ${readBack.totalRows}.`,
+      );
+
     return { manifest, bytes: statSync(outPath).size, path: outPath, encrypted };
   } finally {
     await c.end();
@@ -304,7 +329,13 @@ export type RestoreResult = { manifest: Manifest; inserted: Record<string, numbe
 export async function restore(
   path: string,
   url: string,
-  opts: { allowLegacyTimestamps?: boolean } = {},
+  opts: {
+    allowLegacyTimestamps?: boolean;
+    /** Permit tables in the target that the dump does not cover. */
+    allowExtraTables?: boolean;
+    /** Permit column differences between the dump and the target. */
+    allowColumnDrift?: boolean;
+  } = {},
 ): Promise<RestoreResult> {
   const manifest = await readManifest(path);
   if (manifest.format === LEGACY_DUMP_FORMAT && !opts.allowLegacyTimestamps)
@@ -335,6 +366,48 @@ export async function restore(
       throw new Error(
         `Target is missing ${missing.length} table(s) the dump contains (${missing.slice(0, 5).join(", ")}). Apply the schema first.`,
       );
+
+    // TRUNCATE ... CASCADE follows foreign keys into tables the dump knows
+    // nothing about, and the row-count check afterwards only looks at tables
+    // the dump does mention — so a table could be emptied without a single
+    // line of output anywhere. Refuse instead.
+    const dumped = new Set(manifest.tableOrder);
+    const extra = [...present].filter((t) => !dumped.has(t)).sort();
+    if (extra.length && !opts.allowExtraTables)
+      throw new Error(
+        `Target has ${extra.length} table(s) the dump does not cover (${extra.slice(0, 8).join(", ")}). ` +
+          `TRUNCATE CASCADE could empty them silently. Use a dump of this schema, ` +
+          `or pass allowExtraTables if you have confirmed they are expendable.`,
+      );
+
+    // A column present in the target but absent from the dump takes its default
+    // or NULL on every restored row. Row counts accept that, and so does a
+    // digest computed over the columns both sides share, so check it here.
+    const targetCols = await c.query<{ t: string; col: string }>(
+      `SELECT table_name AS t, column_name AS col FROM information_schema.columns
+        WHERE table_schema = 'public'`,
+    );
+    const byTable = new Map<string, Set<string>>();
+    for (const r of targetCols.rows) {
+      if (!byTable.has(r.t)) byTable.set(r.t, new Set());
+      byTable.get(r.t)!.add(r.col);
+    }
+    const columnProblems: string[] = [];
+    for (const t of targets) {
+      const dumpCols = new Set(Object.keys(manifest.columnTypes?.[t] ?? {}));
+      const haveCols = byTable.get(t) ?? new Set<string>();
+      const onlyTarget = [...haveCols].filter((k) => !dumpCols.has(k));
+      const onlyDump = [...dumpCols].filter((k) => !haveCols.has(k));
+      if (onlyTarget.length) columnProblems.push(`${t}: target has ${onlyTarget.join(", ")} — the dump has no values for them`);
+      if (onlyDump.length) columnProblems.push(`${t}: target is missing ${onlyDump.join(", ")}`);
+    }
+    if (columnProblems.length && !opts.allowColumnDrift)
+      throw new Error(
+        ["Schema drift between the dump and the target:", ...columnProblems.slice(0, 10)].join(
+          "\n  ",
+        ),
+      );
+
     if (targets.length)
       await c.query(`TRUNCATE ${targets.map((t) => `"${t}"`).join(", ")} CASCADE`);
 
@@ -387,6 +460,12 @@ export async function restore(
     await flush();
 
     await c.query("COMMIT");
+
+    // A bulk load leaves no planner statistics, so the first queries against a
+    // freshly restored database can sequential-scan and get blamed on the new
+    // server being slow.
+    await c.query("ANALYZE");
+
     for (const t of manifest.tableOrder) if (!(t in inserted)) inserted[t] = 0;
     return { manifest, inserted, total };
   } catch (e) {
