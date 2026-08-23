@@ -129,14 +129,29 @@ carry, and — once `NEON_API_KEY` is set — every organisation and project tha
 key can see. Confirm the destination org shows `plan=scale`; a 30-day window
 needs it.
 
-### 2. Save the current Vercel values while they are still readable
+### 2. Secure the old credentials, which cannot be read back from Vercel
 
-```bash
-npx vercel env pull --environment=production .env.prod.bak --yes
-```
+`npx vercel env pull` does **not** work for this. Tested on 24 Aug 2026: it
+writes `DATABASE_URL=""`, `POSTGRES_URL_NON_POOLING=""` and `CRON_SECRET=""` —
+every value empty. The variables are live (the app runs, and the diagnostics
+route returns 401 rather than the 503 it would return for an unset secret), they
+simply cannot be retrieved. So there is no checksum-the-write verification
+available after step 8; verification has to be behavioural, which is what step
+10 is for.
 
-Put `DATABASE_URL` and `POSTGRES_URL_NON_POOLING` into a password manager. They
-exist nowhere in git. Delete the file afterwards.
+Two readable copies of the old credentials exist on this machine, and both are
+git-ignored:
+
+- `.env` — the three variables local tooling uses. Known-good credentials for
+  the old database, which is what a rollback actually needs.
+- `.vercel/.env.production.local` — a `vercel env pull` from 10 Aug, taken
+  before the values became unreadable, holding the exact strings Vercel serves.
+
+**Copy both into a password manager, and do not delete
+`.vercel/.env.production.local` until the cutover has been signed off.** It is
+the only record of what Vercel currently holds. There is no console access to
+the old Neon project and no way to reset its role password, so if both copies
+are lost, access to the pre-cutover data is gone permanently.
 
 ### 3. Create the target project
 
@@ -220,10 +235,11 @@ them the wrong way round leaves the app on a direct connection that runs out of
 sockets under load, or the build pushing DDL through pgbouncer — and both look
 fine in a smoke test.
 
-Use `vercel env update`, not `env add --force` and not remove-then-add. On CLI
-55 the Production default is **Sensitive**, and `add --force` would silently
-convert these Encrypted variables to Sensitive, after which you can no longer
-read them back to verify.
+Use `vercel env update`, not `env add --force` and not remove-then-add:
+`update` changes the value and leaves the type and target alone, while
+`add --force` on CLI 55 can convert a variable to the Production default. These
+values are already unreadable (step 2), so the type is not worth disturbing
+further.
 
 ```bash
 read -rs -p 'new pooled DATABASE_URL: ' NEW_POOLED; echo
@@ -303,8 +319,11 @@ whether to replay it or repeat the sync.
    rewrites `.env.test`. The old test database was a sibling database inside the
    project being left behind and does not travel.
 4. `rm -rf .next` — the turbopack dev cache holds the old hostname.
-5. Delete `.vercel/.env.production.local` (a stale pull holding old production
-   credentials in plaintext), `.env.prod.bak`, and `.env.migration`.
+5. Delete `.env.migration`. Keep `.vercel/.env.production.local` until the
+   cutover is signed off — see step 2, it is the only readable copy of the old
+   Vercel values. Delete it once the old project is no longer a fallback, and
+   note that the credentials in it are dead the moment the move completes,
+   since the new project has its own.
 
 ### 13. Re-establish the recovery baseline
 
@@ -331,7 +350,9 @@ The old database is untouched by everything up to step 8, so before that point
 rollback is `npm run neon:move -- thaw`.
 
 After step 8, if no writes have landed on the new database: put the two Vercel
-variables back, redeploy, thaw.
+variables back from the copies saved in step 2, redeploy, thaw. Either copy
+works — `.env`'s credentials are valid for the old database whether or not they
+are byte-identical to what Vercel held.
 
 If writes **have** landed on the new database, do not simply revert — that
 abandons those rows. Back up the new database, restore it into the old one with
