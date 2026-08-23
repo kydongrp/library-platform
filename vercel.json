@@ -1,5 +1,8 @@
 {
   "framework": "nextjs",
+  "regions": [
+    "sin1"
+  ],
   "crons": [
     {
       "path": "/api/cron/sftp-fetch",
