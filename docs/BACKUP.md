@@ -3,6 +3,25 @@
 Applies to the DLS Admin database (Neon Postgres, `neondb`, region
 `ap-southeast-1`).
 
+## Which database this is
+
+Ask the database, not the console. These values come from Neon's own GUCs on the
+running compute, so they cannot be confused with a similarly-named project:
+
+| | |
+| --- | --- |
+| Neon project | **`autumn-frog-86115224`** |
+| Branch | `br-fragrant-fire-aod0jl58` |
+| Endpoint | `ep-wispy-unit-ao028bf0` |
+| Postgres | **17.11** |
+
+```bash
+npm run neon:retention
+```
+
+prints all four (no API key needed for that part). See the ownership problem in
+"Still open" below: nothing we can currently log into owns this project.
+
 ## The one thing to understand first
 
 **Neon takes no traditional backups.** There is no nightly dump to download.
@@ -15,11 +34,15 @@ restore / point-in-time restore), and **the default is short on every plan**:
 | Launch | 1 day | 7 days |
 | Scale | **1 day** | **30 days** |
 
-This project is on **Scale** (upgraded 23 Aug 2026), so 30 days is available.
+**The plan on `autumn-frog-86115224` is unknown** — see "Still open" below. Until
+that project is reachable, treat the recovery range as the short default.
 
-> **The upgrade does not apply it.** The default stays at 1 day until someone
-> raises it. Buying Scale and not moving the slider leaves you with the same
-> 1-day window you had before — check it, do not assume it.
+> **Upgrading a plan does not apply the window.** The default stays at 1 day
+> until someone raises it. Buying Scale and not moving the slider leaves you
+> with the same 1-day window you had before — check it, do not assume it.
+>
+> And check *which project* you raised it on. A Scale upgrade on 23 Aug 2026
+> went to an organisation that does not own this database.
 
 Set it in Neon console -> project -> Settings -> Instant restore, or via the
 API (see the checklist below). Values: `86400` = 1 day, `604800` = 7 days,
@@ -133,28 +156,71 @@ Prisma CLI will send `db push` at production. Override all three
 
 These need a person, not a script.
 
-### 1. Raise the history window to 30 days  *(still outstanding)*
+### 1. Nobody we can log into owns this database  *(blocks the 30-day window)*
 
-The plan is Scale, so 30 days is available — but the window is still at the
-1-day default until it is changed. Neon console → project → Settings →
-Instant restore.
+This is the one to fix first, because every other recovery decision sits on
+top of it.
 
-Or use the script, which finds the right project by matching the compute
-endpoint in `DATABASE_URL` (so a multi-project account cannot get the wrong
-one reconfigured) and reads the value back instead of trusting the write:
+The database reports itself as Neon project **`autumn-frog-86115224`**,
+Postgres **17.11**. Searching for it on 23 Aug 2026 found it in none of the
+places it should have been:
+
+| Where we looked | What is there | Ours? |
+| --- | --- | --- |
+| Neon org `org-tiny-queen-44468184` "Kydon", plan **scale**, as `tech-admin@zillearn.com` | `ZilLearn Kydon Group` (`soft-dream-24298924`, PG 18, window 1 day) and `ZilLearn` (`super-sea-42754053`, PG 18, window 6 hours) | **No** |
+| Vercel team `zil-learn` → Storage (the only Neon store) | `libtwo-db`, Neon ID `jolly-heart-02510119`, plan **Free**, region sin1, attached to the `libtwo-revamp` project | **No** |
+| Vercel project `library-platform` → integrations | no marketplace resources; `DATABASE_URL` is a hand-added plain env var | n/a |
+
+So the Scale upgrade bought on 23 Aug 2026 applies to two projects that are not
+this one, and the production library database is sitting in an account we have
+no console or API access to. Its plan, its history window, and whether anyone
+else can delete it are all unknown.
+
+Consequences, stated plainly:
+
+- **The 30-day history window cannot be set.** It is a project-level setting and
+  we cannot reach the project.
+- **We do not know the current recovery range.** It could be 6 hours.
+- `npm run backup` still works — it only needs the connection string — so the
+  verified logical backups are, for now, the *only* recovery path we control.
+
+To resolve, one of:
+
+1. **Log into the Neon account that owns `autumn-frog-86115224`**, create an API
+   key there, and run the script below. Likely a different Neon login than
+   `tech-admin@zillearn.com` (note the Postgres version: 17.11 here, 18 on the
+   Kydon-org projects, so this project was created earlier or elsewhere).
+2. **Move the database into the Kydon org**, which is already paid up to Scale:
+   create a project there, `npm run backup`, restore into it, repoint
+   `DATABASE_URL`/`POSTGRES_URL_NON_POOLING` on Vercel, redeploy. The
+   backup/restore path is drilled (`npm run backup:drill`), so this is a short
+   write-freeze rather than a risk. It also buys scheduled snapshots and IP
+   Allow, and puts the database under an account we administer — which is the
+   answer KLSI will want when they ask who can delete their data.
+
+Note that "Open in Neon" from the Vercel storage page starts a *separate* Neon
+signup for the Vercel-managed org and, on 23 Aug 2026, ended at an unverified
+email-address wall — and it signed the existing console session out. Do not
+click it while relying on the console session.
+
+Once the project is reachable:
 
 ```bash
-npm run neon:retention                 # show the current window
-npm run neon:retention -- 30d          # set it, then confirm
+npm run neon:retention                 # identify the project, show the window
+npm run neon:retention -- 30d          # set it, then read it back to confirm
 ```
 
-It needs `NEON_API_KEY` — create one at Neon console -> Account settings ->
-API keys and add it to `.env` (git-ignored). The Vercel/Neon integration does
-**not** expose a key. Accepted spans: `0`, `6h`, `1d`, `7d`, `14d`, `30d`.
+The script asks the running database for its own `neon.project_id` and refuses
+to touch anything else — if the key cannot see that project it lists what the
+key *can* see and exits without writing. That guard is what surfaced this
+problem. It needs `NEON_API_KEY` in `.env` (git-ignored); create one at Neon
+console → Account settings → API keys. The Vercel/Neon integration does **not**
+expose a key. Accepted spans: `0`, `6h`, `1d`, `7d`, `14d`, `30d`.
 
-### 2. IP Allow is available now, but cannot protect the app tier yet
+### 2. IP Allow would not protect the app tier even once it is available
 
-Scale includes IP Allow, and the instinct is to lock the database to the
+Scale includes IP Allow (so it comes with (1), not before it), and the instinct
+is to lock the database to the
 application's addresses. That does not work here: Vercel does not give
 functions static egress IPs below Enterprise **Secure Compute**, so there is
 no stable address to allowlist. Applying IP Allow now would lock out the app
