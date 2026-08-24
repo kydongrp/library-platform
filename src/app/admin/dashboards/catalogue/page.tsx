@@ -1,5 +1,6 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
+import { startOfZonedMonth } from "@/lib/tz";
 import { Card } from "@/components/ui";
 import {
   BarChart, ColumnChart, StatTiles, CHART_SERIES,
@@ -17,7 +18,7 @@ export default async function CatalogueDashboard() {
   const [added, byCategory, byType, byDesignation, byProvider, marcCount, total] =
     await Promise.all([
       prisma.resource.findMany({
-        where: { createdAt: { gte: new Date(`${keys[0]}-01T00:00:00Z`) } },
+        where: { createdAt: { gte: startOfZonedMonth(new Date(), -(keys.length - 1)) } },
         select: { createdAt: true, materialDesignation: true },
       }),
       prisma.resource.groupBy({ by: ["category"], _count: { _all: true } }),

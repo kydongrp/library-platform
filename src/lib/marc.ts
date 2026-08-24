@@ -17,6 +17,8 @@
 // Pure module: no Prisma, no Node-only APIs (TextEncoder is web-standard),
 // exercised directly with tsx.
 
+import { zonedDayKey } from "@/lib/tz";
+
 export type MarcInput = {
   id: string;
   title: string;
@@ -70,8 +72,8 @@ function leaderFor(r: MarcInput): string {
 function fixed008(r: MarcInput): string {
   const d = r.createdAt;
   const entered =
-    String(d.getUTCFullYear()).slice(2) +
-    String(d.getUTCMonth() + 1).padStart(2, "0") +
+    zonedDayKey(d).slice(2, 4) +
+    zonedDayKey(d).slice(5, 7) +
     String(d.getUTCDate()).padStart(2, "0");
   const year = r.publishedYear ? String(r.publishedYear).padStart(4, " ").slice(0, 4) : "    ";
   const lang = LANG_CODES[r.language.toLowerCase()] ?? "und";
@@ -84,7 +86,12 @@ function fixed008(r: MarcInput): string {
 }
 
 function marc005(d: Date): string {
-  const p = (n: number, w = 2) => String(n).padStart(w, "0");
+  // Deliberately UTC, unlike 008 above. 005 is a machine version stamp whose
+  // only use is ordering, and ordering holds in any zone, so zoning it would
+  // change bytes that downstream harvesters may have cached for nothing. 008
+  // is a human calendar fact a cataloguer compares against the screen, so that
+  // one follows the library's zone.
+  const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}.0`;
 }
 

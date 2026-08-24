@@ -1,5 +1,6 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
+import { startOfZonedMonth } from "@/lib/tz";
 import { Card, Badge } from "@/components/ui";
 import {
   BarChart, ColumnChart, StatTiles, STATUS_COLORS, CHART_SERIES,
@@ -19,7 +20,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 export default async function PortalDashboard() {
   await requireAdminView("REPORTS");
   const { keys, labels } = trailingMonths(12);
-  const since = new Date(`${keys[0]}-01T00:00:00Z`);
+  const since = startOfZonedMonth(new Date(), -(keys.length - 1));
 
   const [requests, reqByStatus, reviews, ratingSpread, nominations, nomByChannel, apiClients, webhooks, deliveries] =
     await Promise.all([

@@ -1,5 +1,6 @@
 "use server";
 
+import { startOfZonedDay } from "@/lib/tz";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
@@ -40,7 +41,10 @@ async function topUpSchedule(serialId: string): Promise<number> {
   });
   if (!serial || serial.status !== "ACTIVE" || serial.issues.length === 0) return 0;
   const open = await prisma.serialIssue.count({
-    where: { serialId, status: "EXPECTED", expectedAt: { gte: new Date() } },
+    // Expected dates are stored at noon UTC, i.e. 20:00 Singapore, so
+    // comparing against the raw instant stopped counting today's issue as
+    // upcoming at 8pm rather than at the end of the day.
+    where: { serialId, status: "EXPECTED", expectedAt: { gte: startOfZonedDay(new Date()) } },
   });
   if (open >= MIN_UPCOMING) return 0;
   const total = await prisma.serialIssue.count({ where: { serialId } });

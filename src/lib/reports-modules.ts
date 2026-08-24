@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { daysBetweenInstants, zonedDayRange } from "@/lib/tz";
 import { formatDate } from "@/lib/format";
 import { formatFine } from "@/lib/fines";
 import { getAccruingFines } from "@/lib/loan-history";
@@ -79,7 +80,6 @@ export const DATE_RANGED_MODULE_REPORTS: string[] = MODULE_REPORTS.filter((r) =>
   (r) => r.key,
 );
 
-const DAY_MS = 86_400_000;
 const DASH = "—";
 
 /**
@@ -99,9 +99,15 @@ function capNote(
     : undefined;
 }
 
-/** Whole days from `a` to `b`, floored at zero. */
+/**
+ * Whole CALENDAR days from `a` to `b` in the library's zone, floored at zero.
+ *
+ * Was elapsed milliseconds over a day, which reports a different days-late
+ * figure from the fine calculation for the same loan, because that counts
+ * calendar days.
+ */
 function daysBetween(a: Date, b: Date): number {
-  return Math.max(0, Math.floor((b.getTime() - a.getTime()) / DAY_MS));
+  return Math.max(0, daysBetweenInstants(a, b));
 }
 
 function pct(part: number, whole: number): string {
@@ -114,9 +120,9 @@ function pct(part: number, whole: number): string {
  * its own fallback behaviour.
  */
 export async function runModuleReport(key: string, c: ReportCriteria): Promise<ReportResult | null> {
-  const from = c.from ? new Date(c.from) : undefined;
-  // `to` is inclusive of the whole day the user picked.
-  const to = c.to ? new Date(new Date(c.to).getTime() + DAY_MS) : undefined;
+  // Zoned bounds, `to` inclusive of the whole day the user picked. See
+  // zonedDayRange: the previous UTC-midnight bounds were 08:00 Singapore.
+  const { gte: from, lt: to } = zonedDayRange(c.from, c.to);
   const range = from || to ? { ...(from && { gte: from }), ...(to && { lt: to }) } : undefined;
   const now = new Date();
 

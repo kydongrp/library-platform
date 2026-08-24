@@ -6,7 +6,7 @@ import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { runLinkCheck } from "@/app/actions/batch";
 import { getAccessHealth, type ProviderHealth } from "@/lib/linkcheck";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +94,7 @@ export default async function AccessHealthPage() {
 
       <p className="mb-4 text-xs text-muted-foreground">
         {health.lastScanAt
-          ? `Last scan ${formatDate(health.lastScanAt)} at ${health.lastScanAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} by ${health.lastScanBy ?? "unknown"}.`
+          ? `Last scan ${formatDate(health.lastScanAt)} at ${formatTime(health.lastScanAt)} by ${health.lastScanBy ?? "unknown"}.`
           : "No scan has run yet — run one to populate this page."}
       </p>
 
@@ -200,7 +200,7 @@ export default async function AccessHealthPage() {
                     <p className="text-sm">{r.summary}</p>
                     <p className="text-xs text-muted-foreground" style={{ fontVariantNumeric: "tabular-nums" }}>
                       {formatDate(r.ranAt)}{" "}
-                      {r.ranAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                      {formatTime(r.ranAt)}
                       {" · "}
                       {r.ranBy}
                     </p>

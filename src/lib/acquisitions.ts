@@ -6,6 +6,7 @@
 // A PO stops committing when CANCELLED, or when it CLOSEs (fully received
 // and its invoice paid) — at which point the paid invoice carries the cost.
 
+import { zonedYearKey } from "@/lib/tz";
 import { prisma } from "@/lib/db";
 
 export const PO_STATUSES = ["ORDERED", "RECEIVED", "CLOSED", "CANCELLED"] as const;
@@ -17,7 +18,9 @@ export function poTotalCents(lines: { qty: number; unitCents: number }[]): numbe
 
 /** Next PO number for the year, e.g. "PO-2026-0007". Caller retries on P2002. */
 export async function nextPoNumber(now = new Date()): Promise<string> {
-  const year = now.getUTCFullYear();
+  // A PO raised between midnight and 8am on 1 January was numbered into the
+  // previous year and continued its sequence.
+  const year = Number(zonedYearKey(now));
   const count = await prisma.purchaseOrder.count({
     where: { poNumber: { startsWith: `PO-${year}-` } },
   });

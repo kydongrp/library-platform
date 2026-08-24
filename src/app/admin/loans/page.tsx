@@ -5,7 +5,7 @@ import { Card, Badge, EmptyState, ButtonLink } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { checkin, renewLoan, recallLoan } from "@/app/actions/circulation";
 import { ClaimReturnButton, WithdrawClaimButton, WriteOffClaimButton } from "./claim-widgets";
-import { formatDate, dueLabel, isOverdue } from "@/lib/format";
+import { dueLabel, formatDate, formatTime, isOverdue } from "@/lib/format";
 import { getAccruingFines } from "@/lib/loan-history";
 import { formatFine } from "@/lib/fines";
 
@@ -150,7 +150,7 @@ export default async function LoansPage({
               {l.copy?.itemType?.loanHours ? (
                 <Badge tone={l.dueAt.getTime() < now.getTime() ? "danger" : "muted"}>
                   {l.dueAt.getTime() < now.getTime() ? "overdue since " : "due "}
-                  {l.dueAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                  {formatTime(l.dueAt)}
                   {formatDate(l.dueAt) !== formatDate(now) ? ` ${formatDate(l.dueAt)}` : ""}
                 </Badge>
               ) : (

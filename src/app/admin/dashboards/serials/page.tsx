@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
+import { startOfZonedMonth } from "@/lib/tz";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import {
   ColumnChart, StatTiles, STATUS_COLORS, BarChart,
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function SerialsDashboard() {
   await requireAdminView("REPORTS");
   const { keys, labels } = trailingMonths(12);
-  const since = new Date(`${keys[0]}-01T00:00:00Z`);
+  const since = startOfZonedMonth(new Date(), -(keys.length - 1));
 
   const [serials, eresources, received, expected] = await Promise.all([
     getSerialsOverview(),

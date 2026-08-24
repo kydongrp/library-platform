@@ -1,5 +1,6 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
+import { startOfZonedMonth } from "@/lib/tz";
 import { Card } from "@/components/ui";
 import {
   BarChart, ColumnChart, StatTiles, STATUS_COLORS,
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function LoansDashboard() {
   await requireAdminView("REPORTS");
   const { keys, labels } = trailingMonths(12);
-  const since = new Date(`${keys[0]}-01T00:00:00Z`);
+  const since = startOfZonedMonth(new Date(), -(keys.length - 1));
   const now = new Date();
 
   const [period, byMemberType, active, overdue, returnedStats, fineAgg, outstandingAgg, topTitles] =

@@ -1,3 +1,4 @@
+import { zonedDayKey } from "@/lib/tz";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin, canView } from "@/lib/admin-session";
 import { getLoanHistory, HISTORY_EXPORT_MAX } from "@/lib/loan-history";
@@ -11,7 +12,9 @@ function csvCell(v: unknown): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+// The Singapore calendar day, not the UTC one: a loan returned at
+// 01:30 was exported as the previous date.
+const iso = (d: Date | null) => (d ? zonedDayKey(d) : "");
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const admin = await getCurrentAdmin();
@@ -65,7 +68,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="loan-history-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "Content-Disposition": `attachment; filename="loan-history-${zonedDayKey(new Date())}.csv"`,
     },
   });
 }

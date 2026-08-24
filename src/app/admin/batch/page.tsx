@@ -6,7 +6,7 @@ import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { runEodProcess, runLinkCheck, triggerSftpFetch } from "@/app/actions/batch";
 import { sftpSourceInfo } from "@/lib/sftp";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -132,7 +132,7 @@ export default async function BatchPage() {
               <li key={r.id} className="py-2">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(r.ranAt)} · {r.ranAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                    {formatDate(r.ranAt)} · {formatTime(r.ranAt)}
                   </p>
                   <Badge tone="muted">{r.ranBy}</Badge>
                 </div>
@@ -169,7 +169,7 @@ export default async function BatchPage() {
               {runs.map((r) => (
                 <li key={r.id} className="py-2.5">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium">{formatDate(r.ranAt)} · {r.ranAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p>
+                    <p className="text-sm font-medium">{formatDate(r.ranAt)} · {formatTime(r.ranAt)}</p>
                     <Badge tone="muted">{r.ranBy}</Badge>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">{r.summary}</p>

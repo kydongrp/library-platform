@@ -1,5 +1,6 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
+import { startOfZonedMonth } from "@/lib/tz";
 import { Card } from "@/components/ui";
 import {
   BarChart, ColumnChart, StackedBars, StatTiles, STATUS_COLORS, CHART_SERIES,
@@ -23,7 +24,7 @@ const money = (cents: number) => {
 export default async function AcquisitionsDashboard() {
   await requireAdminView("REPORTS");
   const { keys, labels } = trailingMonths(12);
-  const since = new Date(`${keys[0]}-01T00:00:00Z`);
+  const since = startOfZonedMonth(new Date(), -(keys.length - 1));
 
   const [overview, orders, invoices] = await Promise.all([
     getAcquisitionsOverview(),

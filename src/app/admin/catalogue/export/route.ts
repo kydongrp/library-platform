@@ -1,3 +1,4 @@
+import { zonedDayKey } from "@/lib/tz";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin, canView } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const records = resources.map((r) => toMarcRecord(r, r.marcFields));
   const catalogued = resources.filter((r) => r.marcFields.length > 0).length;
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const stamp = zonedDayKey(new Date()).replace(/-/g, "");
   const filters = [q && `q=${q}`, category, type, source].filter(Boolean).join(", ");
 
   await audit({

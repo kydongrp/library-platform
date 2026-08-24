@@ -1,6 +1,7 @@
 // E-resource subscription registry: renewal tracking, usage rollups, and the
 // cost-per-use figures that justify (or kill) a renewal.
 
+import { daysBetweenInstants, zonedDayKey, zonedMonthKeyOffset } from "@/lib/tz";
 import { prisma } from "@/lib/db";
 import { CPU_METRIC } from "@/lib/counter";
 
@@ -41,15 +42,19 @@ export const DUE_SOON_DAYS = 30;
 /** The trailing 12 calendar months including the current one, oldest first. */
 export function trailingPeriods(now = new Date()): string[] {
   const out: string[] = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
-  }
+  for (let i = 11; i >= 0; i--) out.push(zonedMonthKeyOffset(now, -i));
   return out;
 }
 
+/**
+ * Calendar days from today to a renewal date, in the library's zone.
+ *
+ * Was elapsed milliseconds divided by a day. Renewal dates are date-only
+ * values stored at noon UTC, i.e. 20:00 Singapore, so a subscription that
+ * lapsed this morning did not read as overdue until 8pm.
+ */
 export function daysUntil(date: Date, now = new Date()): number {
-  return Math.ceil((date.getTime() - now.getTime()) / DAY_MS);
+  return daysBetweenInstants(now, date);
 }
 
 export function statusOf(daysLeft: number): SubscriptionStatus {
@@ -167,7 +172,7 @@ export async function checkRenewalAlerts(now = new Date()): Promise<RenewalAlert
     if (already) continue;
 
     const daysLeft = daysUntil(s.renewalDate, now);
-    const when = s.renewalDate.toISOString().slice(0, 10);
+    const when = zonedDayKey(s.renewalDate);
     const timing =
       daysLeft < 0
         ? `passed ${-daysLeft} day${daysLeft === -1 ? "" : "s"} ago (${when})`

@@ -80,6 +80,8 @@ export function ChartTable({
  * Ranked magnitudes. Thin marks with rounded data-ends anchored to the
  * baseline, label and value in text tokens beside each bar.
  */
+
+import { zonedMonthKey, zonedMonthKeyOffset } from "@/lib/tz";
 export function BarChart({
   data,
   title,
@@ -371,15 +373,15 @@ export function trailingMonths(count: number, now = new Date()): { keys: string[
   const keys: string[] = [];
   const labels: string[] = [];
   for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-    keys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
-    labels.push(MON[d.getUTCMonth()]);
+    const key = zonedMonthKeyOffset(now, -i);
+    keys.push(key);
+    labels.push(MON[Number(key.slice(5, 7)) - 1]);
   }
   return { keys, labels };
 }
 
 export function monthKey(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  return zonedMonthKey(d);
 }
 
 /** Count rows into trailing-month buckets. */

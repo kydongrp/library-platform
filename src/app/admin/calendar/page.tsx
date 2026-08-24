@@ -1,3 +1,4 @@
+import { startOfZonedDay, zonedDayKey, zonedWeekday } from "@/lib/tz";
 import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { Card, Badge, EmptyState } from "@/components/ui";
@@ -19,7 +20,9 @@ export default async function CalendarPage() {
   const [config, cal] = await Promise.all([getCalendarConfig(), loadCalendar()]);
 
   // A 21-day strip so staff can see the pattern they just configured.
-  const today = new Date();
+  // Start of the library's day, so the strip begins on the day staff are
+  // actually looking at rather than the UTC one.
+  const today = startOfZonedDay(new Date());
   const strip = Array.from({ length: 21 }, (_, i) => {
     const d = new Date(today.getTime() + i * DAY_MS);
     const closure = config.closures.find((c) => dateKey(c.date) === dateKey(d));
@@ -64,10 +67,10 @@ export default async function CalendarPage() {
               }`}
             >
               <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                {WEEKDAY_NAMES[d.date.getUTCDay()].slice(0, 3)}
+                {WEEKDAY_NAMES[zonedWeekday(d.date)].slice(0, 3)}
               </span>
               <span className="text-sm font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>
-                {d.date.getUTCDate()}
+                {Number(zonedDayKey(d.date).slice(8))}
               </span>
               <span className="text-[10px]">{d.open ? "open" : "closed"}</span>
             </div>
@@ -115,7 +118,7 @@ export default async function CalendarPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{c.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {formatDate(c.date)} · {WEEKDAY_NAMES[c.date.getUTCDay()]}
+                      {formatDate(c.date)} · {WEEKDAY_NAMES[zonedWeekday(c.date)]}
                     </p>
                   </div>
                   {editable && (

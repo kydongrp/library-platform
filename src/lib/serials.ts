@@ -2,6 +2,7 @@
 // vocabulary and prediction math live in serials-shared.ts (client-safe,
 // no prisma) and are re-exported here for server code.
 
+import { daysBetweenInstants, startOfZonedMonth, zonedDayKey } from "@/lib/tz";
 import { prisma } from "@/lib/db";
 import { GRACE_DAYS, isLate, type Frequency } from "@/lib/serials-shared";
 
@@ -50,8 +51,8 @@ export async function getSerialsOverview(now = new Date()): Promise<SerialsOverv
     }),
   ]);
 
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const monthStart = startOfZonedMonth(now);
+  const monthEnd = startOfZonedMonth(now, 1);
   let dueThisMonth = 0;
   const recentCheckIns: SerialsOverview["recentCheckIns"] = [];
 
@@ -64,7 +65,7 @@ export async function getSerialsOverview(now = new Date()): Promise<SerialsOverv
         id: i.id,
         label: i.label,
         expectedAt: i.expectedAt,
-        daysLate: Math.floor((now.getTime() - i.expectedAt.getTime()) / DAY_MS),
+        daysLate: daysBetweenInstants(i.expectedAt, now),
         claimedAt: i.claimedAt,
       }));
     const next = expected.filter((i) => !isLate(i, now))[0] ?? null;
@@ -115,9 +116,12 @@ export async function queueClaim(
   issue: { label: string; expectedAt: Date },
   now = new Date(),
 ): Promise<number> {
-  const daysLate = Math.floor((now.getTime() - issue.expectedAt.getTime()) / DAY_MS);
+  // Calendar days, not elapsed time. expectedAt is a date-only value stored
+  // at noon UTC, i.e. 20:00 Singapore, so the old arithmetic told a vendor an
+  // issue was N days late where N could be one lower than the true count.
+  const daysLate = daysBetweenInstants(issue.expectedAt, now);
   const subject = `Missing issue claim: ${title} — ${issue.label}`;
-  const body = `We have not received ${issue.label} of "${title}"${serial.issn ? ` (ISSN ${serial.issn})` : ""}, expected ${issue.expectedAt.toISOString().slice(0, 10)} (${daysLate} days ago).\n\nPlease supply the issue or advise on its status.\n\nKong Learning Systems Institute — Digital Library`;
+  const body = `We have not received ${issue.label} of "${title}"${serial.issn ? ` (ISSN ${serial.issn})` : ""}, expected ${zonedDayKey(issue.expectedAt)} (${daysLate} days ago).\n\nPlease supply the issue or advise on its status.\n\nKong Learning Systems Institute — Digital Library`;
 
   if (serial.claimEmail) {
     await prisma.mailQueue.create({

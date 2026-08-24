@@ -1,6 +1,7 @@
 // Staff contribution analytics (CR Tracking): who curated Editor's Picks,
 // who decided nominations, and which staff members write reviews — all-time,
 // trailing 3 calendar months, and a monthly breakdown. Server-only.
+import { LIBRARY_TZ, startOfZonedMonth, zonedMonthKey } from "@/lib/tz";
 import { prisma } from "@/lib/db";
 
 export type StaffTotals = {
@@ -27,16 +28,23 @@ export type ContributionData = {
 
 const MONTHS_SHOWN = 6;
 
+// These were the only bare server-local date reads in the codebase
+// (getFullYear/getMonth rather than getUTC*), so on Vercel they bucketed by UTC
+// month like everything else, and would have moved again under any TZ change.
 function monthStart(d: Date, offsetMonths = 0): Date {
-  return new Date(d.getFullYear(), d.getMonth() + offsetMonths, 1);
+  return startOfZonedMonth(d, offsetMonths);
 }
 
 function monthKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return zonedMonthKey(d);
 }
 
 function monthLabel(d: Date): string {
-  return d.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: LIBRARY_TZ,
+    month: "short",
+    year: "numeric",
+  }).format(d);
 }
 
 type Event = { who: string; at: Date; metric: "epPicks" | "decisions" | "reviews" };

@@ -55,3 +55,16 @@ jobs:
       # project against tsconfig, so this covers scripts/ and prisma/ as well.
       - name: Build
         run: npx next build
+
+      # These three need no database: the modules under test are pure. They are
+      # the guard on the timezone fix, and the reason the guard is in CI rather
+      # than in a runbook is that the defect they cover was invisible on a
+      # Singapore developer's laptop and only appeared on a UTC server.
+      - name: Timezone primitives
+        run: npm run test:tz
+
+      - name: Due dates, open days and fines across the day boundary
+        run: npm run test:calendar
+
+      - name: No unzoned date handling outside the allowlist
+        run: npm run test:tz:guard

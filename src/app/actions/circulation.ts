@@ -195,7 +195,7 @@ export async function checkout(
   revalidateAll();
   return {
     ok: true,
-    message: `"${resource.title}" checked out to ${member.name} — due ${dueAt.toLocaleDateString("en-GB")}.`,
+    message: `"${resource.title}" checked out to ${member.name} — due ${formatDate(dueAt)}.`,
   };
 }
 
@@ -435,7 +435,7 @@ export async function renewLoan(
   revalidateAll();
   return {
     ok: true,
-    message: `Renewed — now due ${dueAt.toLocaleDateString("en-GB")}.`,
+    message: `Renewed — now due ${formatDate(dueAt)}.`,
   };
 }
 

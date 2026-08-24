@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
+import { startOfZonedMonth } from "@/lib/tz";
 import { Card } from "@/components/ui";
 import { BarChart, StatTiles, STATUS_COLORS, ColumnChart, trailingMonths, bucketByMonth } from "@/components/charts";
 import { COPY_STATUS_LABELS } from "@/lib/constants";
@@ -35,11 +36,11 @@ export default async function ItemsDashboard() {
         select: { code: true, name: true, loanable: true, _count: { select: { copies: true } } },
       }),
       prisma.copy.findMany({
-        where: { createdAt: { gte: new Date(`${keys[0]}-01T00:00:00Z`) } },
+        where: { createdAt: { gte: startOfZonedMonth(new Date(), -(keys.length - 1)) } },
         select: { createdAt: true },
       }),
       prisma.itemWeedLog.findMany({
-        where: { weededAt: { gte: new Date(`${keys[0]}-01T00:00:00Z`) } },
+        where: { weededAt: { gte: startOfZonedMonth(new Date(), -(keys.length - 1)) } },
         select: { weededAt: true },
       }),
       prisma.copy.count(),

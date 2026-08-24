@@ -1,3 +1,4 @@
+import { zonedDayKey } from "@/lib/tz";
 import Link from "next/link";
 import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
@@ -108,8 +109,10 @@ export default async function EresourcesPage({
     ? {
         id: editingSub.id,
         provider: editingSub.provider,
-        renewalDate: editingSub.renewalDate.toISOString().slice(0, 10),
-        startDate: editingSub.startDate?.toISOString().slice(0, 10) ?? "",
+        // These are date-only values stored at noon UTC, so the UTC day was
+        // already right; keyed in the zone so no UTC assumption is left behind.
+        renewalDate: zonedDayKey(editingSub.renewalDate),
+        startDate: editingSub.startDate ? zonedDayKey(editingSub.startDate) : "",
         autoRenews: editingSub.autoRenews,
         annualCost: editingSub.annualCostCents != null ? (editingSub.annualCostCents / 100).toFixed(2) : "",
         currency: editingSub.currency,

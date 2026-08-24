@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { zonedDayRange } from "@/lib/tz";
 import { formatDate } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS, MEMBER_TYPE_LABELS } from "@/lib/constants";
 import { runModuleReport } from "@/lib/reports-modules";
@@ -22,8 +23,11 @@ export type ReportResult = {
 
 /** Run a standard report and return a flat table (shared by page and CSV export). */
 export async function runReport(key: string, c: ReportCriteria): Promise<ReportResult> {
-  const from = c.from ? new Date(c.from) : undefined;
-  const to = c.to ? new Date(new Date(c.to).getTime() + 24 * 60 * 60 * 1000) : undefined;
+  // One shared parser, in the library's zone. `new Date("2026-08-24")` is UTC
+  // midnight, which is 08:00 in Singapore, so every range in this file used to
+  // drop the first eight hours of the opening day and pull in the first eight
+  // of the day after the closing one.
+  const { gte: from, lt: to } = zonedDayRange(c.from, c.to);
 
   switch (key) {
     case "loans": {

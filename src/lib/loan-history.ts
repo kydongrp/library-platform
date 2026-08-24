@@ -2,6 +2,7 @@
 // its CSV export, plus the live-fine rollup for loans still out.
 
 import { prisma } from "@/lib/db";
+import { zonedDayRange } from "@/lib/tz";
 import { loadCalendar } from "@/lib/calendar";
 import { assessFine } from "@/lib/fines";
 import { policyFor } from "@/lib/policies";
@@ -88,10 +89,12 @@ function buildWhere(f: HistoryFilters): Record<string, unknown> {
   else if (f.fine === "waived") and.push({ fineWaivedAt: { not: null } });
   else if (f.fine === "any") and.push({ fineCents: { gt: 0 } });
 
-  const range: Record<string, Date> = {};
-  if (f.from && /^\d{4}-\d{2}-\d{2}$/.test(f.from)) range.gte = new Date(`${f.from}T00:00:00Z`);
-  if (f.to && /^\d{4}-\d{2}-\d{2}$/.test(f.to)) range.lte = new Date(`${f.to}T23:59:59Z`);
-  if (Object.keys(range).length) and.push({ returnedAt: range });
+  // Zoned, and half-open at the top. The old bounds were `T00:00:00Z` and
+  // `T23:59:59Z`, which are 08:00 Singapore on both ends: a report "from 24
+  // Aug" silently dropped every return recorded before 8am that morning, and
+  // the 23:59:59 upper bound also dropped anything in the final second.
+  const range = zonedDayRange(f.from, f.to);
+  if (range.gte || range.lt) and.push({ returnedAt: range });
 
   return { AND: and };
 }

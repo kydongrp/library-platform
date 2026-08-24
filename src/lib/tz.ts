@@ -46,23 +46,39 @@ const WEEKDAY_INDEX: Record<string, number> = {
   Sat: 6,
 };
 
-// One formatter, reused: these run per row on list pages.
-const partsFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: LIBRARY_TZ,
-  hour12: false,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  weekday: "short",
-});
+/**
+ * Formatters are built on first use, not at module load.
+ *
+ * This module is now imported by format.ts and so, transitively, by most of
+ * the app. Constructing Intl.DateTimeFormat at module scope would mean a
+ * runtime without full ICU data throws at import time and takes down every
+ * page, rather than one date rendering oddly. Built lazily, the blast radius
+ * goes back to the call that needed it.
+ */
+function lazy<T>(make: () => T): () => T {
+  let value: T | undefined;
+  return () => (value ??= make());
+}
+
+const parts = lazy(
+  () =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: LIBRARY_TZ,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      weekday: "short",
+    }),
+);
 
 /** The wall clock in the library's zone at a given instant. */
 function zonedParts(instant: Date): Parts {
   const found: Record<string, string> = {};
-  for (const p of partsFormatter.formatToParts(instant)) {
+  for (const p of parts().formatToParts(instant)) {
     if (p.type !== "literal") found[p.type] = p.value;
   }
   return {
@@ -131,11 +147,22 @@ export function startOfZonedDay(instant: Date): Date {
   return zonedWallClockToInstant(p.year, p.month, p.day);
 }
 
-/** The instant at which a "YYYY-MM-DD" calendar day begins in the library's zone. */
+/**
+ * The instant at which a "YYYY-MM-DD" calendar day begins in the library's zone.
+ *
+ * Memoised: it is a pure function of a small string, and the fine calculation
+ * calls it once per configured closure date on every render of the loans page.
+ */
+const dayStartCache = new Map<string, Date | null>();
+
 export function startOfZonedDayKey(key: string): Date | null {
+  const hit = dayStartCache.get(key);
+  if (hit !== undefined) return hit;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
-  if (!m) return null;
-  return zonedWallClockToInstant(Number(m[1]), Number(m[2]), Number(m[3]));
+  const value = m ? zonedWallClockToInstant(Number(m[1]), Number(m[2]), Number(m[3])) : null;
+  // Bounded in practice by the number of distinct dates a session touches.
+  if (dayStartCache.size < 5_000) dayStartCache.set(key, value);
+  return value;
 }
 
 /**
@@ -193,36 +220,45 @@ export function daysBetweenInstants(from: Date, to: Date): number {
 // was showing UTC: an audit entry written at 09:15 Singapore read "01:15", and
 // an hourly loan due at 17:00 read "due 09:00" all day long.
 
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: LIBRARY_TZ,
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
+const dateFormatter = lazy(
+  () =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: LIBRARY_TZ,
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }),
+);
 
-const timeFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: LIBRARY_TZ,
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
+const timeFormatter = lazy(
+  () =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: LIBRARY_TZ,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+);
 
-const timeWithSecondsFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: LIBRARY_TZ,
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
+const timeWithSecondsFormatter = lazy(
+  () =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: LIBRARY_TZ,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }),
+);
 
 /** "24 Aug 2026", in the library's zone. */
 export function formatZonedDate(instant: Date): string {
-  return dateFormatter.format(instant);
+  return dateFormatter().format(instant);
 }
 
 /** "14:30", in the library's zone. Pass seconds for "14:30:07". */
 export function formatZonedTime(instant: Date, withSeconds = false): string {
-  return (withSeconds ? timeWithSecondsFormatter : timeFormatter).format(instant);
+  return (withSeconds ? timeWithSecondsFormatter() : timeFormatter()).format(instant);
 }
 
 /** "24 Aug 2026, 14:30", in the library's zone. */
@@ -261,7 +297,33 @@ export function zonedDayRange(
   }
   if (to) {
     const end = startOfZonedDayKey(to);
-    if (end) range.lt = new Date(end.getTime() + DAY_MS);
+    // The start of the NEXT day, found by asking which day contains noon
+    // tomorrow. Adding 24h to a midnight is an hour out across a daylight
+    // saving transition, which would contradict this module's whole claim not
+    // to assume a fixed offset.
+    if (end) range.lt = startOfZonedDay(new Date(end.getTime() + DAY_MS + DAY_MS / 2));
   }
   return range;
+}
+
+/**
+ * The instant a calendar month begins in the library's zone, `offset` months
+ * from the month containing `instant`. Negative offsets go back.
+ *
+ * Month buckets were derived with Date.UTC(now.getUTCFullYear(),
+ * now.getUTCMonth() - i, 1), which on the 1st of a month between midnight and
+ * 8am Singapore reads the previous month, shifting every dashboard's whole
+ * twelve-month window back by one.
+ */
+export function startOfZonedMonth(instant: Date, offset = 0): Date {
+  const [year, month] = zonedMonthKey(instant).split("-").map(Number);
+  const zeroBased = month - 1 + offset;
+  const y = year + Math.floor(zeroBased / 12);
+  const m = ((zeroBased % 12) + 12) % 12;
+  return zonedWallClockToInstant(y, m + 1, 1);
+}
+
+/** "YYYY-MM" for a month `offset` months from the one containing `instant`. */
+export function zonedMonthKeyOffset(instant: Date, offset = 0): string {
+  return zonedMonthKey(startOfZonedMonth(instant, offset));
 }

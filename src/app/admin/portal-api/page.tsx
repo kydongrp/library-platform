@@ -10,13 +10,13 @@ import {
   testWebhook,
 } from "@/app/actions/portal-api";
 import { WEBHOOK_EVENTS } from "@/lib/webhooks";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 import { CreateClientForm, CreateWebhookForm } from "./widgets";
 
 export const dynamic = "force-dynamic";
 
 const timeOf = (d: Date) =>
-  `${formatDate(d)} ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+  `${formatDate(d)} ${formatTime(d)}`;
 
 const ENDPOINTS = [
   { method: "GET", path: "/api/portal/v1/ping", note: "credential check" },

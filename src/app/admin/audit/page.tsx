@@ -1,7 +1,7 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -142,7 +142,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
                 <div className="w-36 shrink-0 pt-0.5 text-xs text-muted-foreground" style={{ fontVariantNumeric: "tabular-nums" }}>
                   {formatDate(e.at)}
                   <br />
-                  {e.at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  {formatTime(e.at, true)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm leading-snug">

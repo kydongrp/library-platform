@@ -35,6 +35,14 @@ const MAX_WALK_DAYS = 400;
 export type CalendarIndex = {
   closedWeekdays: Set<number>; // 0 = Sunday … 6 = Saturday
   closedDates: Set<string>; // "YYYY-MM-DD"
+  /**
+   * Day-start epoch ms for each closure date that is not already a closed
+   * weekday, precomputed here so openDaysBetween does no Intl work per
+   * closure. It is called once per overdue loan on the loans page, and the
+   * zoned helpers cost microseconds each; resolving eighteen closure dates
+   * inside that loop was measurable.
+   */
+  closedDateStarts: number[];
 };
 
 /** "YYYY-MM-DD" for a timestamp, as the calendar day in the library's zone. */
@@ -56,15 +64,26 @@ export function parseDateKey(raw: string): Date | null {
  */
 export function buildCalendar(closedWeekdays: number[], closedDates: string[]): CalendarIndex {
   const weekdays = new Set(closedWeekdays.filter((n) => Number.isInteger(n) && n >= 0 && n <= 6));
+  const effective = weekdays.size >= 7 ? new Set<number>() : weekdays;
+  const starts: number[] = [];
+  for (const key of closedDates) {
+    const start = startOfZonedDayKey(key);
+    if (!start) continue;
+    // A date that falls on an already-closed weekday would be counted twice.
+    if (effective.has(zonedWeekday(new Date(start.getTime() + DAY_MS / 2)))) continue;
+    starts.push(start.getTime());
+  }
   return {
-    closedWeekdays: weekdays.size >= 7 ? new Set<number>() : weekdays,
+    closedWeekdays: effective,
     closedDates: new Set(closedDates),
+    closedDateStarts: starts,
   };
 }
 
 export const ALWAYS_OPEN: CalendarIndex = {
   closedWeekdays: new Set<number>(),
   closedDates: new Set<string>(),
+  closedDateStarts: [],
 };
 
 export function isOpenDay(date: Date, cal: CalendarIndex): boolean {
@@ -126,13 +145,7 @@ export function openDaysBetween(from: Date, to: Date, cal: CalendarIndex): numbe
   for (const w of cal.closedWeekdays) closed += weekdayOccurrences(firstDow, totalDays, w);
 
   // Explicit closure dates inside the window that aren't already weekly ones.
-  for (const key of cal.closedDates) {
-    const dayOpen = startOfZonedDayKey(key);
-    if (!dayOpen) continue;
-    if (cal.closedWeekdays.has(zonedWeekday(new Date(dayOpen.getTime() + DAY_MS / 2)))) continue;
-    const t = dayOpen.getTime();
-    if (t > start && t <= end) closed++;
-  }
+  for (const t of cal.closedDateStarts) if (t > start && t <= end) closed++;
 
   return Math.max(0, totalDays - closed);
 }

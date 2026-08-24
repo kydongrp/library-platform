@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { zonedDayRange } from "@/lib/tz";
 import { isDigital } from "@/lib/availability";
 import {
   MATERIAL_DESIGNATION_LABELS,
@@ -483,10 +484,11 @@ export function getCube(key: string | undefined): CubeDef | undefined {
  * discard a valid `to` (or vice versa) and widen the query to everything.
  */
 export function parseRange(from?: string, to?: string): DateRange | undefined {
-  let gte = from ? new Date(from) : undefined;
-  let lt = to ? new Date(new Date(to).getTime() + DAY_MS) : undefined;
-  if (gte && isNaN(gte.getTime())) gte = undefined;
-  if (lt && isNaN(lt.getTime())) lt = undefined;
+  // Bounds are the start of the named day in the library's zone, not UTC
+  // midnight, which is 08:00 there. zonedDayRange drops a bound it cannot
+  // parse, which preserves the property this function was written for: a bad
+  // `from` must not discard a good `to` and widen the query to everything.
+  const { gte, lt } = zonedDayRange(from, to);
   if (!gte && !lt) return undefined;
   return { ...(gte && { gte }), ...(lt && { lt }) };
 }

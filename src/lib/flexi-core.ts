@@ -13,6 +13,8 @@
  * entirely.
  */
 
+import { zonedMonthKey, zonedYearKey } from "@/lib/tz";
+
 /**
  * Placeholder bucket for rows where the dimension has no value. A word, not a
  * dash: free-text data (titles, locations) can legitimately contain a dash,
@@ -220,15 +222,15 @@ export function pivot<R>(
   };
 }
 
-/** "2026-08" from a date, UTC — matches monthKey in charts.tsx. */
+/** "2026-08" for a date's month in the library's zone — matches monthKey in charts.tsx. */
 export function isoMonth(d: Date | null | undefined): string | null {
   if (!d) return null;
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  return zonedMonthKey(d);
 }
 
-/** "2026" from a date, UTC. */
+/** "2026" for a date's year in the library's zone. */
 export function isoYear(d: Date | null | undefined): string | null {
-  return d ? String(d.getUTCFullYear()) : null;
+  return d ? zonedYearKey(d) : null;
 }
 
 /** "Ordered" from "ORDERED", "On loan" from "ON_LOAN". */
