@@ -125,19 +125,10 @@ export function AdminNav({ top, groups }: { top: NavItem[]; groups: NavGroup[] }
               >
                 ▶
               </span>
-              <span>{group.label}</span>
-              {/* Collapsed, a dot marks the section you are in and a count says
-                  how much is inside, so a shut sidebar still orients you. */}
-              {isOpen ? null : holdsActive ? (
-                <span
-                  className="ml-auto h-1.5 w-1.5 rounded-full bg-primary"
-                  title="You are in this section"
-                />
-              ) : (
-                <span className="ml-auto text-[10px] font-normal tabular-nums tracking-normal opacity-60">
-                  {group.items.length}
-                </span>
-              )}
+              {/* The section holding the current page is tinted, not badged.
+                  A number or a dot beside a nav label reads as an unread
+                  count, which is not what it meant. */}
+              <span className={holdsActive ? "text-primary" : undefined}>{group.label}</span>
             </button>
             <div id={id} hidden={!isOpen} className="mt-0.5 flex flex-col gap-0.5">
               {group.items.map((item) => (
