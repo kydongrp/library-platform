@@ -24,6 +24,84 @@ export const TEMPLATE_PLACEHOLDERS: Record<string, string[]> = {
   SERIAL_ISSUE: ["memberName", "resourceTitle", "issueLabel"],
 };
 
+/**
+ * What each placeholder resolves to, for the reference panel on the templates
+ * page. Every name in TEMPLATE_PLACEHOLDERS must appear here; allPlaceholders()
+ * throws if one is missing, so adding a placeholder without describing it
+ * fails loudly rather than shipping an undocumented token.
+ */
+export const PLACEHOLDER_DOCS: Record<string, { resolvesTo: string; example: string }> = {
+  memberName: { resolvesTo: "The member's full name, as held on their record", example: "Alice Tan" },
+  resourceTitle: { resolvesTo: "Title of the item the notice is about", example: "Clean Code" },
+  dueDate: { resolvesTo: "The loan's due date", example: "14 Sep 2026" },
+  daysOverdue: { resolvesTo: "Whole days past the due date", example: "3" },
+  monthsInactive: { resolvesTo: "Months since the member's last loan", example: "6" },
+  expiryDate: { resolvesTo: "Last day a held item stays on the pickup shelf", example: "20 Aug 2026" },
+  newDueDate: { resolvesTo: "The earlier due date set by a recall", example: "26 Aug 2026" },
+  requestTitle: { resolvesTo: "Title the member asked the library to acquire", example: "Designing Data-Intensive Applications" },
+  requestStatus: { resolvesTo: "Where their request now stands", example: "Approved" },
+  issueLabel: { resolvesTo: "The serial issue that arrived", example: "Vol 12, No 4" },
+};
+
+/** Placeholders every notice can use, whatever its code. */
+export const UNIVERSAL_PLACEHOLDERS = ["memberName"] as const;
+
+export type PlaceholderInfo = {
+  name: string;
+  resolvesTo: string;
+  example: string;
+  /** Template codes that supply it. Empty for none, all of them for universal. */
+  usedBy: string[];
+  universal: boolean;
+};
+
+/**
+ * Every placeholder the system can substitute, derived from the per-template
+ * lists so the two can never disagree.
+ */
+export function allPlaceholders(): PlaceholderInfo[] {
+  const usedBy = new Map<string, string[]>();
+  for (const [code, names] of Object.entries(TEMPLATE_PLACEHOLDERS)) {
+    for (const name of names) {
+      const list = usedBy.get(name) ?? [];
+      list.push(code);
+      usedBy.set(name, list);
+    }
+  }
+
+  const missing = [...usedBy.keys()].filter((n) => !PLACEHOLDER_DOCS[n]);
+  if (missing.length) {
+    throw new Error(
+      `Placeholder(s) used by a template but not described in PLACEHOLDER_DOCS: ${missing.join(", ")}`,
+    );
+  }
+
+  const universal = new Set<string>(UNIVERSAL_PLACEHOLDERS);
+  return [...usedBy.entries()]
+    .map(([name, codes]) => ({
+      name,
+      resolvesTo: PLACEHOLDER_DOCS[name].resolvesTo,
+      example: PLACEHOLDER_DOCS[name].example,
+      usedBy: codes.sort(),
+      universal: universal.has(name),
+    }))
+    // Universal first, then the widely available ones, then alphabetical.
+    .sort((a, b) => {
+      if (a.universal !== b.universal) return a.universal ? -1 : 1;
+      if (a.usedBy.length !== b.usedBy.length) return b.usedBy.length - a.usedBy.length;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+/** Placeholder names actually written into a template's subject or body. */
+export function placeholdersInUse(subject: string, body: string): string[] {
+  const found = new Set<string>();
+  for (const text of [subject, body]) {
+    for (const m of text.matchAll(/\{\{(\w+)\}\}/g)) found.add(m[1]);
+  }
+  return [...found];
+}
+
 export const DEFAULT_TEMPLATES: {
   code: string;
   name: string;

@@ -3,6 +3,7 @@ import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { Card } from "@/components/ui";
 import { TemplateEditor } from "./editor";
+import { PlaceholderReference } from "./placeholders";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +18,9 @@ export default async function TemplatesPage() {
       <div className="mb-6">
         <h1 className="font-display text-3xl font-semibold">Email Templates</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          System notifications sent by circulation events and the end-of-day
-          batch. Placeholders like {"{{memberName}}"} are substituted when the
-          notice is generated. In-app notices go to the member&apos;s Notification
-          Centre; email notices go to the mail outbox.
+          {`The ${templates.length} notices the system sends, from circulation events and the end-of-day batch.`}{" "}
+          In-app notices go to the member&apos;s Notification Centre; email notices
+          go to the mail outbox.
         </p>
       </div>
 
@@ -29,6 +29,8 @@ export default async function TemplatesPage() {
           Your group has read-only access to templates.
         </p>
       )}
+
+      <PlaceholderReference notices={templates.map((t) => ({ code: t.code, name: t.name }))} />
 
       <div className="grid gap-4">
         {templates.map((t) => (

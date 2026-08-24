@@ -3,7 +3,7 @@
 import { StatefulForm, SubmitButton } from "@/components/forms";
 import { Badge } from "@/components/ui";
 import { updateTemplate } from "@/app/actions/admin-settings";
-import { TEMPLATE_PLACEHOLDERS } from "@/lib/template-defs";
+import { TEMPLATE_PLACEHOLDERS, placeholdersInUse } from "@/lib/template-defs";
 
 type Template = {
   code: string;
@@ -19,6 +19,9 @@ const inputCls =
 
 export function TemplateEditor({ template, readOnly }: { template: Template; readOnly: boolean }) {
   const placeholders = TEMPLATE_PLACEHOLDERS[template.code] ?? [];
+  // Which of this notice's placeholders the current wording actually uses, so
+  // the unused ones read as "also available" rather than as a flat list.
+  const inUse = new Set(placeholdersInUse(template.subject, template.body));
 
   return (
     <StatefulForm action={updateTemplate}>
@@ -58,8 +61,21 @@ export function TemplateEditor({ template, readOnly }: { template: Template; rea
             Email (to outbox)
           </label>
           {placeholders.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              Placeholders: {placeholders.map((p) => `{{${p}}}`).join(", ")}
+            <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="mr-0.5">This notice supplies:</span>
+              {placeholders.map((p) => (
+                <code
+                  key={p}
+                  title={inUse.has(p) ? "Used in this notice" : "Available, not currently used"}
+                  className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${
+                    inUse.has(p)
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {`{{${p}}}`}
+                </code>
+              ))}
             </span>
           )}
         </div>
