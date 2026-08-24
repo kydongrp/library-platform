@@ -46,12 +46,17 @@ export async function runEodProcess(
   });
   for (const loan of activeLoans) {
     const d = daysUntil(loan.dueAt);
-    const vars = {
+    const common = {
       resourceTitle: loan.resource.title,
       dueDate: formatDate(loan.dueAt),
-      daysOverdue: String(Math.abs(d)),
     };
     if (d < 0) {
+      // daysOverdue belongs to this branch alone. Both notices used to share
+      // one vars object built with Math.abs(d), so the due-soon reminder was
+      // also handed a daysOverdue that actually meant days *until* due —
+      // undeclared, so unadvertised, but it would have substituted if anyone
+      // put the token in that template.
+      const vars = { ...common, daysOverdue: String(-d) };
       const template = await prisma.emailTemplate.findUnique({ where: { code: "OVERDUE" } });
       const key = `OVERDUE:${loan.memberId}:${template ? renderKey(template.subject, vars, loan.member.name) : ""}`;
       if (!alreadySent.has(key)) {
@@ -60,9 +65,9 @@ export async function runEodProcess(
       }
     } else if (d <= PREDUE_DAYS) {
       const template = await prisma.emailTemplate.findUnique({ where: { code: "PREDUE" } });
-      const key = `PREDUE:${loan.memberId}:${template ? renderKey(template.subject, vars, loan.member.name) : ""}`;
+      const key = `PREDUE:${loan.memberId}:${template ? renderKey(template.subject, common, loan.member.name) : ""}`;
       if (!alreadySent.has(key)) {
-        await notify("PREDUE", loan.member, vars);
+        await notify("PREDUE", loan.member, common);
         counts.predue++;
       }
     }
