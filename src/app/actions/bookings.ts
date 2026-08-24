@@ -13,6 +13,8 @@ import {
   isCollectable,
   describeWindow,
 } from "@/lib/booking-core";
+import { parseZonedDateTimeLocal } from "@/lib/tz";
+import { formatDate, formatTime } from "@/lib/format";
 
 /**
  * Bookings (SDD rows 52-53): one specific copy held for a member over a
@@ -69,8 +71,15 @@ export async function createBooking(_p: ActionState, formData: FormData): Promis
   if (!email) return { ok: false, message: "Enter the member's email address." };
   if (!startRaw || !endRaw) return { ok: false, message: "Set both a start and an end time." };
 
-  const startAt = new Date(startRaw);
-  const endAt = new Date(endRaw);
+  // A datetime-local field posts a wall clock with no zone, and `new Date()`
+  // reads that as the RUNTIME's local time. On Vercel the runtime is UTC, so a
+  // staff member typing 14:00 for a 2pm booking stored 14:00Z, which is 10pm in
+  // Singapore: the window opened eight hours late, and the loan created on
+  // collection inherited the wrong due time.
+  const startAt = parseZonedDateTimeLocal(startRaw);
+  const endAt = parseZonedDateTimeLocal(endRaw);
+  if (!startAt || !endAt)
+    return { ok: false, message: "Enter both a start and an end, as a date and a time." };
   const problem = validateWindow({ startAt, endAt });
   if (problem) return { ok: false, message: WINDOW_PROBLEM_MESSAGE[problem] };
 
@@ -288,7 +297,7 @@ export async function collectBooking(_p: ActionState, formData: FormData): Promi
   revalidateBookings();
   return {
     ok: true,
-    message: `Handed to ${b.member.name} — due back ${dueAt.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}.`,
+    message: `Handed to ${b.member.name} — due back ${formatDate(dueAt)}, ${formatTime(dueAt)}.`,
   };
 }
 

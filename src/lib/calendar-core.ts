@@ -2,9 +2,19 @@
 // and directly testable with tsx. The Prisma-backed loader lives in
 // src/lib/calendar.ts.
 //
-// Date keying is UTC throughout. Date-only values elsewhere in this codebase
-// are stored at noon UTC, which is the same calendar day in Singapore
-// (UTC+8), so a UTC key never drifts a day for this library.
+// Date keying is in the library's own zone, via src/lib/tz.ts.
+//
+// It used to be UTC, on the argument that date-only values are stored at noon
+// UTC and therefore key to the same calendar day in Singapore. That argument
+// is sound, and it is still true of stored date-only values. What it missed is
+// that these functions are handed INSTANTS too: dueDateFrom(new Date(), ...),
+// isOpenDay(dueInstant, ...), openDaysBetween(dueAt, now, ...). The UTC day of
+// an instant between midnight and 8am Singapore is yesterday, so a checkout in
+// the small hours rolled its due date against the wrong weekday, and a fine
+// could come out a day wrong in either direction.
+//
+// Noon-UTC values are unaffected: noon UTC is 20:00 in Singapore, the same
+// calendar day, so their key is identical either way.
 
 export const WEEKDAY_NAMES = [
   "Sunday",
@@ -16,6 +26,8 @@ export const WEEKDAY_NAMES = [
   "Saturday",
 ] as const;
 
+import { startOfZonedDay, startOfZonedDayKey, zonedDayKey, zonedWeekday } from "@/lib/tz";
+
 const DAY_MS = 86_400_000;
 /** Bound every calendar walk so a misconfigured calendar can't spin forever. */
 const MAX_WALK_DAYS = 400;
@@ -25,9 +37,9 @@ export type CalendarIndex = {
   closedDates: Set<string>; // "YYYY-MM-DD"
 };
 
-/** "YYYY-MM-DD" for a timestamp, in UTC. */
+/** "YYYY-MM-DD" for a timestamp, as the calendar day in the library's zone. */
 export function dateKey(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  return zonedDayKey(d);
 }
 
 /** Parse "YYYY-MM-DD" to a noon-UTC Date; null if malformed. */
@@ -56,7 +68,7 @@ export const ALWAYS_OPEN: CalendarIndex = {
 };
 
 export function isOpenDay(date: Date, cal: CalendarIndex): boolean {
-  return !cal.closedWeekdays.has(date.getUTCDay()) && !cal.closedDates.has(dateKey(date));
+  return !cal.closedWeekdays.has(zonedWeekday(date)) && !cal.closedDates.has(dateKey(date));
 }
 
 /** The date itself when open, otherwise the next open day (time preserved). */
@@ -77,9 +89,9 @@ export function dueDateFrom(start: Date, loanDays: number, cal: CalendarIndex): 
   return nextOpenDay(new Date(start.getTime() + loanDays * DAY_MS), cal);
 }
 
-/** UTC midnight of a timestamp, as epoch ms. */
-function utcMidnight(d: Date): number {
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+/** Start of the library day containing a timestamp, as epoch ms. */
+function dayStart(d: Date): number {
+  return startOfZonedDay(d).getTime();
 }
 
 /** How many of the `n` days starting at `firstDow` fall on weekday `w`. */
@@ -100,22 +112,25 @@ function weekdayOccurrences(firstDow: number, n: number, w: number): number {
  * counting and under-charge.
  */
 export function openDaysBetween(from: Date, to: Date, cal: CalendarIndex): number {
-  const start = utcMidnight(from);
-  const end = utcMidnight(to);
+  const start = dayStart(from);
+  const end = dayStart(to);
   const totalDays = Math.round((end - start) / DAY_MS);
   if (totalDays <= 0) return 0;
 
-  // The window is the `totalDays` days start+1 … end (inclusive).
-  const firstDow = new Date(start + DAY_MS).getUTCDay();
+  // The window is the `totalDays` days start+1 … end (inclusive). Take the
+  // weekday from the MIDDLE of the first of them rather than its midnight: on
+  // a zone with daylight saving, a midnight plus 24h can land an hour either
+  // side of the boundary and name the wrong weekday.
+  const firstDow = zonedWeekday(new Date(start + DAY_MS + DAY_MS / 2));
   let closed = 0;
   for (const w of cal.closedWeekdays) closed += weekdayOccurrences(firstDow, totalDays, w);
 
   // Explicit closure dates inside the window that aren't already weekly ones.
   for (const key of cal.closedDates) {
-    const d = parseDateKey(key);
-    if (!d) continue;
-    if (cal.closedWeekdays.has(d.getUTCDay())) continue;
-    const t = utcMidnight(d);
+    const dayOpen = startOfZonedDayKey(key);
+    if (!dayOpen) continue;
+    if (cal.closedWeekdays.has(zonedWeekday(new Date(dayOpen.getTime() + DAY_MS / 2)))) continue;
+    const t = dayOpen.getTime();
     if (t > start && t <= end) closed++;
   }
 

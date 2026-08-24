@@ -23,7 +23,8 @@
     "test:compare": "tsx --env-file=.env scripts/test-db-compare.ts",
     "neon:move": "tsx --env-file=.env scripts/neon-move.ts",
     "test:fidelity": "tsx --env-file=.env scripts/test-dump-fidelity.ts",
-    "test:tz": "tsx scripts/test-tz.ts"
+    "test:tz": "tsx scripts/test-tz.ts",
+    "test:calendar": "tsx scripts/test-calendar-tz.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

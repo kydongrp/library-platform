@@ -186,3 +186,82 @@ export function daysBetweenDayKeys(a: string, b: string): number {
 export function daysBetweenInstants(from: Date, to: Date): number {
   return Math.round((startOfZonedDay(to).getTime() - startOfZonedDay(from).getTime()) / DAY_MS);
 }
+
+// ── Formatting ────────────────────────────────────────────────────────────
+// Every rendered date and time goes through these. A bare
+// toLocaleDateString() resolves to the runtime zone, so on Vercel the admin UI
+// was showing UTC: an audit entry written at 09:15 Singapore read "01:15", and
+// an hourly loan due at 17:00 read "due 09:00" all day long.
+
+const dateFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: LIBRARY_TZ,
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: LIBRARY_TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const timeWithSecondsFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: LIBRARY_TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+/** "24 Aug 2026", in the library's zone. */
+export function formatZonedDate(instant: Date): string {
+  return dateFormatter.format(instant);
+}
+
+/** "14:30", in the library's zone. Pass seconds for "14:30:07". */
+export function formatZonedTime(instant: Date, withSeconds = false): string {
+  return (withSeconds ? timeWithSecondsFormatter : timeFormatter).format(instant);
+}
+
+/** "24 Aug 2026, 14:30", in the library's zone. */
+export function formatZonedDateTime(instant: Date): string {
+  return `${formatZonedDate(instant)}, ${formatZonedTime(instant)}`;
+}
+
+/** "YYYY-MM" for the calendar month an instant falls in. */
+export function zonedMonthKey(instant: Date): string {
+  return zonedDayKey(instant).slice(0, 7);
+}
+
+/** "YYYY" for the calendar year an instant falls in. */
+export function zonedYearKey(instant: Date): string {
+  return zonedDayKey(instant).slice(0, 4);
+}
+
+/**
+ * A half-open instant range for the calendar days `from`..`to` inclusive,
+ * both "YYYY-MM-DD". Half-open so a row written in the final second of the
+ * last day is included, which a `23:59:59` upper bound drops.
+ *
+ * This is the one range parser. Reports, FlexiReports and loan history each
+ * had their own, all three built on `new Date("YYYY-MM-DD")`, which is UTC
+ * midnight and therefore 08:00 in Singapore: every one of them silently
+ * dropped the first eight hours of the opening day.
+ */
+export function zonedDayRange(
+  from?: string | null,
+  to?: string | null,
+): { gte?: Date; lt?: Date } {
+  const range: { gte?: Date; lt?: Date } = {};
+  if (from) {
+    const start = startOfZonedDayKey(from);
+    if (start) range.gte = start;
+  }
+  if (to) {
+    const end = startOfZonedDayKey(to);
+    if (end) range.lt = new Date(end.getTime() + DAY_MS);
+  }
+  return range;
+}

@@ -8,6 +8,8 @@
  * bookings for the same copy may never overlap.
  */
 
+import { formatZonedDate, formatZonedTime } from "@/lib/tz";
+
 /** Statuses that still commit the copy. A cancelled or no-show booking does not. */
 export const LIVE_BOOKING_STATUSES = ["REQUESTED", "CONFIRMED"] as const;
 
@@ -100,9 +102,16 @@ export function isNoShow(
 
 /** Human summary of a window, collapsing same-day ranges to one date. */
 export function describeWindow(w: Window): string {
-  const d = (x: Date) => x.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  const t = (x: Date) => x.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  return d(w.startAt) === d(w.endAt)
-    ? `${d(w.startAt)}, ${t(w.startAt)}–${t(w.endAt)}`
-    : `${d(w.startAt)} ${t(w.startAt)} – ${d(w.endAt)} ${t(w.endAt)}`;
+  // Rendered in the library's zone, and this had to change in the same commit
+  // as the parse in actions/bookings.ts. While both were UTC they cancelled on
+  // screen: a window typed as 2pm-4pm read back as 2pm-4pm even though it was
+  // stored as 10pm-midnight. Fixing either half alone would have made every
+  // correctly-entered booking look eight hours wrong.
+  const sameDay = formatZonedDate(w.startAt) === formatZonedDate(w.endAt);
+  const start = `${formatZonedDate(w.startAt)}, ${formatZonedTime(w.startAt)}`;
+  const end = sameDay
+    ? formatZonedTime(w.endAt)
+    : `${formatZonedDate(w.endAt)}, ${formatZonedTime(w.endAt)}`;
+  return `${start} – ${end}`;
 }
+

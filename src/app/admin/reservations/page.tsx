@@ -1,6 +1,7 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { toZonedDateTimeLocalValue } from "@/lib/tz";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { cancelReservation } from "@/app/actions/circulation";
@@ -63,9 +64,10 @@ export default async function ReservationsPage() {
   const upcoming = bookings.filter((b) => !isCollectable(b, now) && b.endAt > now);
   const lapsed = bookings.filter((b) => b.endAt <= now);
 
-  // datetime-local wants a local wall-clock string, not an ISO instant.
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const defaultStart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  // datetime-local wants a wall clock, not an ISO instant, and this is a
+  // server component: now.getHours() would be the runtime's clock, which on
+  // Vercel is UTC, so the form opened prefilled eight hours behind Singapore.
+  const defaultStart = toZonedDateTimeLocalValue(now);
 
   return (
     <div className="mx-auto max-w-4xl">
