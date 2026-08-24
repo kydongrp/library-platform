@@ -64,10 +64,13 @@ export async function runEodProcess(
         counts.overdue++;
       }
     } else if (d <= PREDUE_DAYS) {
+      // d is non-negative here, and bounded by PREDUE_DAYS, so this is 0, 1 or
+      // 2. Zero is the due date itself.
+      const vars = { ...common, daysUntilDue: String(d) };
       const template = await prisma.emailTemplate.findUnique({ where: { code: "PREDUE" } });
-      const key = `PREDUE:${loan.memberId}:${template ? renderKey(template.subject, common, loan.member.name) : ""}`;
+      const key = `PREDUE:${loan.memberId}:${template ? renderKey(template.subject, vars, loan.member.name) : ""}`;
       if (!alreadySent.has(key)) {
-        await notify("PREDUE", loan.member, common);
+        await notify("PREDUE", loan.member, vars);
         counts.predue++;
       }
     }

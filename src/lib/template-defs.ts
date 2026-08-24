@@ -10,7 +10,7 @@ export function renderTemplate(text: string, vars: TemplateVars): string {
 
 /** Placeholders each template supports, shown as hints in the editor UI. */
 export const TEMPLATE_PLACEHOLDERS: Record<string, string[]> = {
-  PREDUE: ["memberName", "resourceTitle", "dueDate"],
+  PREDUE: ["memberName", "resourceTitle", "dueDate", "daysUntilDue"],
   OVERDUE: ["memberName", "resourceTitle", "dueDate", "daysOverdue"],
   WELCOME: ["memberName"],
   INACTIVE: ["memberName", "monthsInactive"],
@@ -35,6 +35,13 @@ export const PLACEHOLDER_DOCS: Record<string, { resolvesTo: string; example: str
   resourceTitle: { resolvesTo: "Title of the item the notice is about", example: "Clean Code" },
   dueDate: { resolvesTo: "The loan's due date", example: "14 Sep 2026" },
   daysOverdue: { resolvesTo: "Whole days past the due date", example: "3" },
+  daysUntilDue: {
+    // The reminder only fires two days out, so this is 0, 1 or 2 and never
+    // more. Zero means the item is due today, which is why the shipped
+    // wording quotes dueDate instead of counting down.
+    resolvesTo: "Whole days left before the due date, and 0 on the day itself",
+    example: "2",
+  },
   monthsInactive: { resolvesTo: "Months since the member's last loan", example: "6" },
   expiryDate: { resolvesTo: "Last day a held item stays on the pickup shelf", example: "20 Aug 2026" },
   newDueDate: { resolvesTo: "The earlier due date set by a recall", example: "26 Aug 2026" },
