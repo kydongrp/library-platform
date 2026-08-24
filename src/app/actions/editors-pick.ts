@@ -23,7 +23,7 @@ async function requireCatalogueEditor(): Promise<{ name: string } | null> {
   return { name: admin!.name };
 }
 
-// Server-side length caps — these strings persist to unbounded TEXT columns
+// Server-side length caps: these strings persist to unbounded TEXT columns
 // and render back into the admin UI.
 const clip = (v: FormDataEntryValue | null, n: number) => String(v ?? "").trim().slice(0, n);
 const NOTE_MAX = 500; // blurb / reason / staff note
@@ -31,7 +31,7 @@ const NAME_MAX = 200; // authors / provider / submitter
 const TITLE_MAX = 300;
 const URL_MAX = 2000;
 
-/** Unique-constraint violation (digitalUrl) — the check-then-write race backstop. */
+/** Unique-constraint violation (digitalUrl): the check-then-write race backstop. */
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 }
@@ -70,7 +70,7 @@ export async function promoteToEditorsPick(
 }
 
 /**
- * Add an external resource straight onto the Editor's Pick shelf (BR-366F) —
+ * Add an external resource straight onto the Editor's Pick shelf (BR-366F),
  * e.g. a link a learner sent over WhatsApp. Created as a digital link-out
  * resource flagged epExternal, so removing it from the picks later deletes it
  * from the library entirely (BR-366G).
@@ -135,7 +135,7 @@ export async function addExternalPick(
   return { ok: true, message: `External pick "${title}" added to Editor's Picks.` };
 }
 
-/** Edit a pick — blurb for any pick; title/authors/URL only for external ones. */
+/** Edit a pick: blurb for any pick; title/authors/URL only for external ones. */
 export async function updatePick(
   _prev: ActionState,
   formData: FormData,
@@ -210,7 +210,7 @@ export async function removeFromEditorsPick(
     return { ok: false, message: "That Editor's Pick no longer exists." };
 
   // Safety net: an "external" pick that has since grown physical copies or
-  // loan history has become part of the collection — never hard-delete it.
+  // loan history has become part of the collection. Never hard-delete it.
   const [copies, loans] = resource.epExternal
     ? await Promise.all([
         prisma.copy.count({ where: { resourceId: id } }),
@@ -222,7 +222,7 @@ export async function removeFromEditorsPick(
     await prisma.reservation.deleteMany({ where: { resourceId: id } });
     await prisma.linkCheck.deleteMany({ where: { resourceId: id } });
     await prisma.resource.delete({ where: { id } });
-    await audit({ action: "ep.removeExternal", summary: `Removed external pick "${resource.title}" — deleted from the library (BR-366G)`, entity: "Resource", entityId: id, detail: { title: resource.title, digitalUrl: resource.digitalUrl } });
+    await audit({ action: "ep.removeExternal", summary: `Removed external pick "${resource.title}" and deleted it from the library (BR-366G)`, entity: "Resource", entityId: id, detail: { title: resource.title, digitalUrl: resource.digitalUrl } });
     emitEventAfter("editors_pick.removed", { id, title: resource.title, removedFromLibrary: true });
     emitEventAfter("resource.deleted", { id, title: resource.title });
     revalidateEp();
@@ -240,8 +240,8 @@ export async function removeFromEditorsPick(
     ok: true,
     message:
       resource.epExternal
-        ? `"${resource.title}" has copies or loan history, so it was kept in the catalogue — only the pick was removed.`
-        : `"${resource.title}" removed from Editor's Picks — still in the catalogue.`,
+        ? `"${resource.title}" has copies or loan history, so it was kept in the catalogue; only the pick was removed.`
+        : `"${resource.title}" removed from Editor's Picks. It is still in the catalogue.`,
   };
 }
 
@@ -265,7 +265,7 @@ export async function keepPickInCatalogue(
   if (r.count === 0) return { ok: false, message: "That external pick no longer exists." };
   await audit({ action: "ep.keepInCatalogue", summary: "External pick demoted to internal (kept in catalogue)", entity: "Resource", entityId: id });
   revalidateEp();
-  return { ok: true, message: "Marked as part of the collection — removal will no longer delete it." };
+  return { ok: true, message: "Marked as part of the collection. Removal will no longer delete it." };
 }
 
 /* ---------- Submission queue (form.sg / WhatsApp intake) ---------- */
@@ -318,7 +318,7 @@ export async function recordSubmission(
 
   revalidatePath("/admin/editors-pick");
   await audit({ action: "ep.recordSubmission", summary: `Recorded ${kind.toLowerCase()} nomination via ${channel}`, entity: "EpSubmission", detail: { kind, channel, submitter } });
-  return { ok: true, message: "Submission recorded — approve it below to promote." };
+  return { ok: true, message: "Submission recorded. Approve it below to promote." };
 }
 
 /**
@@ -335,7 +335,7 @@ export async function approveSubmission(
   if (!admin) return { ok: false, message: "You don't have permission to decide submissions." };
 
   const id = String(formData.get("id") ?? "");
-  // Atomic claim — loses the race politely instead of double-acting.
+  // Atomic claim: loses the race politely instead of double-acting.
   const claimed = await prisma.epSubmission.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "APPROVED", decidedBy: admin.name },
@@ -364,17 +364,17 @@ export async function approveSubmission(
 
   if (sub.kind === "INTERNAL") {
     if (!sub.resource)
-      return release("The nominated title was deleted — reject this submission instead.");
+      return release("The nominated title was deleted. Reject this submission instead.");
     if (sub.resource.editorsPick) {
-      await audit({ action: "ep.approve", summary: `Approved nomination — "${sub.resource.title}" was already a pick`, entity: "EpSubmission", entityId: id });
+      await audit({ action: "ep.approve", summary: `Approved nomination: "${sub.resource.title}" was already a pick`, entity: "EpSubmission", entityId: id });
       revalidateEp();
       return {
         ok: true,
-        message: `"${sub.resource.title}" is already an Editor's Pick — nomination closed, existing note kept.`,
+        message: `"${sub.resource.title}" is already an Editor's Pick. Nomination closed, existing note kept.`,
       };
     }
     await prisma.resource.update({ where: { id: sub.resource.id }, data: pickData });
-    await audit({ action: "ep.approve", summary: `Approved nomination — promoted "${sub.resource.title}"`, entity: "EpSubmission", entityId: id });
+    await audit({ action: "ep.approve", summary: `Approved nomination: promoted "${sub.resource.title}"`, entity: "EpSubmission", entityId: id });
     emitEventAfter("editors_pick.added", { id: sub.resourceId, title: sub.resource.title });
     revalidateEp();
     return { ok: true, message: `"${sub.resource.title}" promoted to Editor's Picks.` };
@@ -382,9 +382,9 @@ export async function approveSubmission(
 
   // EXTERNAL
   if (!sub.title || !sub.url || !/^https?:\/\//i.test(sub.url))
-    return release("This external submission is missing a valid title/URL — reject it instead.");
+    return release("This external submission is missing a valid title/URL. Reject it instead.");
 
-  // Promote an already-catalogued title in place as an INTERNAL pick — it
+  // Promote an already-catalogued title in place as an INTERNAL pick: it
   // exists independently of the shelf, so removal must never delete it.
   const promoteExisting = async (): Promise<ActionState | null> => {
     const dup = await prisma.resource.findFirst({
@@ -393,17 +393,17 @@ export async function approveSubmission(
     });
     if (!dup) return null;
     if (dup.editorsPick) {
-      await audit({ action: "ep.approve", summary: `Approved nomination — "${dup.title}" already featured`, entity: "EpSubmission", entityId: id });
+      await audit({ action: "ep.approve", summary: `Approved nomination: "${dup.title}" already featured`, entity: "EpSubmission", entityId: id });
       revalidateEp();
-      return { ok: true, message: `"${dup.title}" is already featured — nomination closed.` };
+      return { ok: true, message: `"${dup.title}" is already featured. Nomination closed.` };
     }
     await prisma.resource.update({ where: { id: dup.id }, data: pickData });
-    await audit({ action: "ep.approve", summary: `Approved nomination — promoted existing title "${dup.title}"`, entity: "EpSubmission", entityId: id });
+    await audit({ action: "ep.approve", summary: `Approved nomination: promoted existing title "${dup.title}"`, entity: "EpSubmission", entityId: id });
     emitEventAfter("editors_pick.added", { id: dup.id, title: dup.title });
     revalidateEp();
     return {
       ok: true,
-      message: `That URL was already in the catalogue — promoted the existing title "${dup.title}" instead.`,
+      message: `That URL was already in the catalogue. Promoted the existing title "${dup.title}" instead.`,
     };
   };
 
@@ -429,7 +429,7 @@ export async function approveSubmission(
     });
   } catch (e) {
     if (isUniqueViolation(e)) {
-      // Lost a race with an importer — promote whatever claimed the URL.
+      // Lost a race with an importer: promote whatever claimed the URL.
       const raced = await promoteExisting();
       if (raced) return raced;
     }
@@ -440,7 +440,7 @@ export async function approveSubmission(
     });
     throw e;
   }
-  await audit({ action: "ep.approve", summary: `Approved nomination — created external pick "${sub.title}"`, entity: "EpSubmission", entityId: id, detail: { url: sub.url, provider } });
+  await audit({ action: "ep.approve", summary: `Approved nomination: created external pick "${sub.title}"`, entity: "EpSubmission", entityId: id, detail: { url: sub.url, provider } });
   emitEventAfter("editors_pick.added", { title: sub.title, provider, accessUrl: sub.url });
   revalidateEp();
   return { ok: true, message: `External pick "${sub.title}" created and promoted to Editor's Picks.` };
@@ -472,7 +472,7 @@ export async function rejectSubmission(
 
 /* ---------- Auto-curation suggestions ---------- */
 
-/** Staff "no" to a suggested title — it is never suggested again. */
+/** Staff "no" to a suggested title: it is never suggested again. */
 export async function dismissSuggestion(
   _prev: ActionState,
   formData: FormData,
@@ -524,5 +524,5 @@ export async function restoreSuggestion(
     entityId: resourceId,
   });
   revalidatePath("/admin/editors-pick");
-  return { ok: true, message: "Restored — it can be suggested again." };
+  return { ok: true, message: "Restored. It can be suggested again." };
 }

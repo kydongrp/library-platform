@@ -169,7 +169,7 @@ export async function createPurchaseOrder(
   ]);
   if (!supplier) return { ok: false, message: "That supplier no longer exists." };
   if (supplier.status !== "ACTIVE")
-    return { ok: false, message: `"${supplier.name}" is inactive — reactivate it before ordering.` };
+    return { ok: false, message: `"${supplier.name}" is inactive. Reactivate it before ordering.` };
   if (!fund) return { ok: false, message: "That fund no longer exists." };
 
   const acct = await resolveAccountId(formData);
@@ -179,7 +179,7 @@ export async function createPurchaseOrder(
   const notes = clip(formData.get("notes"), 1000) || null;
   const total = poTotalCents(lines);
 
-  // PO number generation races concurrent submits — the unique index decides,
+  // PO number generation races concurrent submits; the unique index decides,
   // so retry with a fresh number a couple of times.
   for (let attempt = 0; attempt < 3; attempt++) {
     const poNumber = await nextPoNumber();
@@ -194,13 +194,13 @@ export async function createPurchaseOrder(
         entityId: po.id,
       });
       revalidatePath("/admin/acquisitions");
-      return { ok: true, message: `${poNumber} raised — ${fund.currency} ${(total / 100).toLocaleString("en-SG")} committed from "${fund.name}".` };
+      return { ok: true, message: `${poNumber} raised. ${fund.currency} ${(total / 100).toLocaleString("en-SG")} committed from "${fund.name}".` };
     } catch (e) {
       if (isUniqueViolation(e)) continue;
       throw e;
     }
   }
-  return { ok: false, message: "Could not allocate a PO number — try again." };
+  return { ok: false, message: "Could not allocate a PO number. Try again." };
 }
 
 export async function receivePoLine(
@@ -217,7 +217,7 @@ export async function receivePoLine(
   });
   if (!line) return { ok: false, message: "That order line no longer exists." };
   if (!["ORDERED", "RECEIVED"].includes(line.po.status))
-    return { ok: false, message: `${line.po.poNumber} is ${line.po.status.toLowerCase()} — nothing to receive.` };
+    return { ok: false, message: `${line.po.poNumber} is ${line.po.status.toLowerCase()}, so there is nothing to receive.` };
   if (line.receivedQty >= line.qty)
     return { ok: false, message: "That line is already fully received." };
 
@@ -228,7 +228,7 @@ export async function receivePoLine(
   }
   await audit({
     action: "acq.po.receive",
-    summary: `Received "${line.title}" ×${line.qty} on ${line.po.poNumber}${allReceived ? " — order fully received" : ""}`,
+    summary: `Received "${line.title}" ×${line.qty} on ${line.po.poNumber}${allReceived ? " (order fully received)" : ""}`,
     entity: "PurchaseOrder",
     entityId: line.poId,
   });
@@ -250,9 +250,9 @@ export async function cancelPurchaseOrder(
   });
   if (!po) return { ok: false, message: "That order no longer exists." };
   if (po.status !== "ORDERED")
-    return { ok: false, message: `Only ordered POs can be cancelled — ${po.poNumber} is ${po.status.toLowerCase()}.` };
+    return { ok: false, message: `Only ordered POs can be cancelled. ${po.poNumber} is ${po.status.toLowerCase()}.` };
   if (po.invoices.length > 0)
-    return { ok: false, message: `${po.poNumber} already has an invoice against it — settle that instead.` };
+    return { ok: false, message: `${po.poNumber} already has an invoice against it. Settle that instead.` };
 
   await prisma.purchaseOrder.update({ where: { id }, data: { status: "CANCELLED" } });
   await audit({
@@ -262,7 +262,7 @@ export async function cancelPurchaseOrder(
     entityId: id,
   });
   revalidatePath("/admin/acquisitions");
-  return { ok: true, message: `${po.poNumber} cancelled — its commitment is released.` };
+  return { ok: true, message: `${po.poNumber} cancelled. Its commitment is released.` };
 }
 
 /* ---------- Invoices ---------- */
@@ -315,7 +315,7 @@ export async function recordInvoice(
     throw e;
   }
   revalidatePath("/admin/acquisitions");
-  return { ok: true, message: `Invoice ${invoiceNumber} recorded — awaiting payment approval.` };
+  return { ok: true, message: `Invoice ${invoiceNumber} recorded, awaiting payment approval.` };
 }
 
 export async function markInvoicePaid(
@@ -349,7 +349,7 @@ export async function markInvoicePaid(
   }
   await audit({
     action: "acq.invoice.pay",
-    summary: `Paid invoice ${inv?.invoiceNumber ?? id} (${inv?.supplier.name ?? "?"})${closed ? ` — ${inv?.po?.poNumber} closed` : ""}`,
+    summary: `Paid invoice ${inv?.invoiceNumber ?? id} (${inv?.supplier.name ?? "?"})${closed ? `; ${inv?.po?.poNumber} closed` : ""}`,
     entity: "Invoice",
     entityId: id,
   });
@@ -359,7 +359,7 @@ export async function markInvoicePaid(
 
 /**
  * Row 60: resolve the optional account from a form. Returns undefined for
- * "no account", or an error when the submitted id is stale or closed — a form
+ * "no account", or an error when the submitted id is stale or closed. A form
  * left open while someone closed the account must not book spend to it.
  */
 async function resolveAccountId(
@@ -368,7 +368,7 @@ async function resolveAccountId(
   const id = clip(formData.get("accountId"), 40);
   if (!id) return { accountId: null };
   const a = await prisma.acqAccount.findUnique({ where: { id }, select: { status: true, code: true } });
-  if (!a) return { error: "That account no longer exists — reload and pick again." };
+  if (!a) return { error: "That account no longer exists. Reload and pick again." };
   if (a.status !== "ACTIVE") return { error: `Account ${a.code} is closed; pick an open one.` };
   return { accountId: id };
 }
@@ -399,7 +399,7 @@ export async function createAccount(
     });
     await audit({
       action: "acq.account.create",
-      summary: `Added acquisition account ${code} — ${name}`,
+      summary: `Added acquisition account ${code} (${name})`,
       entity: "AcqAccount",
       entityId: a.id,
     });
@@ -434,7 +434,7 @@ export async function toggleAccount(
     ok: true,
     message:
       status === "CLOSED"
-        ? `${a.code} closed — it stays on existing orders and invoices but is no longer offered.`
+        ? `${a.code} closed. It stays on existing orders and invoices but is no longer offered.`
         : `${a.code} reopened.`,
   };
 }
@@ -458,7 +458,7 @@ export async function deleteAccount(
   if (used > 0)
     return {
       ok: false,
-      message: `${a.code} is on ${used} order${used === 1 ? "" : "s"}/invoice${used === 1 ? "" : "s"} — close it instead of deleting, so the history keeps its code.`,
+      message: `${a.code} is on ${used} order${used === 1 ? "" : "s"}/invoice${used === 1 ? "" : "s"}. Close it instead of deleting, so the history keeps its code.`,
     };
   await prisma.acqAccount.delete({ where: { id } });
   await audit({

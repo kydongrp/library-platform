@@ -56,7 +56,7 @@ export function connectionString(env: NodeJS.ProcessEnv = process.env): string {
   return url;
 }
 
-/** Host and database only — safe to print, never the credentials. */
+/** Host and database only: safe to print, never the credentials. */
 export function describeTarget(url: string): string {
   try {
     const u = new URL(url);
@@ -138,7 +138,7 @@ export async function foreignKeyOrder(c: Client): Promise<string[]> {
  * node-postgres reads `timestamp without time zone` as a LOCAL time, and
  * `Date.toISOString()` then writes it back as UTC. Inserting that string into
  * a naive timestamp column stores the UTC wall clock, so every timestamp in
- * the database moves by the dumping machine's UTC offset — eight hours in
+ * the database moves by the dumping machine's UTC offset: eight hours in
  * Singapore, and eight more on every further round trip. The schema has 91
  * naive timestamp columns, so that is due dates, fines, audit trails and loan
  * history all silently wrong, while row counts and null checks still pass.
@@ -160,7 +160,7 @@ const PASS_THROUGH_OIDS = [
   1270, // timetz[]
   // json and jsonb for the same reason: node-postgres runs JSON.parse on
   // them, and JavaScript numbers are IEEE-754 doubles. An integer beyond
-  // 2^53 comes back imprecise, and 1.0 comes back as 1 — then gets
+  // 2^53 comes back imprecise, and 1.0 comes back as 1, then gets
   // re-serialised on restore, so the dump is quietly not what was dumped.
   // Nothing in the data hits that today (checked), but MARC subfields and
   // acquisition amounts are exactly where it would appear.
@@ -369,7 +369,7 @@ export async function restore(
 
     // TRUNCATE ... CASCADE follows foreign keys into tables the dump knows
     // nothing about, and the row-count check afterwards only looks at tables
-    // the dump does mention — so a table could be emptied without a single
+    // the dump does mention, so a table could be emptied without a single
     // line of output anywhere. Refuse instead.
     const dumped = new Set(manifest.tableOrder);
     const extra = [...present].filter((t) => !dumped.has(t)).sort();
@@ -398,7 +398,7 @@ export async function restore(
       const haveCols = byTable.get(t) ?? new Set<string>();
       const onlyTarget = [...haveCols].filter((k) => !dumpCols.has(k));
       const onlyDump = [...dumpCols].filter((k) => !haveCols.has(k));
-      if (onlyTarget.length) columnProblems.push(`${t}: target has ${onlyTarget.join(", ")} — the dump has no values for them`);
+      if (onlyTarget.length) columnProblems.push(`${t}: target has ${onlyTarget.join(", ")} (the dump has no values for them)`);
       if (onlyDump.length) columnProblems.push(`${t}: target is missing ${onlyDump.join(", ")}`);
     }
     if (columnProblems.length && !opts.allowColumnDrift)

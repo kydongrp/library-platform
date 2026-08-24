@@ -9,13 +9,13 @@ import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit, diffOf } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
 
-// Server actions are directly invocable endpoints — every mutation must
+// Server actions are directly invocable endpoints, so every mutation must
 // re-check CATALOGUE edit rights, not rely on the page hiding buttons.
 async function canEditCatalogue(): Promise<boolean> {
   return canEdit(await getCurrentAdmin(), "CATALOGUE");
 }
 
-/** Unique-constraint violation (digitalUrl) — check-then-write race backstop. */
+/** Unique-constraint violation (digitalUrl): check-then-write race backstop. */
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 }
@@ -118,7 +118,7 @@ export async function updateResource(
   if (!data.title || !data.author)
     return { ok: false, message: "Title and author are required." };
 
-  // An external Editor's Pick is identified by its access URL — stripping it
+  // An external Editor's Pick is identified by its access URL, so stripping it
   // would break the pick's delete semantics and importer dedup.
   const existing = await prisma.resource.findUnique({
     where: { id },
@@ -131,7 +131,7 @@ export async function updateResource(
   if (existing?.epExternal && !data.digitalUrl)
     return {
       ok: false,
-      message: "This title is an external Editor's Pick — it must keep a valid access URL.",
+      message: "This title is an external Editor's Pick, so it must keep a valid access URL.",
     };
 
   if (data.digitalUrl) {

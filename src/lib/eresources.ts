@@ -145,7 +145,7 @@ export async function getEresourceOverview(now = new Date()): Promise<EresourceO
 // ---------- Renewal alerts (piggybacks the nightly link-check cron) ----------
 
 // Cadence: alerts start DUE_SOON_DAYS out and repeat every REALERT_DAYS until
-// the renewal date is moved or the subscription is removed — roughly day −30,
+// the renewal date is moved or the subscription is removed: roughly day −30,
 // day −10, then post-due reminders. The dedup key is the fixed subject line.
 const REALERT_DAYS = 20;
 
@@ -164,7 +164,7 @@ export async function checkRenewalAlerts(now = new Date()): Promise<RenewalAlert
 
   let queued = 0;
   for (const s of due) {
-    const subject = `Renewal alert — ${s.provider}`;
+    const subject = `Renewal alert: ${s.provider}`;
     const already = await prisma.mailQueue.findFirst({
       where: { template: "RENEWAL_ALERT", subject, createdAt: { gt: lookback } },
       select: { id: true },
@@ -182,8 +182,8 @@ export async function checkRenewalAlerts(now = new Date()): Promise<RenewalAlert
         ? `Annual cost on record: ${s.currency} ${(s.annualCostCents / 100).toLocaleString("en-SG")}.`
         : "No annual cost on record.";
     const auto = s.autoRenews
-      ? "This subscription AUTO-RENEWS — act before the date if you intend to cancel or renegotiate."
-      : "This subscription does not auto-renew — access lapses unless it is renewed.";
+      ? "This subscription AUTO-RENEWS. Act before the date if you intend to cancel or renegotiate."
+      : "This subscription does not auto-renew, so access lapses unless it is renewed.";
     const body = `The ${s.provider} subscription renewal ${timing}.\n\n${auto}\n${cost}${s.seats != null ? `\nLicensed seats: ${s.seats}.` : ""}\n\nReview usage and cost-per-use on the Subscriptions page before deciding.`;
 
     if (admins.length > 0) {

@@ -120,8 +120,8 @@ export async function queueClaim(
   // at noon UTC, i.e. 20:00 Singapore, so the old arithmetic told a vendor an
   // issue was N days late where N could be one lower than the true count.
   const daysLate = daysBetweenInstants(issue.expectedAt, now);
-  const subject = `Missing issue claim: ${title} — ${issue.label}`;
-  const body = `We have not received ${issue.label} of "${title}"${serial.issn ? ` (ISSN ${serial.issn})` : ""}, expected ${zonedDayKey(issue.expectedAt)} (${daysLate} days ago).\n\nPlease supply the issue or advise on its status.\n\nKong Learning Systems Institute — Digital Library`;
+  const subject = `Missing issue claim: ${title} (${issue.label})`;
+  const body = `We have not received ${issue.label} of "${title}"${serial.issn ? ` (ISSN ${serial.issn})` : ""}, expected ${zonedDayKey(issue.expectedAt)} (${daysLate} days ago).\n\nPlease supply the issue or advise on its status.\n\nKong Learning Systems Institute, Digital Library`;
 
   if (serial.claimEmail) {
     await prisma.mailQueue.create({
@@ -129,7 +129,7 @@ export async function queueClaim(
     });
     return 1;
   }
-  // No vendor contact on record — alert active admins instead.
+  // No vendor contact on record: alert active admins instead.
   const admins = await prisma.adminUser.findMany({
     where: { status: "ACTIVE" },
     select: { name: true, email: true },
@@ -140,7 +140,7 @@ export async function queueClaim(
       toEmail: a.email,
       toName: a.name,
       subject,
-      body: body + "\n\n(No vendor claim contact is set for this serial — add one on the Serials page.)",
+      body: body + "\n\n(No vendor claim contact is set for this serial; add one on the Serials page.)",
       template: "SERIAL_CLAIM",
     })),
   });

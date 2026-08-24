@@ -42,7 +42,7 @@ export function SearchConfigSection({
           <div className="mb-3 flex flex-wrap gap-1.5">
             {stopWords.length === 0 && (
               <span className="text-xs text-muted-foreground">
-                None — every word in a search counts.
+                None, so every word in a search counts.
               </span>
             )}
             {stopWords.map((w) => (

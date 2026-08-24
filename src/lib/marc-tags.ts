@@ -1,4 +1,4 @@
-// Client-safe MARC vocabulary. No server imports — the cataloguing editor is
+// Client-safe MARC vocabulary. No server imports: the cataloguing editor is
 // a client component and must not drag Prisma into the browser bundle.
 
 export type SubfieldDef = { code: string; label: string; repeatable?: boolean };
@@ -17,7 +17,7 @@ export type TagDefSeed = {
 
 /**
  * The starter tag set. Staff can add, retitle or remove any of these from
- * Information Context — this is a seed, not a hard-coded schema.
+ * Information Context. This is a seed, not a hard-coded schema.
  *
  * The five DSTA-specific tags the live system uses (StandardNo,
  * StandardsforITT, ChapterName, DomainCode, POC) live in the 9XX local-use
@@ -46,12 +46,12 @@ export const DEFAULT_TAG_DEFS: TagDefSeed[] = [
     subfields: [{ code: "a", label: "Language code of text", repeatable: true }] },
 
   // --- Main entry ---
-  { tag: "100", label: "Main Entry — Personal Name", alias: "Author", sortOrder: 200,
+  { tag: "100", label: "Main Entry-Personal Name", alias: "Author", sortOrder: 200,
     description: "The primary author. Use 700 for additional authors.",
     subfields: [{ code: "a", label: "Personal name" }, { code: "d", label: "Dates" }, { code: "e", label: "Relator term" }, { code: "0", label: "Authority record control number" }] },
-  { tag: "110", label: "Main Entry — Corporate Name", sortOrder: 210,
+  { tag: "110", label: "Main Entry-Corporate Name", sortOrder: 210,
     subfields: [{ code: "a", label: "Corporate name" }, { code: "b", label: "Subordinate unit" }] },
-  { tag: "111", label: "Main Entry — Meeting Name", sortOrder: 220,
+  { tag: "111", label: "Main Entry-Meeting Name", sortOrder: 220,
     subfields: [{ code: "a", label: "Meeting name" }, { code: "d", label: "Date of meeting" }] },
 
   // --- Title and edition ---
@@ -81,16 +81,16 @@ export const DEFAULT_TAG_DEFS: TagDefSeed[] = [
     subfields: [{ code: "a", label: "Summary, etc." }] },
 
   // --- Subject access ---
-  { tag: "650", label: "Subject Added Entry — Topical Term", alias: "Subject", repeatable: true, sortOrder: 500,
+  { tag: "650", label: "Subject Added Entry-Topical Term", alias: "Subject", repeatable: true, sortOrder: 500,
     description: "Indicator 2: 0 = LCSH, 4 = source not specified (local).",
     subfields: [{ code: "a", label: "Topical term" }, { code: "x", label: "General subdivision", repeatable: true }, { code: "2", label: "Source of heading" }, { code: "0", label: "Authority record control number" }] },
-  { tag: "651", label: "Subject Added Entry — Geographic Name", repeatable: true, sortOrder: 510,
+  { tag: "651", label: "Subject Added Entry-Geographic Name", repeatable: true, sortOrder: 510,
     subfields: [{ code: "a", label: "Geographic name" }] },
 
   // --- Added entries and links ---
-  { tag: "700", label: "Added Entry — Personal Name", alias: "Co-author", repeatable: true, sortOrder: 600,
+  { tag: "700", label: "Added Entry-Personal Name", alias: "Co-author", repeatable: true, sortOrder: 600,
     subfields: [{ code: "a", label: "Personal name" }, { code: "e", label: "Relator term" }, { code: "0", label: "Authority record control number" }] },
-  { tag: "710", label: "Added Entry — Corporate Name", repeatable: true, sortOrder: 610,
+  { tag: "710", label: "Added Entry-Corporate Name", repeatable: true, sortOrder: 610,
     subfields: [{ code: "a", label: "Corporate name" }] },
   { tag: "856", label: "Electronic Location and Access", alias: "Access URL", repeatable: true, sortOrder: 700,
     description: "Indicator 1: 4 = HTTP. Indicator 2: 0 = resource itself, 1 = version of resource.",
@@ -123,7 +123,7 @@ export function parseSubfields(raw: unknown): Subfield[] {
     .filter((s) => s.code !== "");
 }
 
-/** "$a Perry's handbook $b 9th ed." — a compact one-line preview. */
+/** A compact one-line preview: "$a Perry's handbook $b 9th ed." */
 export function formatSubfields(subs: Subfield[]): string {
   return subs.map((s) => `$${s.code} ${s.value}`).join("  ");
 }

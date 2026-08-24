@@ -38,7 +38,7 @@ export function AddSubscriberForm({ serialId }: { serialId: string }) {
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="alertOnly" className="h-4 w-4 rounded border-border" />
-            Alert only — tell them an issue arrived, but do not hand them the copy
+            Alert only: tell them an issue arrived, but do not hand them the copy
           </label>
           {state.ok === false && state.message && (
             <p className="text-sm text-red-700">{state.message}</p>

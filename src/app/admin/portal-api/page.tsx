@@ -46,7 +46,7 @@ export default async function PortalApiPage() {
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           The integration surface for the Learner Portal: a read-only, versioned
           JSON API (Application Programming Interface) over the catalogue,
-          availability, and Editor&apos;s Picks — plus signed webhooks that push
+          availability, and Editor&apos;s Picks. Signed webhooks also push
           changes out, so the portal never has to poll. Keys and webhooks are
           Administrators-only.
         </p>
@@ -58,7 +58,7 @@ export default async function PortalApiPage() {
           <h2 className="mb-1 font-display text-lg font-semibold">API keys</h2>
           <p className="mb-3 text-xs text-muted-foreground">
             Sent as <code>Authorization: Bearer dls_live_…</code>. Only a hash is
-            stored — the full key is shown once, at creation.
+            stored. The full key is shown once, at creation.
           </p>
           {clients.length === 0 ? (
             <EmptyState title="No API keys yet" description="Create one to let the portal call the API." />
@@ -164,7 +164,7 @@ export default async function PortalApiPage() {
         <h2 className="mb-3 font-display text-lg font-semibold">Recent webhook deliveries</h2>
         {deliveries.length === 0 ? (
           <p className="py-3 text-sm text-muted-foreground">
-            No deliveries yet — they appear here when catalogue or Editor&apos;s Pick events fire.
+            No deliveries yet. They appear here when catalogue or Editor&apos;s Pick events fire.
           </p>
         ) : (
           <ul className="divide-y divide-border">

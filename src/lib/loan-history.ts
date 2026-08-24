@@ -182,7 +182,7 @@ export type LiveOverdue = {
 
 /**
  * Fines accruing right now on loans that are still out. Computed live against
- * the calendar — nothing is written until the item is checked in.
+ * the calendar; nothing is written until the item is checked in.
  */
 export async function getAccruingFines(now = new Date()): Promise<LiveOverdue[]> {
   const overdue = await prisma.loan.findMany({

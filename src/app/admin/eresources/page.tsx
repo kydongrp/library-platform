@@ -12,7 +12,7 @@ import {
   type SubscriptionStatus,
 } from "@/lib/eresources";
 import { PROVIDERS } from "@/lib/constants";
-import { formatDate } from "@/lib/format";
+import { NO_VALUE, formatDate } from "@/lib/format";
 import {
   SubscriptionForm,
   UsageUploadForm,
@@ -57,7 +57,7 @@ function costPerUseLabel(r: SubscriptionRow): string {
   return "";
 }
 
-/** 12-month usage mini bar chart (single series — the row names it). */
+/** 12-month usage mini bar chart (single series, since the row names it). */
 function Sparkline({ row }: { row: SubscriptionRow }) {
   const BAR = 7, GAP = 2, H = 26;
   const width = row.monthly.length * (BAR + GAP) - GAP;
@@ -129,7 +129,7 @@ export default async function EresourcesPage({
 
   const spendLabel = spendByCurrency.length
     ? spendByCurrency.map(([cur, cents]) => money(cents, cur)).join(" + ")
-    : "—";
+    : NO_VALUE;
 
   const tiles = [
     { label: "Subscriptions", value: String(subs.length), alert: false },
@@ -247,10 +247,10 @@ export default async function EresourcesPage({
                       </div>
                     </td>
                     <td className="px-5 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {s.annualCostCents != null ? money(s.annualCostCents, s.currency) : "—"}
+                      {s.annualCostCents != null ? money(s.annualCostCents, s.currency) : NO_VALUE}
                     </td>
                     <td className="px-5 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {s.seats ?? "—"}
+                      {s.seats ?? NO_VALUE}
                     </td>
                     <td className="px-5 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>
                       {s.titles > 0 ? (
@@ -315,7 +315,7 @@ export default async function EresourcesPage({
           <h2 className="mb-1 font-display text-lg font-semibold">Not yet registered</h2>
           <p className="mb-3 text-xs text-muted-foreground">
             These providers appear on catalogue records but have no subscription
-            entry — no renewal tracking, no cost-per-use.
+            entry: no renewal tracking, no cost-per-use.
           </p>
           <div className="flex flex-wrap gap-1.5">
             {unregistered.map((u) => (
@@ -358,7 +358,7 @@ export default async function EresourcesPage({
             <Card className="p-5">
               <h2 className="mb-1 font-display text-lg font-semibold">Record a month by hand</h2>
               <p className="mb-4 text-xs text-muted-foreground">
-                For providers without COUNTER exports — sets that month&apos;s item requests directly.
+                For providers without COUNTER exports: sets that month&apos;s item requests directly.
               </p>
               <ManualUsageForm />
             </Card>

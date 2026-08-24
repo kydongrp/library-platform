@@ -4,7 +4,7 @@
  *
  * A query is tokenised, stop words are dropped, and each surviving token is
  * expanded through the variant-spelling pairs (both directions). The result
- * is one prisma clause per token — the caller ANDs them — where each token
+ * is one prisma clause per token (the caller ANDs them), where each token
  * matches if ANY of its spellings appears in ANY of the searched fields.
  *
  * "the great gatsby" with stop word "the" becomes two token clauses (great,

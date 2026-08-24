@@ -174,7 +174,7 @@ export default async function MembersPage({
             <h2 className="mb-1 font-display text-lg font-semibold">Locations &amp; departments</h2>
             <p className="mb-3 text-xs text-muted-foreground">
               The choices the member form offers at registration. Removing an
-              entry never edits members — they keep the value on their record.
+              entry never edits members; they keep the value on their record.
             </p>
             <div className="grid gap-5 sm:grid-cols-2">
               <div>
@@ -184,7 +184,7 @@ export default async function MembersPage({
                 <ul className="divide-y divide-border">
                   {locations.length === 0 && (
                     <li className="py-2 text-xs text-muted-foreground">
-                      None yet — the form falls back to free text.
+                      None yet, so the form falls back to free text.
                     </li>
                   )}
                   {locations.map((l) => (
@@ -209,7 +209,7 @@ export default async function MembersPage({
                 <ul className="divide-y divide-border">
                   {departments.length === 0 && (
                     <li className="py-2 text-xs text-muted-foreground">
-                      None yet — the form falls back to free text.
+                      None yet, so the form falls back to free text.
                     </li>
                   )}
                   {departments.map((d) => (
@@ -234,7 +234,7 @@ export default async function MembersPage({
           <Card className="p-5">
             <h2 className="mb-1 font-display text-lg font-semibold">Bulk import members</h2>
             <p className="mb-3 text-xs text-muted-foreground">
-              CSV with a header row — <code>name</code> and <code>email</code> are
+              CSV with a header row: <code>name</code> and <code>email</code> are
               required; <code>type</code>, <code>status</code>, <code>phone</code>,{" "}
               <code>language</code>, <code>location</code>, <code>department</code>,{" "}
               <code>maxLoans</code> are optional (lenient header names accepted).

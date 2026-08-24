@@ -1,14 +1,14 @@
 // Auto-curation suggestions for the Editor's Pick shelf: a deterministic,
 // explainable score over signals the system already records. Every suggestion
-// carries the reasons it scored, so staff judge the evidence — nothing is
+// carries the reasons it scored, so staff judge the evidence; nothing is
 // promoted automatically.
 //
 // Signals (per candidate title):
-//   demand     — loans in the trailing 90 days
-//   holds      — reservations in the trailing 90 days
-//   rating     — learner review average (can subtract for poorly-rated titles)
-//   freshness  — added to the catalogue within the last 45 days
-//   diversity  — its category is missing from the current shelf
+//   demand:     loans in the trailing 90 days
+//   holds:      reservations in the trailing 90 days
+//   rating:     learner review average (can subtract for poorly-rated titles)
+//   freshness:  added to the catalogue within the last 45 days
+//   diversity:  its category is missing from the current shelf
 // Exclusions: already a pick, staff-dismissed, a REJECTED learner nomination,
 // or its access link failed the last scan (never feature a broken link).
 
@@ -149,8 +149,8 @@ export async function getCurationSuggestions(now = new Date()): Promise<Curation
       reasons.push("new arrival");
     }
 
-    // Diversity is a boost for titles that already earned a positive score —
-    // never a reason on its own, and never a rescue for a poorly-rated title.
+    // Diversity is a boost for titles that already earned a positive score.
+    // It is never a reason on its own, and never a rescue for a poorly-rated title.
     if (score > 0 && !shelfCategories.has(r.category)) {
       score += 8;
       reasons.push(`no ${r.category} pick on the shelf yet`);

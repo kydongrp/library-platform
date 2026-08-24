@@ -2,7 +2,7 @@
  * Ask the database which Neon project it actually lives in.
  *
  * Why this exists: on 23 Aug 2026 a Neon "Scale" upgrade was applied to the
- * only Neon organisation we could see in the console — and it turned out that
+ * only Neon organisation we could see in the console, and it turned out that
  * organisation does not own this database at all. Project names, console tabs
  * and Vercel storage entries all lied by omission; the running Postgres did
  * not. Neon publishes its own identifiers as GUCs, so the authoritative answer
@@ -41,7 +41,7 @@ export async function neonIdentity(url = connectionString()): Promise<NeonIdenti
     const missing = GUCS.filter((g) => !got.get(g));
     if (missing.length) {
       throw new Error(
-        `This does not look like a Neon database — missing ${missing.join(", ")}. ` +
+        `This does not look like a Neon database: missing ${missing.join(", ")}. ` +
           `Host: ${new URL(url).hostname}`,
       );
     }

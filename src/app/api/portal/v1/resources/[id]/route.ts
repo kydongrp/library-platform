@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { authenticatePortalRequest, apiError } from "@/lib/portal-auth";
 import { toPublicResource, publicResourceSelect } from "@/lib/portal-shapes";
 
-// GET /api/portal/v1/resources/:id — full record + aggregate rating.
+// GET /api/portal/v1/resources/:id. Full record + aggregate rating.
 // Only aggregates leave the system: individual reviews carry member identity.
 export const dynamic = "force-dynamic";
 

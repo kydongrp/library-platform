@@ -57,7 +57,7 @@ export function classifyScan(copy: ScannableCopy | null, scope: ScanScope): Scan
 
 /**
  * Copy statuses that are legitimately absent from the shelf during a count.
- * The single source of truth for "expected" arithmetic — the detail page and
+ * The single source of truth for "expected" arithmetic: the detail page and
  * the close action must both use this, never their own literals.
  */
 export const LEGITIMATELY_ABSENT: readonly string[] = ["ON_LOAN"];
@@ -80,7 +80,7 @@ export function tally(input: {
   unexpected: number;
   /**
    * Distinct in-scope copies with a scan row, EXCLUDING legitimately-absent
-   * ones. A scanned on-loan copy is a discrepancy note, not shelf coverage —
+   * ones. A scanned on-loan copy is a discrepancy note, not shelf coverage;
    * counting it here would hide a genuinely missing copy (missing would
    * undercount and coverage overstate, disagreeing with the missing list).
    */

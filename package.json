@@ -25,7 +25,8 @@
     "test:fidelity": "tsx --env-file=.env scripts/test-dump-fidelity.ts",
     "test:tz": "tsx scripts/test-tz.ts",
     "test:calendar": "tsx scripts/test-calendar-tz.ts",
-    "test:tz:guard": "tsx scripts/test-tz-guard.ts"
+    "test:tz:guard": "tsx scripts/test-tz-guard.ts",
+    "test:style": "tsx scripts/test-style.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

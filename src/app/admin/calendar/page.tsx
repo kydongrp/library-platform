@@ -38,7 +38,7 @@ export default async function CalendarPage() {
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           Days the library is shut. Due dates and hold pickup deadlines never
           land on a closed day (they roll to the next open day), and overdue
-          fines do not accrue on one — an item due Friday and returned after a
+          fines do not accrue on one. An item due Friday and returned after a
           closed weekend is late, but not charged for days nobody could return it.
         </p>
       </div>

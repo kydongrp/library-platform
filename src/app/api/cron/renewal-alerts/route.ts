@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     await audit({
       actor: { name: "cron" },
       action: "eresources.renewal.alert",
-      summary: `Renewal alerts — ${renewals.due} subscription${renewals.due === 1 ? "" : "s"} due within 30 days, ${renewals.queued} email${renewals.queued === 1 ? "" : "s"} queued`,
+      summary: `Renewal alerts: ${renewals.due} subscription${renewals.due === 1 ? "" : "s"} due within 30 days, ${renewals.queued} email${renewals.queued === 1 ? "" : "s"} queued`,
       entity: "Subscription",
     });
   }

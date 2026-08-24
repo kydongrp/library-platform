@@ -15,7 +15,7 @@ const labelCls = "mb-1 block text-xs font-medium text-muted-foreground";
 
 /**
  * Staff-side booking form. Uses datetime-local inputs, which post a local
- * wall-clock string — the desk thinks in "Tuesday 2pm", not in UTC.
+ * wall-clock string: the desk thinks in "Tuesday 2pm", not in UTC.
  */
 export function NewBookingForm({ defaultStart }: { defaultStart: string }) {
   return (

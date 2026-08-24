@@ -48,7 +48,7 @@ export const MATERIAL_DESIGNATION_LABELS: Record<string, string> = {
   SERIAL: "Serial",
 };
 
-/** Types that are serials by nature — the default designation for a record. */
+/** Types that are serials by nature, so they set a record's default designation. */
 export const SERIAL_TYPES = new Set(["JOURNAL", "MAGAZINE", "NEWSPAPER"]);
 
 export function defaultDesignationFor(type: string): MaterialDesignation {

@@ -12,7 +12,7 @@ import {
 } from "@/app/actions/catalogue";
 import { COPY_STATUS_LABELS } from "@/lib/constants";
 import { isDigital } from "@/lib/availability";
-import { formatDate } from "@/lib/format";
+import { NO_VALUE, formatDate } from "@/lib/format";
 
 const STATUS_TONE: Record<string, "success" | "primary" | "accent" | "danger" | "muted"> = {
   AVAILABLE: "success",
@@ -130,7 +130,7 @@ export default async function ResourceDetailPage({
                           <Badge tone={STATUS_TONE[copy.status]}>{COPY_STATUS_LABELS[copy.status]}</Badge>
                         </td>
                         <td className="py-2.5 pr-4 text-muted-foreground">
-                          {loan ? `${loan.member.name}` : "—"}
+                          {loan ? `${loan.member.name}` : NO_VALUE}
                         </td>
                         <td className="py-2.5">
                           {onLoan ? (

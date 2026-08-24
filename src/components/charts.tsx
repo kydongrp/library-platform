@@ -225,7 +225,7 @@ export function ColumnChart({
                     stroke={SURFACE}
                     strokeWidth="0.3"
                   >
-                    <title>{`${lab} — ${s.name}: ${nf(v)}`}</title>
+                    <title>{`${lab}, ${s.name}: ${nf(v)}`}</title>
                   </rect>
                 );
               }),
@@ -318,7 +318,7 @@ export function StackedBars({
                           background: s.color,
                           borderRight: `2px solid ${SURFACE}`,
                         }}
-                        title={`${r.label} — ${s.name}: ${format(s.value)}`}
+                        title={`${r.label}, ${s.name}: ${format(s.value)}`}
                       />
                     ))}
                   </div>

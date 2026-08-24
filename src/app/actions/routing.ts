@@ -442,7 +442,7 @@ export async function cancelRouting(_prev: ActionState, formData: FormData): Pro
   return {
     ok: true,
     message: out
-      ? `Run cancelled. It was still out with ${out.member.name} — chase the copy separately.`
+      ? `Run cancelled. It was still out with ${out.member.name}, so chase the copy separately.`
       : "Run cancelled. You can start a fresh run for this issue.",
   };
 }

@@ -45,7 +45,7 @@ export default async function LoansPage({
       },
       orderBy: { dueAt: "asc" },
     }),
-    // Live figures — nothing is charged until the item is checked in.
+    // Live figures: nothing is charged until the item is checked in.
     getAccruingFines(now),
   ]);
   const accruedByLoan = new Map(accruing.map((a) => [a.loanId, a]));
@@ -146,7 +146,7 @@ export default async function LoansPage({
                 <Badge tone="neutral">{l.copy.itemType.loanHours}h loan</Badge>
               )}
               {/* An hourly loan is due at a time of day, so a date alone is
-                  useless — show the clock, and compare instants for lateness. */}
+                  useless. Show the clock, and compare instants for lateness. */}
               {l.copy?.itemType?.loanHours ? (
                 <Badge tone={l.dueAt.getTime() < now.getTime() ? "danger" : "muted"}>
                   {l.dueAt.getTime() < now.getTime() ? "overdue since " : "due "}
@@ -176,7 +176,7 @@ export default async function LoansPage({
                     {/* Resolving a claim: it turns up (Found), the member
                         accepts they have it (Withdraw), or it is written off. */}
                     <ActionButton action={checkin} fields={{ loanId: l.id }} variant="primary" className="!px-3 !py-1.5 text-xs" pendingLabel="…">
-                      Found — check in
+                      Found: check in
                     </ActionButton>
                     <WithdrawClaimButton loanId={l.id} />
                     <WriteOffClaimButton loanId={l.id} title={l.resource.title} />

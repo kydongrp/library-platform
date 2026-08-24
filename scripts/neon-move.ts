@@ -178,7 +178,7 @@ function readCreds(): { pooled: string; direct: string } {
 /** Apply the current Prisma schema to `url`. */
 function pushSchema(url: string): void {
   // Spawn the Prisma CLI entry point on this node binary: npx.cmd fails with
-  // EINVAL on Windows without a shell. And override ALL THREE url variables —
+  // EINVAL on Windows without a shell. And override ALL THREE url variables:
   // prisma.config.ts prefers POSTGRES_URL_NON_POOLING, so overriding only
   // DATABASE_URL would push this schema at the old production database.
   execFileSync(
@@ -247,7 +247,7 @@ async function setReadOnly(on: boolean): Promise<void> {
     if (on) {
       await c.query(`ALTER DATABASE "${db}" SET default_transaction_read_only = on`);
       // The setting applies when a session connects, so existing pooled
-      // connections — Vercel functions, a stray psql, Prisma Studio — keep
+      // connections (Vercel functions, a stray psql, Prisma Studio) keep
       // writing until they reconnect. Cut them.
       const killed = await c.query<{ pid: number }>(
         `SELECT pg_terminate_backend(pid) AS pid FROM pg_stat_activity
@@ -371,7 +371,7 @@ async function cmdCreate(): Promise<void> {
   console.log(`  direct host : ${new URL(direct).hostname}`);
 
   const problems = await checkAdminCapability(direct);
-  for (const p of problems) console.log(`  NOTE: ${p} — backup:drill and db:test:provision need this`);
+  for (const p of problems) console.log(`  NOTE: ${p}; backup:drill and db:test:provision need this`);
 
   console.log("\nApplying the Prisma schema");
   pushSchema(direct);
@@ -389,7 +389,7 @@ async function cmdSync(): Promise<void> {
   const source = connectionString();
 
   // A restore truncates before it loads. If .env.migration ever named the
-  // source, this would wipe production and reload it from its own dump — which
+  // source, this would wipe production and reload it from its own dump, which
   // would probably even succeed, and would still be an outage.
   if (describeTarget(direct) === describeTarget(source)) {
     console.error(`Refusing to sync: ${CRED_FILE} points at the source itself (${describeTarget(source)}).`);

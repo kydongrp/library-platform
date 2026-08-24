@@ -26,7 +26,7 @@ function isUniqueViolation(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 }
 
-/** Codes are uppercase, no spaces — they appear on spine labels and exports. */
+/** Codes are uppercase, no spaces: they appear on spine labels and exports. */
 function normaliseCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, "_").slice(0, 24);
 }
@@ -81,14 +81,14 @@ async function createCodeRow(kind: ListKind, formData: FormData): Promise<Action
 
   await audit({
     action: `items.${kind}.create`,
-    summary: `Added item ${kind === "itemType" ? "type" : kind} ${code} — ${name}`,
+    summary: `Added item ${kind === "itemType" ? "type" : kind} ${code}: ${name}`,
     entity: "ItemCollection",
   });
   revalidatePath("/admin/items");
   return { ok: true, message: `${code} added.` };
 }
 
-// Each must be an exported `async function` — Next rejects arrow consts as
+// Each must be an exported `async function`: Next rejects arrow consts as
 // server actions, and TypeScript won't flag it.
 export async function createCollection(_p: ActionState, f: FormData): Promise<ActionState> {
   return createCodeRow("collection", f);
@@ -111,13 +111,13 @@ export async function deleteCodeRow(
   const id = clip(formData.get("id"), 40);
 
   // Copies keep working when a code is removed (the FK nulls out), but a
-  // policy row keyed on an item type would vanish with it — say so first.
+  // policy row keyed on an item type would vanish with it; say so first.
   if (kind === "itemType") {
     const inUse = await prisma.loanPolicy.count({ where: { itemTypeId: id } });
     if (inUse > 0)
       return {
         ok: false,
-        message: `${inUse} loan polic${inUse === 1 ? "y" : "ies"} use this item type — delete those rows first.`,
+        message: `${inUse} loan polic${inUse === 1 ? "y" : "ies"} use this item type. Delete those rows first.`,
       };
   }
 
@@ -132,7 +132,7 @@ export async function deleteCodeRow(
     if (openCount > 0)
       return {
         ok: false,
-        message: `An open stocktake is scoped to this ${kind} — close or discard it first.`,
+        message: `An open stocktake is scoped to this ${kind}. Close or discard it first.`,
       };
   }
 
@@ -155,7 +155,7 @@ export async function deleteCodeRow(
     entityId: id,
   });
   revalidatePath("/admin/items");
-  return { ok: true, message: `${row.code} deleted — items that used it keep their other details.` };
+  return { ok: true, message: `${row.code} deleted. Items that used it keep their other details.` };
 }
 
 /* ---------- Batch property change (Vibrant: Change Item Properties) ---------- */
@@ -201,7 +201,7 @@ export async function changeItemProperties(
   if (data.status && onLoan > 0)
     return {
       ok: false,
-      message: `${onLoan} of the selected items ${onLoan === 1 ? "is" : "are"} on loan — their status can't be changed until they're returned.`,
+      message: `${onLoan} of the selected items ${onLoan === 1 ? "is" : "are"} on loan. Their status can't be changed until they're returned.`,
     };
 
   const r = await prisma.copy.updateMany({ where: { id: { in: ids } }, data });
@@ -232,7 +232,7 @@ export async function weedItems(
     .slice(0, MAX_BATCH);
   if (ids.length === 0) return { ok: false, message: "Select at least one item to weed." };
   const reason = clip(formData.get("reason"), 200);
-  if (!reason) return { ok: false, message: "A reason is required — it goes on the weeding log." };
+  if (!reason) return { ok: false, message: "A reason is required: it goes on the weeding log." };
 
   const copies = await prisma.copy.findMany({
     where: { id: { in: ids } },
@@ -246,7 +246,7 @@ export async function weedItems(
   if (onLoan.length > 0)
     return {
       ok: false,
-      message: `${onLoan.length} selected item${onLoan.length === 1 ? " is" : "s are"} on loan — return ${onLoan.length === 1 ? "it" : "them"} first.`,
+      message: `${onLoan.length} selected item${onLoan.length === 1 ? " is" : "s are"} on loan. Return ${onLoan.length === 1 ? "it" : "them"} first.`,
     };
 
   // Log before deleting: the log is the only record that survives.
@@ -266,7 +266,7 @@ export async function weedItems(
 
   await audit({
     action: "items.weed",
-    summary: `Weeded ${r.count} item${r.count === 1 ? "" : "s"} — ${reason}`,
+    summary: `Weeded ${r.count} item${r.count === 1 ? "" : "s"}: ${reason}`,
     entity: "Copy",
     detail: { count: r.count, reason, barcodes: copies.map((c) => c.barcode).slice(0, 50) },
   });
@@ -299,13 +299,13 @@ export async function importItems(_p: ActionState, formData: FormData): Promise<
   const file = formData.get("file");
   if (file instanceof File && file.size > 0) {
     if (file.size > IMPORT_MAX_BYTES)
-      return { ok: false, message: "That file is over 3.5MB — split it and import in parts." };
+      return { ok: false, message: "That file is over 3.5MB. Split it and import in parts." };
     text = await file.text();
     source = file.name.slice(0, 120) || "upload";
   } else {
     text = String(formData.get("pasted") ?? "");
     if (text.length > IMPORT_MAX_BYTES)
-      return { ok: false, message: "Pasted content is too large — import in parts." };
+      return { ok: false, message: "Pasted content is too large. Import in parts." };
   }
   if (!text.trim())
     return {
@@ -360,7 +360,7 @@ export async function importItems(_p: ActionState, formData: FormData): Promise<
   const idSet = new Set(byId.map((r) => r.id));
   // Collision-aware maps: a key shared by several records must NOT attach the
   // copy to whichever happened to come back last (e.g. two editions with the
-  // same title) — ambiguity is reported per row instead.
+  // same title). Ambiguity is reported per row instead.
   const AMBIGUOUS = " ambiguous";
   const isbnMap = new Map<string, string>();
   for (const r of withIsbn) {
@@ -397,7 +397,7 @@ export async function importItems(_p: ActionState, formData: FormData): Promise<
     if (resourceId === AMBIGUOUS) {
       skipped.push({
         line: row.line,
-        reason: `${row.barcode}: several catalogue records share this ${row.isbn && isbnMap.get(row.isbn) === AMBIGUOUS ? "ISBN" : "title"} — import with the record id instead`,
+        reason: `${row.barcode}: several catalogue records share this ${row.isbn && isbnMap.get(row.isbn) === AMBIGUOUS ? "ISBN" : "title"}; import with the record id instead`,
       });
       continue;
     }

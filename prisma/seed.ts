@@ -18,7 +18,7 @@ type Seed = {
   author: string;
   isbn?: string;
   type: string;
-  /** MONOGRAPH | SERIAL — omitted means "derive from type". */
+  /** MONOGRAPH | SERIAL. Omitted means "derive from type". */
   materialDesignation?: string;
   category: string;
   publisher?: string;
@@ -70,7 +70,7 @@ const RESOURCES: Seed[] = [
     publisher: "O'Reilly Media",
     publishedYear: 2017,
     description:
-      "The big ideas behind reliable, scalable, and maintainable systems — storage engines, replication, and distributed data.",
+      "The big ideas behind reliable, scalable, and maintainable systems: storage engines, replication, and distributed data.",
     coverColor: "#9a3412",
     digital: true,
     licenseSeats: 1, // demo: single concurrent-user licence → exercises the digital queue
@@ -85,7 +85,7 @@ const RESOURCES: Seed[] = [
     publisher: "Farrar, Straus and Giroux",
     publishedYear: 2011,
     description:
-      "A Nobel laureate's tour of the two systems that drive the way we think — fast intuition and slow reasoning.",
+      "A Nobel laureate's tour of the two systems that drive the way we think: fast intuition and slow reasoning.",
     coverColor: "#374151",
     copies: 2,
   },
@@ -99,7 +99,7 @@ const RESOURCES: Seed[] = [
     publisher: "Harper",
     publishedYear: 2015,
     description:
-      "How an unremarkable ape came to dominate the planet — a sweeping account of the cognitive, agricultural, and scientific revolutions.",
+      "A sweeping account of the cognitive, agricultural, and scientific revolutions that let an unremarkable ape come to dominate the planet.",
     coverColor: "#b45309",
     copies: 4,
   },
@@ -168,7 +168,7 @@ const RESOURCES: Seed[] = [
     publisher: "Basic Books",
     publishedYear: 2013,
     description:
-      "Why some products satisfy while others frustrate — a foundational text on human-centered design.",
+      "Why some products satisfy while others frustrate. A foundational text on human-centered design.",
     coverColor: "#be123c",
     copies: 3,
   },
@@ -222,7 +222,7 @@ const RESOURCES: Seed[] = [
     publisher: "Ace",
     publishedYear: 1965,
     description:
-      "The desert planet Arrakis, the spice melange, and a young heir's rise — the cornerstone of modern science fiction.",
+      "The desert planet Arrakis, the spice melange, and a young heir's rise: the cornerstone of modern science fiction.",
     coverColor: "#92400e",
     copies: 3,
   },
@@ -265,7 +265,7 @@ const RESOURCES: Seed[] = [
     publisher: "Avery",
     publishedYear: 2018,
     description:
-      "Tiny changes, remarkable results — a practical framework for improving every day.",
+      "Tiny changes, remarkable results. A practical framework for improving every day.",
     coverColor: "#ca8a04",
     copies: 4,
   },
@@ -439,7 +439,7 @@ const MEMBERS = [
 ];
 
 /**
- * Service calendar — ensured on EVERY run (idempotent). Only FIXED-DATE
+ * Service calendar: ensured on EVERY run (idempotent). Only FIXED-DATE
  * Singapore public holidays are seeded: the lunar and Islamic holidays
  * (Chinese New Year, Good Friday, Hari Raya, Vesak, Deepavali) shift each
  * year and are gazetted by MOM, so staff add those on the Calendar page
@@ -472,7 +472,7 @@ async function ensureServiceCalendar() {
 }
 
 /**
- * Backfills for rows that predate a column — idempotent, runs on EVERY deploy.
+ * Backfills for rows that predate a column: idempotent, runs on EVERY deploy.
  * Without these, a live database silently reports every historical loan as
  * on-time and every serial as a monograph.
  */
@@ -507,7 +507,7 @@ async function ensureBackfills() {
 }
 
 /**
- * MARC tag definitions — ensured on EVERY run. The cataloguing editor is
+ * MARC tag definitions: ensured on EVERY run. The cataloguing editor is
  * unusable without them, and staff edits are preserved (update is empty).
  */
 async function ensureMarcTagDefs() {
@@ -527,7 +527,7 @@ async function ensureMarcTagDefs() {
 }
 
 /**
- * Item-level code lists — ensured on EVERY run. Item types are what the loan
+ * Item-level code lists: ensured on EVERY run. Item types are what the loan
  * policy matrix keys on, so an empty table would leave the matrix unusable.
  */
 async function ensureItemCodeLists() {
@@ -556,7 +556,7 @@ async function ensureItemCodeLists() {
     await prisma.itemType.upsert({ where: { code: t.code }, create: t, update: {} });
 }
 
-/** Built-in member statuses — ensured on EVERY run (idempotent), since the
+/** Built-in member statuses: ensured on EVERY run (idempotent), since the
  *  circulation gate and member forms rely on the table being populated. */
 async function ensureMemberStatuses() {
   for (const s of [
@@ -679,7 +679,7 @@ async function main() {
     if (existing > 0) {
       console.log(
         `Database already has data (resources ${resources}, members ${members}, ` +
-          `staff ${admins}, loans ${loans}) — skipping seed.`,
+          `staff ${admins}, loans ${loans}). Skipping seed.`,
       );
       return;
     }

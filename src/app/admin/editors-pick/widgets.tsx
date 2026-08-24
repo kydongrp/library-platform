@@ -27,7 +27,7 @@ function TitleSelect({ name, options, idPrefix }: { name: string; options: Title
       </option>
       {options.map((o) => (
         <option key={o.id} value={o.id}>
-          {o.title} — {o.author}
+          {o.title} ({o.author})
         </option>
       ))}
     </select>
@@ -50,7 +50,7 @@ export function PromoteForm({ options }: { options: TitleOption[] }) {
         <div>
           <label className={labelCls} htmlFor="pf-blurb">Curator&apos;s note</label>
           <textarea id="pf-blurb" name="blurb" rows={2} className={fieldCls}
-            placeholder="Why it's featured — shown with the pick" />
+            placeholder="Why it's featured, shown with the pick" />
         </div>
         <SubmitButton pendingLabel="Promoting…">★ Promote to Editor&apos;s Pick</SubmitButton>
       </StatefulForm>
@@ -125,7 +125,7 @@ export function RecordSubmissionForm({ options }: { options: TitleOption[] }) {
       <h2 className="font-display text-lg font-semibold">Record a learner submission</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Enter nominations retrieved from the portal&apos;s form.sg responses or WhatsApp,
-        then approve them below — no re-typing at promotion time.
+        then approve them below, with no re-typing at promotion time.
       </p>
       <StatefulForm action={recordSubmission} className="mt-3 space-y-3">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -186,7 +186,7 @@ export function RecordSubmissionForm({ options }: { options: TitleOption[] }) {
         <div>
           <label className={labelCls} htmlFor="rs-reason">Learner&apos;s reason</label>
           <textarea id="rs-reason" name="reason" rows={2} className={fieldCls}
-            placeholder="Copied from the form response — becomes the curator's note on approval" />
+            placeholder="Copied from the form response; becomes the curator's note on approval" />
         </div>
         <SubmitButton variant="outline" pendingLabel="Recording…">✍ Record submission</SubmitButton>
       </StatefulForm>
@@ -225,7 +225,7 @@ export function PickActions({ pick }: { pick: PickInfo }) {
             variant="outline"
             className="!px-3 !py-1.5 text-xs"
             pendingLabel="Saving…"
-            confirm={`Keep "${pick.title}" in the catalogue?\n\nIt becomes an internal pick — removing it from Editor's Picks later will no longer delete it from the library.`}
+            confirm={`Keep "${pick.title}" in the catalogue?\n\nIt becomes an internal pick. Removing it from Editor's Picks later will no longer delete it from the library.`}
           >
             ⬇ Keep in catalogue
           </ActionButton>
@@ -238,8 +238,8 @@ export function PickActions({ pick }: { pick: PickInfo }) {
           pendingLabel="Removing…"
           confirm={
             pick.epExternal
-              ? `Remove "${pick.title}"?\n\nThis is an EXTERNAL pick — it will be deleted from the library entirely.`
-              : `Remove "${pick.title}" from Editor's Picks?\n\nIt stays in the catalogue — only the pick is removed.`
+              ? `Remove "${pick.title}"?\n\nThis is an EXTERNAL pick, so it will be deleted from the library entirely.`
+              : `Remove "${pick.title}" from Editor's Picks?\n\nIt stays in the catalogue; only the pick is removed.`
           }
         >
           ✕ Remove

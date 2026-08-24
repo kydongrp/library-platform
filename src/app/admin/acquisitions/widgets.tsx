@@ -16,7 +16,7 @@ const labelCls = "mb-1 block text-xs font-medium text-muted-foreground";
 export type IdName = { id: string; name: string };
 export type AccountOption = { id: string; code: string; name: string };
 
-/** Optional account picker — blank means the spend carries no finance code. */
+/** Optional account picker: blank means the spend carries no finance code. */
 function AccountField({ accounts }: { accounts: AccountOption[] }) {
   if (accounts.length === 0) return null;
   return (
@@ -135,7 +135,7 @@ export function PurchaseOrderForm({
             </div>
           )}
           <div>
-            <span className={labelCls}>Order lines (title · qty · unit price) — fill what you need</span>
+            <span className={labelCls}>Order lines (title · qty · unit price). Fill what you need</span>
             <div className="grid gap-1.5">
               {LINE_SLOTS.map((i) => (
                 <div key={i} className="grid grid-cols-[1fr_4.5rem_6rem] gap-1.5">
@@ -217,7 +217,7 @@ export function InvoiceForm({
           <div>
             <label htmlFor="in-po" className={labelCls}>Against purchase order (optional)</label>
             <select id="in-po" name="poId" defaultValue="" className={fieldCls}>
-              <option value="">— none —</option>
+              <option value="">No purchase order</option>
               {openOrders.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
           </div>

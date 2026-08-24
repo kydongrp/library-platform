@@ -4,7 +4,7 @@
  *   COMPARE_B=<other database url> npx tsx --env-file=.env scripts/db-compare.ts
  *   COMPARE_A=<url> COMPARE_B=<url> npx tsx scripts/db-compare.ts
  *
- * A defaults to the app's own database. Read only on both sides — it takes no
+ * A defaults to the app's own database. Read only on both sides: it takes no
  * locks beyond ordinary snapshots and writes nothing, so it is safe to run
  * against production.
  *

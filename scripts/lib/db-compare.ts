@@ -6,10 +6,10 @@
  * to NULL, lost a unique index, mangled a timezone or reordered an enum would
  * still count the same number of rows. So this compares four things:
  *
- *   1. shape    — tables, columns, types, nullability, defaults
- *   2. rules    — indexes, constraints, foreign keys, enum labels, extensions
- *   3. counts   — rows per table
- *   4. content  — a per-table md5 over every row, order independent
+ *   1. shape:    tables, columns, types, nullability, defaults
+ *   2. rules:    indexes, constraints, foreign keys, enum labels, extensions
+ *   3. counts:   rows per table
+ *   4. content:  a per-table md5 over every row, order independent
  *
  * The content digest is the one that matters. It hashes Postgres's own text
  * rendering of every row, projected through ROW(...) with the columns in
@@ -25,7 +25,7 @@
  * IntervalStyle) are pinned on connect, so they cannot drift. A different
  * Postgres major version is reported but does not disable the digest: only
  * per-column output functions are involved, and those are stable across
- * versions for every type this schema uses. That is deliberate — the move this
+ * versions for every type this schema uses. That is deliberate: the move this
  * was written for crosses from Postgres 17 to 18, and a check that switches
  * itself off at the moment it is needed is not a check.
  *
@@ -78,10 +78,10 @@ async function connect(url: string): Promise<{ client: Client; asFound: Record<s
   await c.connect();
 
   // Read the rendering settings BEFORE overriding them. Pinning first and
-  // comparing afterwards would report agreement this had itself created —
-  // and a per-database `ALTER DATABASE ... SET TimeZone` on one side but not
-  // the other is exactly the kind of difference worth knowing about, because
-  // the application never pins anything.
+  // comparing afterwards would report agreement this had itself created. A
+  // per-database `ALTER DATABASE ... SET TimeZone` on one side but not the
+  // other is exactly the kind of difference worth knowing about, because the
+  // application never pins anything.
   const asFound = await readSettings(c);
 
   // Then pin, so the digests below cannot be thrown off by a server default.
@@ -104,9 +104,9 @@ async function readSettings(c: Client): Promise<Record<string, string>> {
  * Collation, ctype, locale provider and encoding.
  *
  * These decide text ordering and case folding, so a difference changes what
- * `ORDER BY title` returns and what a case-insensitive search matches — and
- * the content digest is deliberately order-independent, so it cannot see any
- * of it. Blocking, because there is no benign version of this differing.
+ * `ORDER BY title` returns and what a case-insensitive search matches. The
+ * content digest is deliberately order-independent, so it cannot see any of
+ * it. Blocking, because there is no benign version of this differing.
  */
 async function locale(c: Client): Promise<Record<string, string>> {
   const { rows } = await c.query<Record<string, string>>(
@@ -216,7 +216,7 @@ async function constraints(c: Client): Promise<Record<string, string>> {
   return Object.fromEntries(rows.map((r) => [r.k, r.v]));
 }
 
-/** Enum labels in declaration order — Prisma enums are stored this way. */
+/** Enum labels in declaration order: Prisma enums are stored this way. */
 async function enums(c: Client): Promise<Record<string, string>> {
   const { rows } = await c.query<{ k: string; v: string }>(
     `SELECT t.typname AS k, string_agg(e.enumlabel, ',' ORDER BY e.enumsortorder) AS v
@@ -272,7 +272,7 @@ async function rowCount(c: Client, table: string): Promise<number> {
  * md5 over every row of a table, independent of row order.
  *
  * `t::text` renders the whole row through Postgres's own output functions, so
- * this catches a changed value in any column — including ones the app rarely
+ * this catches a changed value in any column, including ones the app rarely
  * reads. Sorting by the rendered text is what makes it order independent.
  */
 /**
@@ -281,7 +281,7 @@ async function rowCount(c: Client, table: string): Promise<number> {
  *
  * Length-prefixing rather than a separator character, because any separator
  * can appear in the data and then two different rows hash the same. The
- * obvious choice, 0x1F, is the ISO 2709 subfield delimiter — in a cataloguing
+ * obvious choice, 0x1F, is the ISO 2709 subfield delimiter. In a cataloguing
  * system that is a plausible value, not an impossible one. Prefixing the
  * octet length makes the encoding injective whatever the bytes are, and gives
  * NULL a form no value can imitate.
@@ -296,10 +296,10 @@ function nullSafeText(col: string): string {
  * Deliberately not `t::text`. A whole-row cast also encodes composite quoting
  * rules, which is extra surface that can differ between Postgres major
  * versions; casting each column separately depends only on each type's own
- * output function. That is what lets a database on Postgres 17
- * be compared against its copy on Postgres 18 — which is the actual situation
- * here, and without it the strongest check would be unavailable exactly when
- * it is needed most.
+ * output function. That is what lets a database on Postgres 17 be compared
+ * against its copy on Postgres 18, which is the actual situation here, and
+ * without it the strongest check would be unavailable exactly when it is
+ * needed most.
  */
 function rowExpression(cols: string[]): string {
   return cols.map(nullSafeText).join(" || ");

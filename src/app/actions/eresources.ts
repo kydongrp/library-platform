@@ -7,7 +7,7 @@ import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit, diffOf } from "@/lib/audit";
 import { parseCounterUsage, CPU_METRIC } from "@/lib/counter";
 
-// Server actions are directly invocable endpoints — re-check rights here.
+// Server actions are directly invocable endpoints, so re-check rights here.
 // Subscriptions are content operations, so they ride the CATALOGUE area.
 async function canEditEresources(): Promise<boolean> {
   return canEdit(await getCurrentAdmin(), "CATALOGUE");
@@ -76,13 +76,13 @@ export async function saveSubscription(
     notes: clip(formData.get("notes"), 2000) || null,
   };
 
-  // Provider is the natural key — block renames/creates that collide.
+  // Provider is the natural key: block renames/creates that collide.
   const clash = await prisma.subscription.findFirst({
     where: { provider, ...(id ? { NOT: { id } } : {}) },
     select: { id: true },
   });
   if (clash)
-    return { ok: false, message: `A subscription for ${provider} already exists — edit that one instead.` };
+    return { ok: false, message: `A subscription for ${provider} already exists. Edit that one instead.` };
 
   try {
     if (id) {
@@ -106,10 +106,10 @@ export async function saveSubscription(
       });
     }
   } catch (err) {
-    // The pre-check above races concurrent submits — the unique index is the
+    // The pre-check above races concurrent submits; the unique index is the
     // real guard, so translate its violation instead of surfacing a 500.
     if (err instanceof Error && "code" in err && (err as { code?: string }).code === "P2002")
-      return { ok: false, message: `A subscription for ${provider} already exists — edit that one instead.` };
+      return { ok: false, message: `A subscription for ${provider} already exists. Edit that one instead.` };
     throw err;
   }
   revalidatePath("/admin/eresources");
@@ -153,13 +153,13 @@ export async function ingestCounterUsage(
   let source = "pasted";
   if (file instanceof File && file.size > 0) {
     if (file.size > MAX_UPLOAD_BYTES)
-      return { ok: false, message: "That file is over 3.5MB. COUNTER monthly reports are small — export a single year at a time." };
+      return { ok: false, message: "That file is over 3.5MB. COUNTER monthly reports are small, so export a single year at a time." };
     text = await file.text();
     source = file.name.slice(0, 120) || "upload";
   } else {
     text = String(formData.get("pasted") ?? "");
     if (text.length > MAX_UPLOAD_BYTES)
-      return { ok: false, message: "Pasted content is too large — paste one report at a time." };
+      return { ok: false, message: "Pasted content is too large. Paste one report at a time." };
   }
   if (!text.trim()) return { ok: false, message: "Upload a COUNTER CSV/TSV file or paste its contents." };
 
@@ -188,7 +188,7 @@ export async function ingestCounterUsage(
 
   const notes: string[] = [];
   if (result.platform && result.platform.toLowerCase() !== provider.toLowerCase())
-    notes.push(`Note: the report names its platform as "${result.platform}" — check you picked the right provider.`);
+    notes.push(`Note: the report names its platform as "${result.platform}", so check you picked the right provider.`);
   notes.push(...result.warnings);
   revalidatePath("/admin/eresources");
   return {

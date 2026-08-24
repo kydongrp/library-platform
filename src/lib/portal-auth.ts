@@ -1,8 +1,8 @@
 // Authentication for the read-only Portal API (/api/portal/v1).
 // Keys look like "dls_live_<48 hex chars>"; only the SHA-256 hash is stored,
 // so a database leak never leaks credentials. The prefix column exists for
-// display ("dls_live_3fa9…") and support conversations, not for lookup —
-// lookup is by unique hash.
+// display ("dls_live_3fa9…") and support conversations. Lookup is by the
+// unique hash, not the prefix.
 
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
@@ -57,7 +57,7 @@ export async function authenticatePortalRequest(request: Request): Promise<ApiAu
     return { ok: false, response: apiError(403, "revoked_key", "This API key has been revoked.") };
   }
 
-  // Bump lastUsedAt at most once a minute — no write amplification per request.
+  // Bump lastUsedAt at most once a minute: no write amplification per request.
   const now = new Date();
   if (!client.lastUsedAt || now.getTime() - client.lastUsedAt.getTime() > LAST_USED_BUMP_MS) {
     await prisma.apiClient

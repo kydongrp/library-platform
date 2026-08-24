@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticatePortalRequest } from "@/lib/portal-auth";
 
-// GET /api/portal/v1/ping — credential check for integrators.
+// GET /api/portal/v1/ping: credential check for integrators.
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {

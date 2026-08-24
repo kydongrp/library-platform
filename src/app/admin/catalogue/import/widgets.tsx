@@ -128,7 +128,7 @@ export function ManualArticleForm({
         <p className="text-sm font-medium">✨ Draft with AI</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Paste a DOI, URL, or citation and the assistant fills the form below for your
-          review — nothing is saved until you check the fields and click Add.
+          review. Nothing is saved until you check the fields and click Add.
           {!aiEnabled && " DOIs resolve via Crossref; set ANTHROPIC_API_KEY to enable URL and free-text drafting."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -198,7 +198,7 @@ export function ManualArticleForm({
               <label className={labelCls} htmlFor="ma-title">Title *</label>
               <input id="ma-title" name="title" required className={fieldCls}
                 defaultValue={draft?.title ?? ""}
-                placeholder="e.g. Jane's Defence Weekly — Naval Systems Assessment" />
+                placeholder="e.g. Jane's Defence Weekly: Naval Systems Assessment" />
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -275,8 +275,8 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
   function downloadCsvTemplate() {
     download("batch-template.csv", "text/csv", [
       "title,authors,venue,year,url,type,category,abstract",
-      `"Jane's Defence Weekly — Indo-Pacific Naval Modernisation","Jane's editorial team","Jane's Defence Weekly",2025,https://customer.janes.com/display/JDW-0001,JOURNAL,Technology,"Regional naval build-up analysis."`,
-      `"Jane's Land Warfare Platforms — Tracked Vehicles","Jane's editorial team","Jane's Land Warfare Platforms",2024,https://customer.janes.com/display/JLWP-0007,EBOOK,Technology,"Reference entry on tracked platforms."`,
+      `"Jane's Defence Weekly: Indo-Pacific Naval Modernisation","Jane's editorial team","Jane's Defence Weekly",2025,https://customer.janes.com/display/JDW-0001,JOURNAL,Technology,"Regional naval build-up analysis."`,
+      `"Jane's Land Warfare Platforms: Tracked Vehicles","Jane's editorial team","Jane's Land Warfare Platforms",2024,https://customer.janes.com/display/JLWP-0007,EBOOK,Technology,"Reference entry on tracked platforms."`,
     ].join("\n"));
   }
 
@@ -323,7 +323,7 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
       return;
     }
 
-    // Read the batch locally — the file is never uploaded, so size is unbounded.
+    // Read the batch locally: the file is never uploaded, so size is unbounded.
     const file = fd.get("file");
     let text = "";
     let filename: string | undefined;
@@ -351,13 +351,13 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
     } catch {
       setBusy(false);
       setProgress(null);
-      setResult({ ok: false, message: "Could not parse the file — check it is valid CSV, JSON, XML, or MARCXML." });
+      setResult({ ok: false, message: "Could not parse the file. Check it is valid CSV, JSON, XML, or MARCXML." });
       return;
     }
     if (rows.length === 0) {
       setBusy(false);
       setProgress(null);
-      setResult({ ok: false, message: errors[0] ?? "No records found — check the file format." });
+      setResult({ ok: false, message: errors[0] ?? "No records found. Check the file format." });
       return;
     }
 
@@ -398,7 +398,7 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
     if (skipped > 0) parts.push(`${skipped} skipped`);
     let message = `${chosenProvider} batch (${format.toUpperCase()}): ${parts.join(" · ")}.`;
     const notes = [...errors, ...skipReasons];
-    if (notes.length) message += ` — ${notes.slice(0, 6).join("; ")}`;
+    if (notes.length) message += ` Notes: ${notes.slice(0, 6).join("; ")}`;
     const ok = imported > 0 || duplicates > 0;
     setResult({ ok, message });
     toast(message, ok);
@@ -408,7 +408,7 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
     <Card className="max-w-3xl p-5">
       <h2 className="font-display text-lg font-semibold">Bulk import a batch file</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Upload a whole batch — <strong>CSV, JSON, XML, or Knovel MARCXML</strong> — and every
+        Upload a whole batch (<strong>CSV, JSON, XML, or Knovel MARCXML</strong>) and every
         record is imported as a digital, link-out resource under the chosen provider.
         The file is parsed in your browser and streamed in, so there is <strong>no upload
         size limit</strong>. The format is auto-detected, fields are matched leniently, and

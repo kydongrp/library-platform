@@ -34,20 +34,20 @@ export async function createStocktake(_p: ActionState, formData: FormData): Prom
   const locationId = clip(formData.get("locationId"), 40) || null;
   const note = clip(formData.get("note"), 500) || null;
 
-  // The submitted scope ids must exist — a stale form (the code was deleted
+  // The submitted scope ids must exist: a stale form (the code was deleted
   // while it sat open) or a tampered id would otherwise crash on the FK.
   if (collectionId) {
     const c = await prisma.itemCollection.findUnique({ where: { id: collectionId }, select: { id: true } });
-    if (!c) return { ok: false, message: "That collection no longer exists — reload and pick again." };
+    if (!c) return { ok: false, message: "That collection no longer exists. Reload and pick again." };
   }
   if (locationId) {
     const l = await prisma.itemLocation.findUnique({ where: { id: locationId }, select: { id: true } });
-    if (!l) return { ok: false, message: "That location no longer exists — reload and pick again." };
+    if (!l) return { ok: false, message: "That location no longer exists. Reload and pick again." };
   }
 
   // One open stocktake per scope slice keeps scans unambiguous. (findFirst
-  // then create can race two simultaneous submits into two open stocktakes;
-  // harmless to data — each keeps its own scan list — and staff can discard one.)
+  // then create can race two simultaneous submits into two open stocktakes.
+  // Each keeps its own scan list, so no data is harmed and staff can discard one.)
   const open = await prisma.stocktake.findFirst({
     where: { status: "OPEN", collectionId, locationId },
     select: { name: true },
@@ -85,7 +85,7 @@ export async function recordScan(_p: ActionState, formData: FormData): Promise<A
     select: { id: true, status: true, collectionId: true, locationId: true },
   });
   if (!st) return { ok: false, message: "Stocktake not found." };
-  if (st.status !== "OPEN") return { ok: false, message: "This stocktake is closed — scans are frozen." };
+  if (st.status !== "OPEN") return { ok: false, message: "This stocktake is closed. Scans are frozen." };
 
   const scope: ScanScope = { collectionId: st.collectionId, locationId: st.locationId };
   // Case-insensitive lookup: imports store barcodes uppercase, but copies
@@ -139,15 +139,15 @@ export async function recordScan(_p: ActionState, formData: FormData): Promise<A
 
   // The close action claims the stocktake (OPEN → CLOSED) before it reads the
   // scan list. If that claim landed between our status check and our insert,
-  // this scan is invisible to the frozen summary — take it back out.
+  // this scan is invisible to the frozen summary, so take it back out.
   const after = await prisma.stocktake.findUnique({ where: { id: st.id }, select: { status: true } });
   if (after?.status !== "OPEN") {
     await prisma.stocktakeScan.delete({ where: { id: scanId } }).catch(() => {});
-    return { ok: false, message: "This stocktake was closed while you were scanning — scan not recorded." };
+    return { ok: false, message: "This stocktake was closed while you were scanning. The scan was not recorded." };
   }
 
   revalidatePath(`/admin/items/stocktake/${st.id}`);
-  const title = copy?.resource.title ? ` — ${copy.resource.title.slice(0, 60)}` : "";
+  const title = copy?.resource.title ? `, ${copy.resource.title.slice(0, 60)}` : "";
   const label =
     verdict.result === "FOUND" ? "Found" : verdict.result === "MISPLACED" ? "MISPLACED" : "UNEXPECTED";
   return {
@@ -167,13 +167,13 @@ export async function undoScan(_p: ActionState, formData: FormData): Promise<Act
     where: { id: scan.stocktakeId },
     select: { status: true },
   });
-  if (st?.status !== "OPEN") return { ok: false, message: "This stocktake is closed — scans are frozen." };
+  if (st?.status !== "OPEN") return { ok: false, message: "This stocktake is closed. Scans are frozen." };
 
   await prisma.stocktakeScan.delete({ where: { id } });
 
   // Same race as recordScan, mirrored: if the close claimed the stocktake
-  // between our check and our delete, its frozen summary counted this scan —
-  // put it back so the record stays internally consistent.
+  // between our check and our delete, its frozen summary counted this scan,
+  // so put it back to keep the record internally consistent.
   const after = await prisma.stocktake.findUnique({
     where: { id: scan.stocktakeId },
     select: { status: true },
@@ -192,7 +192,7 @@ export async function undoScan(_p: ActionState, formData: FormData): Promise<Act
         },
       })
       .catch(() => {});
-    return { ok: false, message: "This stocktake was closed while you were working — the scan stays." };
+    return { ok: false, message: "This stocktake was closed while you were working. The scan stays." };
   }
 
   revalidatePath(`/admin/items/stocktake/${scan.stocktakeId}`);
@@ -267,7 +267,7 @@ export async function closeStocktake(_p: ActionState, formData: FormData): Promi
   };
 
   if (markLost && counts.missing > 0) {
-    // Flip in the database with the same NOT-EXISTS shape — no id list in
+    // Flip in the database with the same NOT-EXISTS shape: no id list in
     // memory, and only shelve-able (AVAILABLE) copies change status.
     const flipped = await prisma.$executeRaw`
       UPDATE "Copy" c

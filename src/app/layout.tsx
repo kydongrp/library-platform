@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DLS Admin — Digital Library System",
+  title: "DLS Admin (Digital Library System)",
   description:
-    "The staff administration panel for the DLS (Digital Library System) — catalogue, circulation, members, policies, reporting, and scholarly content import.",
+    "The staff administration panel for the DLS (Digital Library System): catalogue, circulation, members, policies, reporting, and scholarly content import.",
 };
 
 export default function RootLayout({

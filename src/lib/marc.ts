@@ -1,4 +1,4 @@
-// MARC 21 bibliographic EXPORT — the reverse of the MARCXML import mapping in
+// MARC 21 bibliographic EXPORT: the reverse of the MARCXML import mapping in
 // bulk-import.ts, so a record exported here re-imports losslessly. Two
 // serialisations: MARCXML (MARC21-slim, what most ILS ingest) and binary
 // ISO 2709 (.mrc, the classic exchange format).
@@ -26,7 +26,7 @@ export type MarcInput = {
   author: string;
   isbn: string | null;
   type: string;
-  /** MONOGRAPH | SERIAL — drives leader/07 (bibliographic level). */
+  /** MONOGRAPH | SERIAL. Drives leader/07 (bibliographic level). */
   materialDesignation: string;
   category: string;
   publisher: string | null;
@@ -65,7 +65,7 @@ function leaderFor(r: MarcInput): string {
   // straight from the record's material designation: 's' serial, 'm' monograph.
   const t06 = r.type === "AUDIOBOOK" ? "i" : r.type === "DVD" ? "g" : "a";
   const t07 = r.materialDesignation === "SERIAL" ? "s" : "m";
-  // 00000 n a m  a 22 00000  7 i  4500 — lengths patched in ISO 2709 output.
+  // 00000 n a m  a 22 00000  7 i  4500 (lengths patched in ISO 2709 output).
   return `00000n${t06}${t07} a2200000 i 4500`;
 }
 
@@ -110,7 +110,7 @@ export type StoredField = {
  * has entered any 650, their 650s replace the derived one entirely; tags they
  * haven't touched keep the value derived from the flat columns. That keeps a
  * plain record exporting sensibly while never contradicting a real catalogue
- * entry — and it lets a repeatable tag carry as many instances as entered.
+ * entry, and it lets a repeatable tag carry as many instances as entered.
  */
 function applyStoredFields(rec: MarcRecord, stored: StoredField[]): MarcRecord {
   if (stored.length === 0) return rec;

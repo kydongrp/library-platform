@@ -3,7 +3,7 @@
  * selected fields across modules; comparison rows 79-80).
  *
  * Pure logic, safe to import from anywhere: the cube definitions that feed it
- * live in src/lib/flexi.ts (server-only, prisma-backed). Keep it that way —
+ * live in src/lib/flexi.ts (server-only, prisma-backed). Keep it that way:
  * importing prisma here would poison any client bundle that touches this file.
  *
  * The pivot is computed over flat in-memory rows rather than dynamic SQL:
@@ -114,7 +114,7 @@ function orderAndFold(
  * Cross-tabulate `rows` by rowDim × colDim (colDim optional) for one measure.
  *
  * Distinct measures stay as Sets until the very end, so row totals, column
- * totals and the grand total are true unions — never sums of subtotals, which
+ * totals and the grand total are true unions, never sums of subtotals, which
  * would double-count an entity that appears in several cells.
  */
 export function pivot<R>(
@@ -222,7 +222,7 @@ export function pivot<R>(
   };
 }
 
-/** "2026-08" for a date's month in the library's zone — matches monthKey in charts.tsx. */
+/** "2026-08" for a date's month in the library's zone; matches monthKey in charts.tsx. */
 export function isoMonth(d: Date | null | undefined): string | null {
   if (!d) return null;
   return zonedMonthKey(d);

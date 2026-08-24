@@ -1,4 +1,4 @@
-// Global Change Tags (Vibrant: Global Change Tags Content) — edit a MARC tag
+// Global Change Tags (Vibrant: Global Change Tags Content) edits a MARC tag
 // across many records at once.
 //
 // Subfields are stored as JSON with no index on their contents, so there is no

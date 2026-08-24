@@ -54,7 +54,7 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
         ← Back to catalogue
       </Link>
       <div className="mb-6 mt-2">
-        <h1 className="font-display text-3xl font-semibold">LiveFetch — Scholarly Import</h1>
+        <h1 className="font-display text-3xl font-semibold">LiveFetch: Scholarly Import</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           Search external publication sources and import records straight into the
           catalogue. Imported titles link out to the publisher (or the open-access full
@@ -116,7 +116,7 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
 
       {searchError ? (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-          {searchError} — external source may be unreachable; try again or switch source.
+          {searchError} (external source may be unreachable; try again or switch source).
         </p>
       ) : !q ? (
         <EmptyState

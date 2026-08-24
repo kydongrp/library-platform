@@ -1,5 +1,5 @@
 // Client-safe module: area vocabulary for the admin access matrix.
-// No server imports here — client components import these directly.
+// No server imports here; client components import these directly.
 
 export const ADMIN_AREAS = [
   "DASHBOARD",

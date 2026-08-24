@@ -16,7 +16,7 @@ That project is in none of the accounts available to us:
 | Vercel project `library-platform` | no marketplace resource; `DATABASE_URL` is a hand-added plain env var |
 
 So the recovery window cannot be read or changed, the plan is unknown, and there
-is no answer to "who else can delete this data" — which a government client will
+is no answer to "who else can delete this data", which a government client will
 ask. Moving it fixes all three and uses Scale capacity already paid for.
 
 Two side effects worth having: the move **rotates the database credentials**,
@@ -26,7 +26,7 @@ database onto Postgres 18 in line with the org's other projects.
 ## Postgres 18, not 17
 
 Neon has no in-place major-version upgrade; its documented path is "create a new
-project on the target version, migrate, repoint" — exactly this exercise.
+project on the target version, migrate, repoint". That is exactly this exercise.
 Creating on 17 would guarantee doing it again later on a larger catalogue.
 
 The app's Postgres surface is version-inert: no extensions beyond `plpgsql`, no
@@ -48,9 +48,9 @@ exactly here.
 - A **full dress rehearsal has been run**: dump, restore into a fresh database,
   compare. Result: 61 tables, 552 rows, digests compared on all 61, zero
   blocking differences. The only advisories were 10 column-order differences,
-  which are expected — production's columns were added over time, a fresh schema
-  push orders them as `schema.prisma` declares them. **That output is the noise
-  baseline.** During the real cutover, expect those 10 plus a
+  which are expected: production's columns were added over time, and a fresh
+  schema push orders them as `schema.prisma` declares them. **That output is the
+  noise baseline.** During the real cutover, expect those 10 plus a
   `server_version_num` advisory, and nothing else.
 - The dataset is small: 34 KB. The freeze is seconds.
 - No application code names a host, database or project. Every script resolves
@@ -88,7 +88,7 @@ into each deployment, so the four jobs in `vercel.json` keep firing at 02:00,
 the window, or do the cutover well clear of that hour. `sftp-fetch` matters
 most: `ImportedFile` is the only idempotency ledger and vendor files are never
 removed, so an `ImportedFile` row written after the final dump means the new
-database re-imports that file — and the re-import path runs
+database re-imports that file. The re-import path runs
 `updateMany({ where: { epExternal: true }, data: { epExternal: false } })`,
 which would silently reclassify external Editor's Picks.
 
@@ -125,15 +125,15 @@ npm run neon:move -- plan
 ```
 
 Prints the source's own identity, everything a public-table dump would not
-carry, and — once `NEON_API_KEY` is set — every organisation and project that
-key can see. Confirm the destination org shows `plan=scale`; a 30-day window
-needs it.
+carry, and (once `NEON_API_KEY` is set) every organisation and project that key
+can see. Confirm the destination org shows `plan=scale`; a 30-day window needs
+it.
 
 ### 2. Secure the old credentials, which cannot be read back from Vercel
 
 `npx vercel env pull` does **not** work for this. Tested on 24 Aug 2026: it
-writes `DATABASE_URL=""`, `POSTGRES_URL_NON_POOLING=""` and `CRON_SECRET=""` —
-every value empty. The variables are live (the app runs, and the diagnostics
+writes `DATABASE_URL=""`, `POSTGRES_URL_NON_POOLING=""` and `CRON_SECRET=""`.
+Every value is empty. The variables are live (the app runs, and the diagnostics
 route returns 401 rather than the 503 it would return for an unset secret), they
 simply cannot be retrieved. So there is no checksum-the-write verification
 available after step 8; verification has to be behavioural, which is what step
@@ -142,9 +142,9 @@ available after step 8; verification has to be behavioural, which is what step
 Two readable copies of the old credentials exist on this machine, and both are
 git-ignored:
 
-- `.env` — the three variables local tooling uses. Known-good credentials for
+- `.env`: the three variables local tooling uses. Known-good credentials for
   the old database, which is what a rollback actually needs.
-- `.vercel/.env.production.local` — a `vercel env pull` from 10 Aug, taken
+- `.vercel/.env.production.local`: a `vercel env pull` from 10 Aug, taken
   before the values became unreadable, holding the exact strings Vercel serves.
 
 **Copy both into a password manager, and do not delete
@@ -174,7 +174,7 @@ Expect `postgres : 18`, `window : 2592000s (30 days)`, `61 tables created`.
 npm run neon:move -- sync
 ```
 
-Yes, before the freeze — it warns that the source is still writable, and that is
+Yes, before the freeze: it warns that the source is still writable, and that is
 fine. This is the run that discovers anything specific to the new project
 (Postgres 18 behaviour, locale, restore duration, how much cosmetic noise the
 catalogue views produce across major versions) with nobody waiting. Keep the
@@ -192,7 +192,7 @@ npm run neon:move -- freeze
 
 `freeze` sets `default_transaction_read_only` on the old database and terminates
 other backends. The setting is read at connect time, so cutting existing
-sessions is the part that matters — Vercel's pooled connections would otherwise
+sessions is the part that matters; Vercel's pooled connections would otherwise
 keep writing. Reversible with `thaw`.
 
 Close any local `next dev`, `prisma studio` or `psql` first; they hold their own
@@ -232,8 +232,8 @@ restore. This is the cheap insurance against the next step going wrong.
 Two variables, **different values**: `DATABASE_URL` is the pooled host
 (`-pooler` in the name), `POSTGRES_URL_NON_POOLING` is the direct host. Getting
 them the wrong way round leaves the app on a direct connection that runs out of
-sockets under load, or the build pushing DDL through pgbouncer — and both look
-fine in a smoke test.
+sockets under load, or the build pushing DDL through pgbouncer. Both look fine
+in a smoke test.
 
 Use `vercel env update`, not `env add --force` and not remove-then-add:
 `update` changes the value and leaves the type and target alone, while
@@ -257,7 +257,7 @@ printf '%s' "$NEW_DIRECT" | npx vercel env update POSTGRES_URL_NON_POOLING produ
 
 Production is the only scope with values today (`npx vercel env ls` to confirm).
 If Preview or Development ever gain one, point it at the **test** database, not
-production — a preview deployment writing to live data is the defect the test
+production: a preview deployment writing to live data is the defect the test
 database exists to prevent.
 
 ### 9. Deploy
@@ -269,8 +269,8 @@ npx vercel redeploy <latest production deployment url>
 Git auto-deploy is on, so the latest production deployment is already `HEAD`;
 `redeploy` re-uses that exact source snapshot, holding code constant so the
 database is the only variable. Environment variables are re-injected on every
-deploy — the build cache holds `node_modules` and framework files, not env
-values — and the build command runs in full.
+deploy (the build cache holds `node_modules` and framework files, not env
+values), and the build command runs in full.
 
 `npx vercel --prod` also works now that `.vercelignore` excludes `.env*`, but it
 uploads the working tree, which is a second variable you do not need today.
@@ -308,19 +308,19 @@ whether to replay it or repeat the sync.
 
 ### 12. Local files, in this order
 
-1. `.env` — all three variables, from `.env.migration`. Never change one alone:
-   `prisma.config.ts` prefers `POSTGRES_URL_NON_POOLING` while
+1. `.env` needs all three variables, from `.env.migration`. Never change one
+   alone: `prisma.config.ts` prefers `POSTGRES_URL_NON_POOLING` while
    `scripts/lib/dump.ts` prefers `DATABASE_URL_UNPOOLED`, so a partial edit aims
    `db push` or a restore at whichever project the stale variable still names.
-2. `.env.development.local` — the one everybody forgets. It re-declares all
+2. `.env.development.local`: the one everybody forgets. It re-declares all
    three variables pointing at the old `neondb_test`, and `next dev` loads it
    **ahead of** `.env`.
-3. `npm run db:test:provision` — recreates `neondb_test` on the new server and
+3. `npm run db:test:provision` recreates `neondb_test` on the new server and
    rewrites `.env.test`. The old test database was a sibling database inside the
    project being left behind and does not travel.
-4. `rm -rf .next` — the turbopack dev cache holds the old hostname.
+4. `rm -rf .next`, because the turbopack dev cache holds the old hostname.
 5. Delete `.env.migration`. Keep `.vercel/.env.production.local` until the
-   cutover is signed off — see step 2, it is the only readable copy of the old
+   cutover is signed off. See step 2: it is the only readable copy of the old
    Vercel values. Delete it once the old project is no longer a fallback, and
    note that the credentials in it are dead the moment the move completes,
    since the new project has its own.
@@ -337,12 +337,12 @@ npm run backup            # first backup of the new database
 Leave `default_transaction_read_only` set on the old project permanently. A
 stale `.env` on somebody's laptop three weeks from now would otherwise produce
 two databases with divergent rows and no way to adjudicate which is
-authoritative — and no console to investigate with. It is reversible, enforced
+authoritative, and no console to investigate with. It is reversible, enforced
 at the server, and it is also the BR-3 (immutable backup) answer.
 
 Add a weekly `SELECT 1` plus row count against the old project, so if access
-disappears — unpaid invoice, account deletion, inactive-branch archiving, with
-nobody reachable to answer the notice — you find out while you still care.
+disappears (unpaid invoice, account deletion, inactive-branch archiving, with
+nobody reachable to answer the notice), you find out while you still care.
 
 ## Rollback
 
@@ -351,10 +351,10 @@ rollback is `npm run neon:move -- thaw`.
 
 After step 8, if no writes have landed on the new database: put the two Vercel
 variables back from the copies saved in step 2, redeploy, thaw. Either copy
-works — `.env`'s credentials are valid for the old database whether or not they
+works: `.env`'s credentials are valid for the old database whether or not they
 are byte-identical to what Vercel held.
 
-If writes **have** landed on the new database, do not simply revert — that
+If writes **have** landed on the new database, do not simply revert; that
 abandons those rows. Back up the new database, restore it into the old one with
 `RESTORE_URL=<old direct> npm run backup:restore -- <file>
 --i-understand-this-overwrites`, then revert the variables and redeploy. Or
@@ -383,7 +383,7 @@ Postgres 17 client alongside the NDJSON dump, so there is an artifact any DBA
 can read with standard tools, and keep copies of `scripts/lib/dump.ts` and
 `scripts/lib/crypt.ts` with the backups. Right now recovery depends on one
 bespoke format, one custom script, and one passphrase whose location is not
-written down anywhere — establish where `BACKUP_KEY` lives, and prove the
+written down anywhere. Establish where `BACKUP_KEY` lives, and prove the
 existing `.enc` dump still decrypts with it.
 
 ## Known limits, for later
@@ -393,5 +393,5 @@ decompresses the whole dump into one string. At 34 KB that is irrelevant; at the
 528k-bib parity target it fails as a V8 string-length error rather than
 gracefully. Before the catalogue grows, decide the threshold above which
 `pg_dump -Fc` becomes the primary path, and make `CHUNK_THRESHOLD` in
-`db-compare.ts` size-aware rather than row-count-aware — Postgres's 1 GB
+`db-compare.ts` size-aware rather than row-count-aware: Postgres's 1 GB
 aggregate limit can be reached on wide MARC rows well below 200k rows.

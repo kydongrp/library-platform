@@ -67,9 +67,9 @@ export function CirculationDesk({ members }: { members: MemberOption[] }) {
               <div>
                 <label className={labelCls} htmlFor="ci-condition">Condition on return</label>
                 <select id="ci-condition" name="condition" defaultValue="GOOD" className={inputCls}>
-                  <option value="GOOD">Good — back on the shelf</option>
-                  <option value="DAMAGED">Damaged — send to maintenance</option>
-                  <option value="LOST">Lost — withdraw the copy</option>
+                  <option value="GOOD">Good (back on the shelf)</option>
+                  <option value="DAMAGED">Damaged (send to maintenance)</option>
+                  <option value="LOST">Lost (withdraw the copy)</option>
                 </select>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Damaged and lost copies leave circulation, so a waiting hold is not filled from them.

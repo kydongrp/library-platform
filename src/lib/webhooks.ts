@@ -1,5 +1,5 @@
 // Outbound webhooks: the push half of the Portal API. Mutations call
-// emitEventAfter(event, data) — delivery runs after the response is sent
+// emitEventAfter(event, data). Delivery runs after the response is sent
 // (next/server after()), signed with each webhook's shared secret, and can
 // never fail the mutation that triggered it.
 //
@@ -7,7 +7,7 @@
 // Consumers verify by recomputing the HMAC with their secret.
 //
 // Webhook URLs are validated against the SSRF blocklist AT CREATION (see
-// actions/portal-api.ts) — delivery trusts the stored URL, which also lets
+// actions/portal-api.ts). Delivery trusts the stored URL, which also lets
 // local test listeners exercise the pipeline in development.
 
 import { createHmac } from "crypto";

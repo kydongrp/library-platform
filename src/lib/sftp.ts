@@ -1,6 +1,6 @@
 // SFTP source adapter for the scheduled metadata-import service (SDD: vendor
 // XML dropped via SFTP). All connection details come from environment
-// variables — credentials never live in the database or the code. The client
+// variables; credentials never live in the database or the code. The client
 // library is imported dynamically so it is only loaded when SFTP is actually
 // configured and invoked (and never bundled into other routes).
 import path from "node:path";
@@ -64,7 +64,7 @@ function connectConfig(): ConnectConfig {
     readyTimeout: READY_TIMEOUT_MS,
   };
   if (e.SFTP_PRIVATE_KEY) {
-    // Env vars commonly store PEM keys with escaped newlines — restore them.
+    // Env vars commonly store PEM keys with escaped newlines; restore them.
     cfg.privateKey = e.SFTP_PRIVATE_KEY.includes("\\n")
       ? e.SFTP_PRIVATE_KEY.replace(/\\n/g, "\n")
       : e.SFTP_PRIVATE_KEY;
@@ -95,7 +95,7 @@ export type SftpFetchResult = {
 
 /**
  * Connect, list the remote directory, and download every supported file that
- * is new — or whose size/mtime changed since we last processed it — up to
+ * is new, or whose size/mtime changed since we last processed it, up to
  * `maxFiles` and a cumulative byte budget. Filenames are reduced to their
  * basename to prevent path traversal when re-joining to the remote directory.
  * A file larger than MAX_FILE_BYTES is never downloaded (returned in

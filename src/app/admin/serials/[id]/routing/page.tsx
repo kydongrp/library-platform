@@ -4,7 +4,7 @@ import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
-import { formatDate } from "@/lib/format";
+import { NO_VALUE, formatDate } from "@/lib/format";
 import { currentStop, nextStop, runState } from "@/lib/routing-core";
 import {
   AddSubscriberForm,
@@ -116,7 +116,7 @@ export default async function SerialRoutingPage({ params }: { params: Promise<{ 
                     <div>
                       <p className="font-medium">{issue.label}</p>
                       <p className="text-xs text-muted-foreground">
-                        Received {issue.receivedAt ? formatDate(issue.receivedAt) : "—"}
+                        Received {issue.receivedAt ? formatDate(issue.receivedAt) : NO_VALUE}
                         {stops.length > 0 && ` · ${done} of ${stops.length} stops complete`}
                         {issue.alertsSentAt && ` · alerts sent ${formatDate(issue.alertsSentAt)}`}
                       </p>

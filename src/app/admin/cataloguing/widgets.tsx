@@ -36,7 +36,7 @@ export function TagDefForm() {
             </div>
           </div>
           <div>
-            <label className={l}>Subfields — code=label, comma separated</label>
+            <label className={l}>Subfields (code=label, comma separated)</label>
             <input name="subfieldSpec" maxLength={1000}
               placeholder="a=Title, b=Subtitle, c=Statement of responsibility" className={f} />
           </div>

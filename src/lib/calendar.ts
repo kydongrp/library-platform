@@ -36,7 +36,7 @@ export async function getCalendarConfig(now = new Date()): Promise<CalendarConfi
   return {
     closedWeekdays: config?.closedWeekdays ?? [],
     closures,
-    // Every future closure, not a capped window — anything hidden here would
+    // Every future closure, not a capped window: anything hidden here would
     // still affect due dates but have no way to be removed.
     upcoming: closures
       .filter((c) => dateKey(c.date) >= todayKey)

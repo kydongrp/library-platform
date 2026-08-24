@@ -170,7 +170,7 @@ function looksLikeRecord(obj: Record<string, unknown>): boolean {
   return FIELD_ALIASES.title.some((a) => keys.includes(normaliseKey(a)));
 }
 
-/* ---------- MARCXML (MARC 21 slim — e.g. Knovel eBook batches) ---------- */
+/* ---------- MARCXML (MARC 21 slim, e.g. Knovel eBook batches) ---------- */
 
 // A MARCXML file is XML shaped as <collection><record><leader/><controlfield/>
 // <datafield tag="…"><subfield code="…"/></datafield>…</record></collection>.
@@ -269,8 +269,8 @@ function marcRecordToRow(rec: MarcRecord): BulkRow {
       if (a) names.push(a);
     }
   }
-  // Join with "; " — inverted MARC names ("Family, Given") contain internal
-  // commas, so a comma separator would blur the boundary between authors.
+  // Inverted MARC names ("Family, Given") contain internal commas, so a comma
+  // separator would blur the boundary between authors. Join with "; " instead.
   const authors = names.length ? Array.from(new Set(names)).slice(0, 6).join("; ") : null;
 
   // Publication: RDA 264 (ind2=1 = publication) preferred, else AACR2 260.
@@ -292,8 +292,8 @@ function marcRecordToRow(rec: MarcRecord): BulkRow {
   const abstractRaw = f520 ? [sub(f520, "a"), sub(f520, "b")].filter(Boolean).join(" ") : "";
   const abstract = abstractRaw ? abstractRaw.slice(0, 4000) : null;
 
-  // 020 $a: ISBN. 020 is repeatable — an e-book record usually carries both
-  // the print and the electronic ISBN — so scan every 020 and prefer the
+  // 020 $a: ISBN. 020 is repeatable (an e-book record usually carries both
+  // the print and the electronic ISBN), so scan every 020 and prefer the
   // electronic manifestation. The "(electronic bk.)" qualifier is dropped by
   // cutting at the first "(" (no lazy `.*?` regex, which is quadratic).
   let isbn: string | null = null;

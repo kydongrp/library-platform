@@ -25,7 +25,7 @@ import {
 let failures = 0;
 function check(ok: boolean, label: string, detail = "") {
   if (!ok) failures++;
-  console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}${detail ? `: ${detail}` : ""}`);
 }
 const eq = (a: unknown, b: unknown, label: string) =>
   check(a === b, label, a === b ? "" : `got ${JSON.stringify(a)}, wanted ${JSON.stringify(b)}`);

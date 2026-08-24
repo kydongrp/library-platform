@@ -2,13 +2,13 @@
 // run in a server action and be exercised directly with tsx.
 //
 // Accepts the two shapes librarians actually have:
-//  1. A standard COUNTER R5/R5.1 tabular report (TR/PR/DR/IR) as CSV or TSV —
+//  1. A standard COUNTER R5/R5.1 tabular report (TR/PR/DR/IR) as CSV or TSV:
 //     a metadata preamble, then a header row containing Metric_Type and
 //     monthly columns (Jan-2026 / 2026-01 / 2026-01-01).
 //  2. A simple two-column sheet: period + count (header names are matched
 //     loosely: month/period, count/requests/uses/total).
 //
-// Output is aggregated per (period, metric) — title-level rows are summed,
+// Output is aggregated per (period, metric). Title-level rows are summed
 // because the registry tracks provider-level usage for cost-per-use.
 
 import { parseCsv } from "@/lib/bulk-import";
@@ -22,7 +22,7 @@ export const CPU_METRIC = "Total_Item_Requests";
 const PREFERRED_METRICS = new Set([CPU_METRIC, "Unique_Item_Requests"]);
 
 const MAX_INPUT_CHARS = 4_000_000; // matches the 4MB server-action body limit
-const MAX_MONTH_ROWS = 600; // 50 years of monthly figures — beyond this it's a bad file
+const MAX_MONTH_ROWS = 600; // 50 years of monthly figures; beyond this it's a bad file
 const MAX_COUNT = 1_000_000_000;
 
 export type UsageMonth = { period: string; metric: string; count: number };
@@ -71,7 +71,7 @@ export function parseCounterUsage(text: string): CounterParseResult {
   const warnings: string[] = [];
   if (text.length > MAX_INPUT_CHARS) {
     text = text.slice(0, MAX_INPUT_CHARS);
-    warnings.push("File was larger than 4MB — trailing rows were ignored.");
+    warnings.push("File was larger than 4MB, so trailing rows were ignored.");
   }
   const src = text.replace(/^﻿/, "");
   const lines = src.split(/\r?\n/);
@@ -85,7 +85,7 @@ export function parseCounterUsage(text: string): CounterParseResult {
   let platform: string | null = null;
 
   if (headerIdx >= 0) {
-    // Preamble metadata (Report_Name, Platform, …) — two-cell lines above the table.
+    // Preamble metadata (Report_Name, Platform, …): two-cell lines above the table.
     for (const line of lines.slice(0, headerIdx)) {
       const cells = line.includes("\t") ? tsvCells(line) : parseCsvLine(line);
       const key = (cells[0] ?? "").toLowerCase();
@@ -166,7 +166,7 @@ export function parseCounterUsage(text: string): CounterParseResult {
     warnings.push(`Kept Total_Item_Requests and Unique_Item_Requests; ignored ${dropped.length} other metric type${dropped.length === 1 ? "" : "s"} (${dropped.slice(0, 3).join(", ")}${dropped.length > 3 ? "…" : ""}).`);
   }
   if (!hasPreferred && metricsSeen.size > 0) {
-    warnings.push("No Total_Item_Requests rows in this report — imported the metrics it does have. Cost-per-use needs Total_Item_Requests (a TR report).");
+    warnings.push("No Total_Item_Requests rows in this report; imported the metrics it does have. Cost-per-use needs Total_Item_Requests (a TR report).");
   }
 
   const totals = new Map<string, number>();
@@ -194,7 +194,7 @@ function toMonths(totals: Map<string, number>, warnings: string[]): UsageMonth[]
     })
     .sort((a, b) => a.period.localeCompare(b.period) || a.metric.localeCompare(b.metric));
   if (months.length > MAX_MONTH_ROWS) {
-    warnings.push(`Report spans an implausible range — kept the most recent ${MAX_MONTH_ROWS} monthly figures.`);
+    warnings.push(`Report spans an implausible range; kept the most recent ${MAX_MONTH_ROWS} monthly figures.`);
     months = months.slice(-MAX_MONTH_ROWS);
   }
   return months;

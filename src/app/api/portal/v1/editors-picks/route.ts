@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { authenticatePortalRequest } from "@/lib/portal-auth";
 import { toPublicResource, publicResourceSelect } from "@/lib/portal-shapes";
 
-// GET /api/portal/v1/editors-picks — the staff-curated shelf, newest pick first.
+// GET /api/portal/v1/editors-picks: the staff-curated shelf, newest pick first.
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {

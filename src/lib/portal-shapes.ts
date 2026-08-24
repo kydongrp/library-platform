@@ -1,5 +1,5 @@
 // Public JSON shapes for the Portal API. One mapper so every endpoint
-// serialises resources identically — and so member/staff data can never
+// serialises resources identically, and so member/staff data can never
 // leak by accident: only the fields named here leave the system.
 
 type ResourceWithCopies = {
@@ -37,7 +37,7 @@ export function toPublicResource(r: ResourceWithCopies) {
     author: r.author,
     isbn: r.isbn,
     type: r.type,
-    /** MONOGRAPH | SERIAL — bib-level designation, for portal facets. */
+    /** MONOGRAPH | SERIAL: bib-level designation, for portal facets. */
     materialDesignation: r.materialDesignation,
     category: r.category,
     publisher: r.publisher,
@@ -62,7 +62,7 @@ export function toPublicResource(r: ResourceWithCopies) {
   };
 }
 
-/** The `select` matching ResourceWithCopies — pass to prisma queries. */
+/** The `select` matching ResourceWithCopies. Pass it to prisma queries. */
 export const publicResourceSelect = {
   id: true, title: true, subtitle: true, author: true, isbn: true,
   type: true, materialDesignation: true, category: true, publisher: true, publishedYear: true,

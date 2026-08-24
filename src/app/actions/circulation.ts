@@ -111,7 +111,7 @@ export async function checkout(
   });
   if (!resource) return { ok: false, message: "Resource not found." };
 
-  // Digital loan — no copy required.
+  // Digital loan: no copy required.
   if (isDigital(resource)) {
     const existing = await prisma.loan.findFirst({
       where: { memberId, resourceId: resource.id, status: "ACTIVE" },
@@ -127,7 +127,7 @@ export async function checkout(
       if (seatsInUse >= resource.licenseSeats)
         return {
           ok: false,
-          message: `All ${resource.licenseSeats} licence seat${resource.licenseSeats === 1 ? " is" : "s are"} in use — place a hold to be notified.`,
+          message: `All ${resource.licenseSeats} licence seat${resource.licenseSeats === 1 ? " is" : "s are"} in use. Place a hold to be notified.`,
         };
     }
 
@@ -150,7 +150,7 @@ export async function checkout(
     return { ok: true, message: `"${resource.title}" loaned (digital access).` };
   }
 
-  // Physical loan — find an available copy if one wasn't scanned.
+  // Physical loan: find an available copy if one wasn't scanned.
   if (!copy) {
     copy = await prisma.copy.findFirst({
       where: { resourceId: resource.id, status: "AVAILABLE" },
@@ -166,7 +166,7 @@ export async function checkout(
   if (itemType && !itemType.loanable)
     return {
       ok: false,
-      message: `${copy.barcode} is catalogued as "${itemType.name}" — that item type cannot be loaned.`,
+      message: `${copy.barcode} is catalogued as "${itemType.name}". That item type cannot be loaned.`,
     };
 
   // Physical items resolve the policy on the member-type x item-type matrix.
@@ -174,7 +174,7 @@ export async function checkout(
     ? await policyFor(member.memberType, copy.itemTypeId)
     : policy;
   // Row 56 (Hourly Loans): an hourly item type is due N hours from now. The
-  // day-based calendar walk deliberately does not apply — a 4-hour equipment
+  // day-based calendar walk deliberately does not apply: a 4-hour equipment
   // loan is due this afternoon, not at the end of the next open day.
   const dueAt = itemType?.loanHours
     ? new Date(Date.now() + itemType.loanHours * 3_600_000)
@@ -195,7 +195,7 @@ export async function checkout(
   revalidateAll();
   return {
     ok: true,
-    message: `"${resource.title}" checked out to ${member.name} — due ${formatDate(dueAt)}.`,
+    message: `"${resource.title}" checked out to ${member.name}, due ${formatDate(dueAt)}.`,
   };
 }
 
@@ -282,7 +282,7 @@ export async function checkin(
   let message = `"${loan.resource.title}" returned.`;
   if (returnStatus === "LATE") {
     if (fine.cents > 0) {
-      message += ` Late — fine ${formatFine(fine.cents)}${fine.capped ? " (capped)" : ""}.`;
+      message += ` Late. Fine ${formatFine(fine.cents)}${fine.capped ? " (capped)" : ""}.`;
     } else {
       // Say which of the three reasons actually applies, rather than blaming
       // closures for a zero-rate policy or an unspent grace period.
@@ -292,13 +292,13 @@ export async function checkin(
           : fine.daysLate === 0
             ? "the library was closed every day it was late"
             : `within the ${policy.fineGraceDays}-day grace period`;
-      message += ` Late, but no fine — ${why}.`;
+      message += ` Late, but no fine: ${why}.`;
     }
   }
   if (condition !== "GOOD")
     message += ` Marked ${condition.toLowerCase()}.`;
 
-  // Digital return: a licence seat freed up — notify the next in queue.
+  // Digital return: a licence seat freed up, so notify the next in queue.
   if (!loan.copyId) {
     const nextHold = await prisma.reservation.findFirst({
       where: { resourceId: loan.resourceId, status: "PENDING" },
@@ -318,7 +318,7 @@ export async function checkin(
   }
 
   if (loan.copyId) {
-    // A damaged or lost copy leaves circulation — it must never be handed to
+    // A damaged or lost copy leaves circulation; it must never be handed to
     // the next person waiting.
     if (condition !== "GOOD") {
       await prisma.copy.update({
@@ -363,7 +363,7 @@ export async function checkin(
 
   await audit({
     action: "circulation.checkin",
-    summary: `Returned "${loan.resource.title}" from ${loan.member.name} — ${returnStatus === "LATE" ? `late${fine.cents > 0 ? `, fine ${formatFine(fine.cents)}` : ", no fine chargeable"}` : "on time"}, condition ${condition.toLowerCase()}`,
+    summary: `Returned "${loan.resource.title}" from ${loan.member.name}: ${returnStatus === "LATE" ? `late${fine.cents > 0 ? `, fine ${formatFine(fine.cents)}` : ", no fine chargeable"}` : "on time"}, condition ${condition.toLowerCase()}`,
     entity: "Loan",
     entityId: loan.id,
     detail: { returnStatus, condition, fineCents: fine.cents, daysLate: fine.daysLate, chargeableDays: fine.chargeableDays },
@@ -392,7 +392,7 @@ export async function renewLoan(
   if (loan.claimedReturnedAt)
     return {
       ok: false,
-      message: "Cannot renew — this loan is marked as a claimed return. Resolve the claim first.",
+      message: "Cannot renew: this loan is marked as a claimed return. Resolve the claim first.",
     };
 
   const policy = await policyFor(loan.member.memberType);
@@ -403,9 +403,9 @@ export async function renewLoan(
     where: { resourceId: loan.resourceId, status: "PENDING" },
   });
   if (waiting > 0)
-    return { ok: false, message: "Cannot renew — another member has reserved this title." };
+    return { ok: false, message: "Cannot renew: another member has reserved this title." };
 
-  // Row 56: for an hourly loan "overdue" is a moment, not a day — a 2pm item
+  // Row 56: for an hourly loan "overdue" is a moment, not a day. A 2pm item
   // is late at 4pm even though the calendar day has not turned.
   const hours = loan.copy?.itemType?.loanHours ?? null;
   const overdue = hours
@@ -418,7 +418,7 @@ export async function renewLoan(
   if (overdue)
     return {
       ok: false,
-      message: "Cannot renew — this loan is overdue. Check it in to settle the fine, then check it out again.",
+      message: "Cannot renew: this loan is overdue. Check it in to settle the fine, then check it out again.",
     };
 
   // Renewal extends from the existing due date (unused time is not lost).
@@ -435,7 +435,7 @@ export async function renewLoan(
   revalidateAll();
   return {
     ok: true,
-    message: `Renewed — now due ${formatDate(dueAt)}.`,
+    message: `Renewed, now due ${formatDate(dueAt)}.`,
   };
 }
 
@@ -460,16 +460,16 @@ export async function reserve(
   if (isDigital(resource)) {
     // Digital holds only make sense for seat-limited titles with all seats taken.
     if (resource.licenseSeats == null)
-      return { ok: false, message: "This digital title has unlimited access — borrow it directly." };
+      return { ok: false, message: "This digital title has unlimited access. Borrow it directly." };
     const seatsInUse = await prisma.loan.count({
       where: { resourceId, status: "ACTIVE" },
     });
     if (seatsInUse < resource.licenseSeats)
-      return { ok: false, message: "A licence seat is free — borrow it instead." };
+      return { ok: false, message: "A licence seat is free. Borrow it instead." };
   } else {
     const available = resource.copies.some((c) => c.status === "AVAILABLE");
     if (available)
-      return { ok: false, message: "Copies are available — borrow it instead." };
+      return { ok: false, message: "Copies are available. Borrow it instead." };
   }
 
   const existing = await prisma.reservation.findFirst({
@@ -489,7 +489,7 @@ export async function reserve(
   revalidateAll();
   return {
     ok: true,
-    message: ahead === 0 ? "Hold placed — you're first in line." : `Hold placed — ${ahead} ahead of you.`,
+    message: ahead === 0 ? "Hold placed: you're first in line." : `Hold placed: ${ahead} ahead of you.`,
   };
 }
 
@@ -581,11 +581,11 @@ export async function recallLoan(
     newDueDate: formatDate(dueAt),
   });
 
-  await audit({ action: "circulation.recall", summary: `Recalled "${loan.resource.title}" from ${loan.member.name} — due ${formatDate(dueAt)}`, entity: "Loan", entityId: loan.id });
+  await audit({ action: "circulation.recall", summary: `Recalled "${loan.resource.title}" from ${loan.member.name}, due ${formatDate(dueAt)}`, entity: "Loan", entityId: loan.id });
   revalidateAll();
   return {
     ok: true,
-    message: `"${loan.resource.title}" recalled — ${loan.member.name} notified, due ${formatDate(dueAt)}.`,
+    message: `"${loan.resource.title}" recalled. ${loan.member.name} notified, due ${formatDate(dueAt)}.`,
   };
 }
 
@@ -649,7 +649,7 @@ export async function waiveFine(
   });
   await audit({
     action: "circulation.fineWaived",
-    summary: `Fine ${formatFine(loan?.fineCents ?? 0)} waived for ${loan?.member.name ?? "?"} on "${loan?.resource.title ?? "?"}"${reason ? ` — ${reason}` : ""}`,
+    summary: `Fine ${formatFine(loan?.fineCents ?? 0)} waived for ${loan?.member.name ?? "?"} on "${loan?.resource.title ?? "?"}"${reason ? `: ${reason}` : ""}`,
     entity: "Loan",
     entityId: loanId,
   });

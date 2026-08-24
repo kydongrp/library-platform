@@ -1,6 +1,6 @@
 // Staff contribution analytics (CR Tracking): who curated Editor's Picks,
-// who decided nominations, and which staff members write reviews — all-time,
-// trailing 3 calendar months, and a monthly breakdown. Server-only.
+// who decided nominations, and which staff members write reviews (all-time,
+// trailing 3 calendar months, and a monthly breakdown). Server-only.
 import { LIBRARY_TZ, startOfZonedMonth, zonedMonthKey } from "@/lib/tz";
 import { prisma } from "@/lib/db";
 

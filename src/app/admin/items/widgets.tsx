@@ -1,5 +1,6 @@
 "use client";
 
+import { NO_VALUE } from "@/lib/format";
 import { useState } from "react";
 import { StatefulForm, SubmitButton } from "@/components/forms";
 import {
@@ -35,7 +36,7 @@ export function CollectionForm() {
           </div>
           <div>
             <label className={labelCls}>Loan cap</label>
-            <input name="loanLimitOverride" inputMode="numeric" placeholder="—" className={fieldCls} />
+            <input name="loanLimitOverride" inputMode="numeric" placeholder={NO_VALUE} className={fieldCls} />
           </div>
           <SubmitButton pendingLabel="…" variant="outline">Add</SubmitButton>
           <div className="col-span-4"><Err state={state} /></div>
@@ -82,7 +83,7 @@ export function ItemTypeForm() {
           <div>
             {/* Row 56: set this and the type circulates by the hour. */}
             <label className={labelCls}>Loan hours</label>
-            <input name="loanHours" type="number" min={1} max={720} placeholder="—" className={fieldCls} />
+            <input name="loanHours" type="number" min={1} max={720} placeholder={NO_VALUE} className={fieldCls} />
           </div>
           <label className="flex items-center gap-1.5 pb-2 text-sm">
             <input type="checkbox" name="loanable" defaultChecked
@@ -150,7 +151,7 @@ export function ItemsTable({
                   <label className={labelCls}>Collection</label>
                   <select name="collectionId" defaultValue="" className={fieldCls}>
                     <option value="">leave as is</option>
-                    <option value="__clear__">— clear —</option>
+                    <option value="__clear__">(clear)</option>
                     {collections.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
                   </select>
                 </div>
@@ -158,7 +159,7 @@ export function ItemsTable({
                   <label className={labelCls}>Location</label>
                   <select name="locationId" defaultValue="" className={fieldCls}>
                     <option value="">leave as is</option>
-                    <option value="__clear__">— clear —</option>
+                    <option value="__clear__">(clear)</option>
                     {locations.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
                   </select>
                 </div>
@@ -166,7 +167,7 @@ export function ItemsTable({
                   <label className={labelCls}>Item type</label>
                   <select name="itemTypeId" defaultValue="" className={fieldCls}>
                     <option value="">leave as is</option>
-                    <option value="__clear__">— clear —</option>
+                    <option value="__clear__">(clear)</option>
                     {itemTypes.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
                   </select>
                 </div>
@@ -190,7 +191,7 @@ export function ItemsTable({
               <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
                 <input type="hidden" name="copyIds" value={ids} />
                 <div>
-                  <label className={labelCls}>Weed these items — reason (recorded in the log)</label>
+                  <label className={labelCls}>Weed these items: reason (recorded in the log)</label>
                   <input name="reason" required maxLength={200}
                     placeholder="e.g. Superseded edition, withdrawn 2026 stocktake" className={fieldCls} />
                 </div>
@@ -247,9 +248,9 @@ export function ItemsTable({
                   )}
                 </td>
                 <td className="px-3 py-2 text-xs">{COPY_STATUS_LABELS[i.status] ?? i.status}</td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">{i.collection ?? "—"}</td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">{i.location ?? "—"}</td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">{i.itemType ?? "—"}</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">{i.collection ?? NO_VALUE}</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">{i.location ?? NO_VALUE}</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">{i.itemType ?? NO_VALUE}</td>
               </tr>
             ))}
           </tbody>

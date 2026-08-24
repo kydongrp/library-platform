@@ -34,12 +34,12 @@ restore / point-in-time restore), and **the default is short on every plan**:
 | Launch | 1 day | 7 days |
 | Scale | **1 day** | **30 days** |
 
-**The plan on `autumn-frog-86115224` is unknown** — see "Still open" below. Until
+**The plan on `autumn-frog-86115224` is unknown.** See "Still open" below. Until
 that project is reachable, treat the recovery range as the short default.
 
 > **Upgrading a plan does not apply the window.** The default stays at 1 day
 > until someone raises it. Buying Scale and not moving the slider leaves you
-> with the same 1-day window you had before — check it, do not assume it.
+> with the same 1-day window you had before. Check it, do not assume it.
 >
 > And check *which project* you raised it on. A Scale upgrade on 23 Aug 2026
 > went to an organisation that does not own this database.
@@ -100,9 +100,9 @@ An untested backup is a guess. The drill:
 2. creates a throwaway database on the same server,
 3. applies the current Prisma schema to it,
 4. restores the dump into it,
-5. compares the restored copy against the live database **in full** — tables,
+5. compares the restored copy against the live database **in full** (tables,
    columns and types, indexes, constraints, sequences, extensions, row counts,
-   and an md5 over every row of every table — then spot checks a few real
+   and an md5 over every row of every table), then spot checks a few real
    values because a hash is not readable,
 6. drops the throwaway database.
 
@@ -111,8 +111,8 @@ It exits non-zero if any check fails. Run it after any schema change.
 ### Why the full comparison is there
 
 Until 24 Aug 2026 the drill compared row counts and null counts, and passed
-every time — while the restore path was shifting **every timestamp in the
-database by eight hours**.
+every time. It was passing while the restore path shifted **every timestamp in
+the database by eight hours**.
 
 node-postgres reads `timestamp without time zone` as a *local* time, and the
 dump wrote it back with `Date.toISOString()`, which is UTC. Inserting
@@ -145,7 +145,7 @@ outage. Restoring over the live database additionally requires
 
 To recover production from a dump:
 
-1. Take a fresh backup first — you may need to get back to the current state.
+1. Take a fresh backup first: you may need to get back to the current state.
 2. Drill the dump you intend to use, so you know it is good.
 3. Put the app in a state where staff are not writing (Vercel: promote a
    maintenance deployment, or accept the window).
@@ -177,7 +177,7 @@ Prisma CLI will send `db push` at production. Override all three
 (`DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_URL_NON_POOLING`), as
 `scripts/backup-drill.ts` and `scripts/provision-test-db.ts` do.
 
-## Still open — decisions and credentials
+## Still open: decisions and credentials
 
 These need a person, not a script.
 
@@ -206,10 +206,10 @@ Consequences, stated plainly:
 - **The 30-day history window cannot be set.** It is a project-level setting and
   we cannot reach the project.
 - **We do not know the current recovery range.** It could be 6 hours.
-- `npm run backup` still works — it only needs the connection string — so the
+- `npm run backup` still works (it only needs the connection string), so the
   verified logical backups are, for now, the *only* recovery path we control.
 
-**The move is planned and the tooling is built** — see
+**The move is planned and the tooling is built**: see
 [NEON-MOVE.md](NEON-MOVE.md) for the runbook and `npm run neon:move`. It needs a
 Neon API key for the account that owns the Kydon organisation; nothing else is
 outstanding.
@@ -225,12 +225,12 @@ To resolve, one of:
    `DATABASE_URL`/`POSTGRES_URL_NON_POOLING` on Vercel, redeploy. The
    backup/restore path is drilled (`npm run backup:drill`), so this is a short
    write-freeze rather than a risk. It also buys scheduled snapshots and IP
-   Allow, and puts the database under an account we administer — which is the
+   Allow, and puts the database under an account we administer, which is the
    answer KLSI will want when they ask who can delete their data.
 
 Note that "Open in Neon" from the Vercel storage page starts a *separate* Neon
 signup for the Vercel-managed org and, on 23 Aug 2026, ended at an unverified
-email-address wall — and it signed the existing console session out. Do not
+email-address wall. It also signed the existing console session out. Do not
 click it while relying on the console session.
 
 Once the project is reachable:
@@ -241,7 +241,7 @@ npm run neon:retention -- 30d          # set it, then read it back to confirm
 ```
 
 The script asks the running database for its own `neon.project_id` and refuses
-to touch anything else — if the key cannot see that project it lists what the
+to touch anything else: if the key cannot see that project it lists what the
 key *can* see and exits without writing. That guard is what surfaced this
 problem. It needs `NEON_API_KEY` in `.env` (git-ignored); create one at Neon
 console → Account settings → API keys. The Vercel/Neon integration does **not**
@@ -268,7 +268,7 @@ it.
 
 ### 3. Decide where offsite copies live
 
-The repo is **public**, so GitHub Actions artifacts are effectively public —
+The repo is **public**, so GitHub Actions artifacts are effectively public:
 anyone with a free GitHub account can download them, and services exist that
 strip even the login requirement. A dump of member records must never go
 there.
@@ -276,7 +276,7 @@ there.
 Recommended target: **AWS S3 in `ap-southeast-1`** with GitHub OIDC role
 assumption (no long-lived key in CI), Object Lock for immutable retention, and
 the file already encrypted by `BACKUP_KEY` before upload. S3 is the only
-common option that gives a hard Singapore residency guarantee — Cloudflare R2
+common option that gives a hard Singapore residency guarantee. Cloudflare R2
 treats APAC as a best-effort location hint, not a commitment.
 
 ### 4. Get the IM8 parameters in writing from KLSI
@@ -291,7 +291,7 @@ owner for:
   many days backups must be immutable.
 
 The relevant public control catalog is
-<https://info.standards.tech.gov.sg/control-catalog/cybersecurity/> — BR-1
+<https://info.standards.tech.gov.sg/control-catalog/cybersecurity/>: BR-1
 (backup and store separately), BR-2 (test recovery), BR-3 (prevent
 modification/deletion), DP-1 (residency), DP-2/3 (encryption at rest and in
 transit).
@@ -301,8 +301,9 @@ transit).
 Vercel's Hobby cron quota is full (2/2: `sftp-fetch` 03:00 UTC, `link-check`
 02:00 UTC, the latter already chaining renewal alerts and serial claims). A
 serverless function also has no persistent disk to write a dump to, so the
-backup job belongs wherever the offsite target is decided (the Vercel cron quota is no longer the constraint — Pro allows 40) — a GitHub Actions
-schedule pushing to S3 is the natural home once (2) is settled.
+backup job belongs wherever the offsite target is decided (the Vercel cron
+quota is no longer the constraint: Pro allows 40). A GitHub Actions schedule
+pushing to S3 is the natural home once (2) is settled.
 
 Until then, the honest position: **backups are verified but manual.** Run
 `npm run backup` with `BACKUP_KEY` set before and after any risky change.

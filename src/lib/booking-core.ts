@@ -61,15 +61,15 @@ export function validateWindow(w: Window, now = new Date()): WindowProblem | nul
 
 export const WINDOW_PROBLEM_MESSAGE: Record<WindowProblem, string> = {
   END_BEFORE_START: "The end of the window must be after the start.",
-  ZERO_LENGTH: "The window has no length — set an end time after the start.",
+  ZERO_LENGTH: "The window has no length. Set an end time after the start.",
   TOO_LONG: `A single booking cannot run longer than ${MAX_BOOKING_DAYS} days.`,
   TOO_FAR_AHEAD: `Bookings cannot be placed more than ${MAX_LEAD_DAYS} days ahead.`,
   IN_THE_PAST: "That window has already ended.",
 };
 
 /**
- * Half-open overlap: [start, end). Two bookings that merely touch — one
- * ending exactly when the next begins — do NOT overlap, which is what lets a
+ * Half-open overlap: [start, end). Two bookings that merely touch (one
+ * ending exactly when the next begins) do NOT overlap, which is what lets a
  * copy be handed straight from one borrower to the next at 2pm.
  */
 export function overlaps(a: Window, b: Window): boolean {

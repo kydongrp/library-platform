@@ -58,7 +58,7 @@ export async function setClosedWeekdays(
     ok: true,
     message: unique.length
       ? `Closed weekly on ${unique.map((d) => WEEKDAY_NAMES[d]).join(", ")}. New loans and renewals use this immediately.`
-      : "No weekly closures — the library is open every day.",
+      : "No weekly closures: the library is open every day.",
   };
 }
 
@@ -113,5 +113,5 @@ export async function deleteClosure(
     entityId: id,
   });
   revalidatePath("/admin/calendar");
-  return { ok: true, message: `${closure.name} removed — the library is open that day again.` };
+  return { ok: true, message: `${closure.name} removed. The library is open that day again.` };
 }

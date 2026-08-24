@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     await audit({
       actor: { name: "cron" },
       action: "serials.claimSweep",
-      summary: `Serial claim sweep — ${serialClaims.late} late issue${serialClaims.late === 1 ? "" : "s"}, ${serialClaims.claimsQueued} claim email${serialClaims.claimsQueued === 1 ? "" : "s"} queued`,
+      summary: `Serial claim sweep: ${serialClaims.late} late issue${serialClaims.late === 1 ? "" : "s"}, ${serialClaims.claimsQueued} claim email${serialClaims.claimsQueued === 1 ? "" : "s"} queued`,
       entity: "SerialIssue",
     });
   }

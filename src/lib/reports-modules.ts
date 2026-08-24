@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { daysBetweenInstants, zonedDayRange } from "@/lib/tz";
-import { formatDate } from "@/lib/format";
+import { NO_VALUE, formatDate } from "@/lib/format";
 import { formatFine } from "@/lib/fines";
 import { getAccruingFines } from "@/lib/loan-history";
 import { poTotalCents } from "@/lib/acquisitions";
@@ -80,7 +80,7 @@ export const DATE_RANGED_MODULE_REPORTS: string[] = MODULE_REPORTS.filter((r) =>
   (r) => r.key,
 );
 
-const DASH = "—";
+const DASH = NO_VALUE; // local alias, used in dozens of row builders
 
 /**
  * Row ceiling for the record-level reports. These grow with the collection

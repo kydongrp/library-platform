@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   await audit({
     actor: { name: "cron" },
     action: "batch.linkcheck",
-    summary: `Scheduled access scan — ${result.summary}`,
+    summary: `Scheduled access scan: ${result.summary}`,
     entity: "BatchRun",
   });
   return NextResponse.json({ ok: true, ...result });

@@ -63,7 +63,7 @@ export default async function AcquisitionsPage() {
   const finance = canEdit(admin, "ADMIN");
 
   const o = await getAcquisitionsOverview();
-  // Row 60: accounts are a separate axis from funds — a fund is the budget,
+  // Row 60: accounts are a separate axis from funds. A fund is the budget,
   // an account is the finance code the spend is booked against.
   const accounts = await prisma.acqAccount.findMany({
     orderBy: [{ status: "asc" }, { code: "asc" }],
@@ -115,7 +115,7 @@ export default async function AcquisitionsPage() {
           Dark = spent (paid invoices) · light = committed (open orders) · track = available.
         </p>
         {o.funds.length === 0 ? (
-          <p className="py-3 text-sm text-muted-foreground">No funds yet — create the year&apos;s budget lines below.</p>
+          <p className="py-3 text-sm text-muted-foreground">No funds yet. Create the year&apos;s budget lines below.</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {o.funds.map((f) => (
@@ -142,7 +142,7 @@ export default async function AcquisitionsPage() {
       <Card className="mb-6 p-5">
         <h2 className="mb-3 font-display text-lg font-semibold">Purchase orders</h2>
         {o.orders.length === 0 ? (
-          <EmptyState title="No purchase orders" description="Raise one below — it commits money from its fund until invoiced and paid." />
+          <EmptyState title="No purchase orders" description="Raise one below. It commits money from its fund until invoiced and paid." />
         ) : (
           <div className="space-y-3">
             {o.orders.map((po) => (

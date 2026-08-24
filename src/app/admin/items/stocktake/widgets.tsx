@@ -54,7 +54,7 @@ export function NewStocktakeForm({ collections, locations }: { collections: Opt[
 /**
  * The counting input. Submits on Enter (scanners send Enter after the code).
  * The box clears at submit time, not on response, and the submit button never
- * disables — a scanner beeping the next item while the previous round-trip is
+ * disables: a scanner beeping the next item while the previous round-trip is
  * in flight must not have its Enter swallowed by a disabled default button
  * (React queues the actions in order).
  */

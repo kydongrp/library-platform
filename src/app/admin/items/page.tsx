@@ -154,7 +154,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
 
       <p className="mb-2 text-xs text-muted-foreground">
         {total.toLocaleString()} item{total === 1 ? "" : "s"} match
-        {total > PAGE_SIZE && ` — showing the first ${PAGE_SIZE}`}.
+        {total > PAGE_SIZE && `, showing the first ${PAGE_SIZE}`}.
         {editable && " Tick rows to change properties or weed them."}
       </p>
 
@@ -220,7 +220,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
       <Card className="mt-6 p-5">
         <h2 className="mb-1 font-display text-lg font-semibold">Weeding log</h2>
         <p className="mb-3 text-xs text-muted-foreground">
-          Copies removed from the collection. Loan history survives weeding — only the copy record goes.
+          Copies removed from the collection. Loan history survives weeding; only the copy record goes.
         </p>
         {weedLog.length === 0 ? (
           <p className="py-2 text-sm text-muted-foreground">Nothing weeded yet.</p>

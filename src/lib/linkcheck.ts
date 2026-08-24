@@ -1,7 +1,7 @@
 // Access health (roadmap #4): scan every digital access URL, roll results up
-// per provider, and alert when a provider looks down across the board — the
-// admin-side answer to "the link worked yesterday". Server-only. Callers own
-// authorisation (admin action or CRON_SECRET route) and auditing.
+// per provider, and alert when a provider looks down across the board. This is
+// the admin-side answer to "the link worked yesterday". Server-only. Callers
+// own authorisation (admin action or CRON_SECRET route) and auditing.
 import { prisma } from "@/lib/db";
 import { isBlockedHost } from "@/lib/net";
 
@@ -46,14 +46,14 @@ async function checkUrl(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LINK_TIMEOUT_MS);
   try {
-    // GET, not HEAD — several providers (incl. IEEE) reject HEAD requests.
+    // GET, not HEAD: several providers (incl. IEEE) reject HEAD requests.
     const res = await fetch(url, {
       method: "GET",
       redirect: "follow",
       signal: controller.signal,
       headers: { "User-Agent": "AthenaeumLinkCheck/1.0" },
     });
-    // Auth walls (401/403) mean the link resolves but needs the subscription —
+    // Auth walls (401/403) mean the link resolves but needs the subscription;
     // that's not "broken" for an externally licensed resource.
     const ok = res.status < 500 && res.status !== 404 && res.status !== 410;
     return { ok, statusCode: res.status, error: ok ? null : `HTTP ${res.status}` };
@@ -112,7 +112,7 @@ export async function runLinkCheckCore(ranBy: string): Promise<LinkScanSummary> 
     });
     for (const p of down) {
       const subject = `Access alert: ${p.provider} looks down (${p.broken}/${p.checked} links failing)`;
-      const body = `The latest access scan found ${p.broken} of ${p.checked} ${p.provider} links failing${p.sampleError ? ` (most common error: ${p.sampleError})` : ""}.\n\nThis usually means a provider-side outage, an expired subscription, or a proxy/authentication change — individual titles are unlikely to be at fault. Review the Access Health dashboard.`;
+      const body = `The latest access scan found ${p.broken} of ${p.checked} ${p.provider} links failing${p.sampleError ? ` (most common error: ${p.sampleError})` : ""}.\n\nThis usually means a provider-side outage, an expired subscription, or a proxy/authentication change. Individual titles are unlikely to be at fault. Review the Access Health dashboard.`;
       await prisma.mailQueue.createMany({
         data: admins.map((a) => ({
           toEmail: a.email,

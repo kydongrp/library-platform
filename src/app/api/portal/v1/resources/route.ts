@@ -5,7 +5,7 @@ import { authenticatePortalRequest, apiError } from "@/lib/portal-auth";
 import { toPublicResource, publicResourceSelect } from "@/lib/portal-shapes";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 
-// GET /api/portal/v1/resources — catalogue search for the Learner Portal.
+// GET /api/portal/v1/resources: catalogue search for the Learner Portal.
 // Query: q, category, type, provider, updatedSince (ISO), sort=newest|title|updated,
 //        page (1-based), pageSize (max 100).
 export const dynamic = "force-dynamic";

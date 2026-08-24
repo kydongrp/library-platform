@@ -32,7 +32,7 @@ export async function notify(
         subject,
         body,
         template: code,
-        status: "SENT", // simulated send — no SMTP in the prototype
+        status: "SENT", // simulated send: no SMTP in the prototype
       },
     });
   }

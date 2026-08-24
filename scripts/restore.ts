@@ -37,7 +37,7 @@ void (async () => {
     /* no app URL in env; nothing to compare against */
   }
   if (live && describeTarget(target) === live && !force) {
-    console.error(`Refusing to restore over ${live} — that is the app's live database.`);
+    console.error(`Refusing to restore over ${live}: that is the app's live database.`);
     console.error("Re-run with --i-understand-this-overwrites if that is genuinely what you want.");
     process.exit(2);
   }

@@ -72,7 +72,7 @@ export default async function MergeBibPage({ searchParams }: { searchParams: Sea
         <datalist id="bib-options">
           {choices.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.title} — {c.author}{c.isbn ? ` (${c.isbn})` : ""}
+              {c.title} · {c.author}{c.isbn ? ` (${c.isbn})` : ""}
             </option>
           ))}
         </datalist>

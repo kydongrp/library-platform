@@ -8,8 +8,15 @@
 
 import { daysBetweenInstants, formatZonedDate, formatZonedTime } from "@/lib/tz";
 
+/**
+ * Shown where a value is absent: an empty table cell reads as a rendering
+ * fault, a dash reads as "nothing here". An en dash rather than an em dash,
+ * which is banned in this codebase's copy.
+ */
+export const NO_VALUE = "–";
+
 export function formatDate(date: Date | string | null | undefined): string {
-  if (!date) return "—";
+  if (!date) return NO_VALUE;
   const d = typeof date === "string" ? new Date(date) : date;
   return formatZonedDate(d);
 }
@@ -19,7 +26,7 @@ export function formatTime(
   date: Date | string | null | undefined,
   withSeconds = false,
 ): string {
-  if (!date) return "—";
+  if (!date) return NO_VALUE;
   const d = typeof date === "string" ? new Date(date) : date;
   return formatZonedTime(d, withSeconds);
 }

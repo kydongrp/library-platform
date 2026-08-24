@@ -6,7 +6,7 @@
  *
  * Why this exists: Neon's history window is the ONLY recovery mechanism on the
  * platform (there are no traditional backups), and it defaults short on every
- * plan — 1 day on Launch and Scale, 6 hours on Free. Upgrading the plan does
+ * plan: 1 day on Launch and Scale, 6 hours on Free. Upgrading the plan does
  * not widen the window; something has to set it.
  *
  * The project is identified by asking the running database for its own
@@ -146,7 +146,7 @@ void (async () => {
   console.log(`Name     : ${project.name}`);
   console.log(`Region   : ${project.region_id ?? "unknown"}`);
   console.log(`Org      : ${project.org_id ?? "unknown"}${plan ? ` (plan: ${plan})` : ""}`);
-  console.log(`Current  : ${current}s — ${describe(current)}`);
+  console.log(`Current  : ${current}s (${describe(current)})`);
   if (plan && PLAN_CEILING[plan]) console.log(`Ceiling  : ${PLAN_CEILING[plan]} on the ${plan} plan`);
 
   if (!wanted) {
@@ -160,9 +160,9 @@ void (async () => {
     return;
   }
 
-  console.log(`Setting  : ${target}s — ${describe(target)}`);
+  console.log(`Setting  : ${target}s (${describe(target)})`);
   // history_retention_seconds is a top-level member of `project`. Nesting it
-  // under `project.settings` — where most other project options live — is
+  // under `project.settings` (where most other project options live) is
   // accepted and does nothing.
   await must(`/projects/${id.projectId}`, key, {
     method: "PATCH",
@@ -173,9 +173,9 @@ void (async () => {
   const after = await must<{ project: Project }>(`/projects/${id.projectId}`, key);
   const now = retention(after.project);
   if (now === target) {
-    console.log(`OK       : confirmed ${now}s — ${describe(now)}`);
+    console.log(`OK       : confirmed ${now}s (${describe(now)})`);
   } else {
-    console.error(`FAILED   : reads back as ${now}s — ${describe(now)}, not ${describe(target)}`);
+    console.error(`FAILED   : reads back as ${now}s (${describe(now)}), not ${describe(target)}`);
     console.error(
       plan && PLAN_CEILING[plan]
         ? `The ${plan} plan caps the window at ${PLAN_CEILING[plan]}.`

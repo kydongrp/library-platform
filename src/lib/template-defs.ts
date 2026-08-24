@@ -1,4 +1,4 @@
-// Client-safe module: template vocabulary and defaults. No server imports —
+// Client-safe module: template vocabulary and defaults. No server imports;
 // the notify() side of templating lives in src/lib/templates.ts.
 
 export type TemplateVars = Record<string, string>;
@@ -146,7 +146,7 @@ export const DEFAULT_TEMPLATES: {
     code: "RESERVATION_READY",
     name: "Reservation ready for pickup",
     subject: "Ready for pickup: “{{resourceTitle}}”",
-    body: "Hi {{memberName}},\n\nGood news — “{{resourceTitle}}” is ready for you at the circulation desk. Please collect it by {{expiryDate}}.",
+    body: "Hi {{memberName}},\n\nGood news: “{{resourceTitle}}” is ready for you at the circulation desk. Please collect it by {{expiryDate}}.",
     emailEnabled: true,
   },
   {
@@ -159,26 +159,26 @@ export const DEFAULT_TEMPLATES: {
     code: "BORROW",
     name: "Borrow confirmation",
     subject: "Borrowed: “{{resourceTitle}}”",
-    body: "Hi {{memberName}},\n\nYou borrowed “{{resourceTitle}}” — it's due back on {{dueDate}}.",
+    body: "Hi {{memberName}},\n\nYou borrowed “{{resourceTitle}}”. It's due back on {{dueDate}}.",
   },
   {
     code: "RETURN",
     name: "Return confirmation",
     subject: "Returned: “{{resourceTitle}}”",
-    body: "Hi {{memberName}},\n\nThanks — “{{resourceTitle}}” has been returned.",
+    body: "Hi {{memberName}},\n\nThank you. “{{resourceTitle}}” has been returned.",
   },
   {
     code: "RECALL",
     name: "Loan recall",
     subject: "Recall: please return “{{resourceTitle}}” by {{newDueDate}}",
-    body: "Hi {{memberName}},\n\nThe library has recalled “{{resourceTitle}}”. Your new due date is {{newDueDate}}. Please return it by then — thank you for understanding.",
+    body: "Hi {{memberName}},\n\nThe library has recalled “{{resourceTitle}}”. Your new due date is {{newDueDate}}. Please return it by then. Thank you for understanding.",
     emailEnabled: true,
   },
   {
     code: "DIGITAL_AVAILABLE",
     name: "Digital seat available",
     subject: "Now available: “{{resourceTitle}}”",
-    body: "Hi {{memberName}},\n\nA licence for “{{resourceTitle}}” has become available. Borrow it from the portal — seats are first come, first served.",
+    body: "Hi {{memberName}},\n\nA licence for “{{resourceTitle}}” has become available. Borrow it from the portal: seats are first come, first served.",
     emailEnabled: true,
   },
   {

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 100;
 
-// Action families for the filter — matched as prefixes ("ep" → ep.*).
+// Action families for the filter, matched as prefixes ("ep" → ep.*).
 const ACTION_FAMILIES: { key: string; label: string }[] = [
   { key: "auth", label: "Sign-in / sign-out" },
   { key: "catalogue", label: "Catalogue" },
@@ -77,7 +77,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Search
         <div>
           <h1 className="font-display text-3xl font-semibold">Audit Trail</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Append-only record of every admin action — who did what, and when.
+            Append-only record of every admin action: who did what, and when.
             Entries are written by the system and can never be edited or deleted
             from the application.
           </p>

@@ -6,7 +6,7 @@ import { ActionButton } from "@/components/forms";
 import { payFine, waiveFine } from "@/app/actions/circulation";
 import { getLoanHistory } from "@/lib/loan-history";
 import { formatFine } from "@/lib/fines";
-import { formatDate } from "@/lib/format";
+import { formatDate, NO_VALUE } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +67,7 @@ export default async function LoanHistoryPage({ searchParams }: { searchParams: 
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Every returned loan, with how it came back and what it cost. Fines
             are charged per day the library was open, so closures are never
-            billed — a loan can be late with nothing owed.
+            billed. A loan can be late with nothing owed.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export default async function LoanHistoryPage({ searchParams }: { searchParams: 
                       </td>
                       <td className="px-4 py-2.5 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>
                         {r.fineCents === 0 ? (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-muted-foreground">{NO_VALUE}</span>
                         ) : (
                           <div className="flex flex-col items-end gap-0.5">
                             <span className={outstanding ? "font-semibold text-amber-700" : ""}>

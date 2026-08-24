@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { zonedDayRange } from "@/lib/tz";
-import { formatDate } from "@/lib/format";
+import { NO_VALUE, formatDate } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS, MEMBER_TYPE_LABELS } from "@/lib/constants";
 import { runModuleReport } from "@/lib/reports-modules";
 
@@ -48,7 +48,7 @@ export async function runReport(key: string, c: ReportCriteria): Promise<ReportR
           MEMBER_TYPE_LABELS[l.member.memberType] ?? l.member.memberType,
           l.copy?.barcode ?? "digital",
           formatDate(l.dueAt),
-          l.returnedAt ? formatDate(l.returnedAt) : "—",
+          l.returnedAt ? formatDate(l.returnedAt) : NO_VALUE,
           l.status,
         ]),
       };

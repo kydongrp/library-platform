@@ -77,7 +77,7 @@ function withDatabase(url: string, dbName: string): string {
 
 let failures = 0;
 function check(ok: boolean, label: string, detail = "") {
-  console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}${detail ? `: ${detail}` : ""}`);
   if (!ok) failures++;
 }
 
@@ -241,8 +241,8 @@ void (async () => {
 
   console.log(
     failures === 0
-      ? "\nALL PASSED — the dump round-trips every awkward value tested."
-      : `\nFAILED — ${failures} check(s) did not pass.`,
+      ? "\nALL PASSED. The dump round-trips every awkward value tested."
+      : `\nFAILED: ${failures} check(s) did not pass.`,
   );
   process.exit(failures === 0 ? 0 : 1);
 })();

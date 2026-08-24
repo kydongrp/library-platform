@@ -4,7 +4,7 @@
 /**
  * Block obvious SSRF targets before the server fetches a URL: private,
  * loopback, link-local, CGNAT, and cloud-metadata hosts. Guards the initial
- * host only — it does not chase DNS rebinding or redirects into an internal
+ * host only. It does not chase DNS rebinding or redirects into an internal
  * network, so callers should also disable or bound redirects where possible.
  */
 export function isBlockedHost(rawUrl: string): boolean {

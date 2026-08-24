@@ -20,7 +20,7 @@ import {
   ALWAYS_OPEN,
 } from "../src/lib/calendar-core";
 import { assessFine } from "../src/lib/fines";
-import { daysUntil, dueLabel, isOverdue, formatDate, formatTime } from "../src/lib/format";
+import { daysUntil, dueLabel, isOverdue, formatDate, formatTime, NO_VALUE } from "../src/lib/format";
 import { parseZonedDateTimeLocal } from "../src/lib/tz";
 import { describeWindow, findClash, overlaps, validateWindow } from "../src/lib/booking-core";
 
@@ -31,7 +31,7 @@ function eq(actual: unknown, expected: unknown, label: string, wasBefore?: strin
   const before = wasBefore ? `  (was ${wasBefore})` : "";
   console.log(
     `  ${ok ? "PASS" : "FAIL"}  ${label}${before}${
-      ok ? "" : ` — got ${JSON.stringify(actual)}, wanted ${JSON.stringify(expected)}`
+      ok ? "" : `: got ${JSON.stringify(actual)}, wanted ${JSON.stringify(expected)}`
     }`,
   );
 }
@@ -140,7 +140,7 @@ function run() {
   eq(formatDate(new Date("2026-08-23T17:00:00Z")), "24 Aug 2026", "01:00 SGT renders as the 24th", '"23 Aug 2026"');
   eq(formatTime(new Date("2026-08-24T09:00:00Z")), "17:00", "an hourly loan due 17:00 shows 17:00", '"09:00"');
   eq(formatTime(new Date("2026-08-24T09:00:07Z"), true), "17:00:07", "with seconds when asked");
-  eq(formatDate(null), "—", "a missing date is still a dash");
+  eq(formatDate(null), NO_VALUE, "a missing date renders as the no-value dash");
 
   console.log("\n7. Booking windows, entered as a Singapore wall clock");
   const bkStart = parseZonedDateTimeLocal("2026-08-24T14:00")!;

@@ -1,4 +1,4 @@
-// Client-safe serials vocabulary and prediction math — NO prisma imports, so
+// Client-safe serials vocabulary and prediction math: NO prisma imports, so
 // client components (widgets) can use it without dragging pg into the bundle.
 // Server-side rollups and claims live in src/lib/serials.ts, which re-exports
 // everything here.

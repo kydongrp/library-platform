@@ -11,7 +11,7 @@ import { formatFine } from "@/lib/fines";
  * Claimed returns (SDD row 51): a member says they brought an item back, the
  * shelf says otherwise.
  *
- * The loan deliberately stays ACTIVE — nothing has actually come back, and
+ * The loan deliberately stays ACTIVE: nothing has actually come back, and
  * marking it returned would corrupt the holdings and hand the member a clean
  * record for an item still missing. What the claim does is stop the fine
  * clock while staff go and look, and put the loan on a worklist so the
@@ -69,7 +69,7 @@ export async function claimReturned(_p: ActionState, formData: FormData): Promis
 
   await audit({
     action: "circulation.claimReturn",
-    summary: `${loan.member.name} claims "${loan.resource.title}" was returned${loan.copy ? ` (${loan.copy.barcode})` : ""} — fines frozen pending a shelf check`,
+    summary: `${loan.member.name} claims "${loan.resource.title}" was returned${loan.copy ? ` (${loan.copy.barcode})` : ""}; fines frozen pending a shelf check`,
     entity: "Loan",
     entityId: loanId,
     detail: { note, dueAt: loan.dueAt },
@@ -81,7 +81,7 @@ export async function claimReturned(_p: ActionState, formData: FormData): Promis
   };
 }
 
-/** Withdraw a claim — the member accepts they still have it. */
+/** Withdraw a claim: the member accepts they still have it. */
 export async function withdrawClaim(_p: ActionState, formData: FormData): Promise<ActionState> {
   const admin = await requireLoansEditor();
   if (!admin) return NO_PERMISSION;
@@ -100,7 +100,7 @@ export async function withdrawClaim(_p: ActionState, formData: FormData): Promis
   });
   await audit({
     action: "circulation.claimWithdraw",
-    summary: `Withdrew the claimed return on "${loan.resource.title}" for ${loan.member.name} — the loan is live again and fines resume`,
+    summary: `Withdrew the claimed return on "${loan.resource.title}" for ${loan.member.name}; the loan is live again and fines resume`,
     entity: "Loan",
     entityId: loanId,
   });
@@ -114,7 +114,7 @@ export async function withdrawClaim(_p: ActionState, formData: FormData): Promis
 /**
  * The search failed: write the item off. The loan closes as LOST and the copy
  * is marked LOST so it stops appearing as shelf stock. Any fine already
- * accrued is left alone — the fine and the replacement are separate matters,
+ * accrued is left alone: the fine and the replacement are separate matters,
  * and silently zeroing one hides it from the ledger.
  */
 export async function writeOffClaim(_p: ActionState, formData: FormData): Promise<ActionState> {

@@ -68,3 +68,8 @@ jobs:
 
       - name: No unzoned date handling outside the allowlist
         run: npm run test:tz:guard
+
+      # House style. Asking for em dashes to be removed by hand did not make
+      # them stop coming back, so it is a build failure now.
+      - name: House style
+        run: npm run test:style

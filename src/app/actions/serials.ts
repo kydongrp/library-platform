@@ -16,7 +16,7 @@ import {
   type Frequency,
 } from "@/lib/serials";
 
-// Serials control is catalogue work — every mutation re-checks CATALOGUE
+// Serials control is catalogue work, so every mutation re-checks CATALOGUE
 // edit rights (server actions are directly invocable endpoints).
 async function requireSerialsEditor(): Promise<{ name: string } | null> {
   const admin = await getCurrentAdmin();
@@ -90,7 +90,7 @@ export async function registerSerial(
   if (resource.materialDesignation !== "SERIAL")
     return {
       ok: false,
-      message: `"${resource.title}" is catalogued as a monograph — change its material designation to Serial before tracking issues.`,
+      message: `"${resource.title}" is catalogued as a monograph. Change its material designation to Serial before tracking issues.`,
     };
 
   // First issue lands ON the chosen date; the rest follow the pattern.
@@ -120,7 +120,7 @@ export async function registerSerial(
     throw e;
   }
   revalidatePath("/admin/serials");
-  return { ok: true, message: `"${resource.title}" registered — 12 issues predicted from ${firstRaw}.` };
+  return { ok: true, message: `"${resource.title}" registered: 12 issues predicted from ${firstRaw}.` };
 }
 
 export async function updateSerial(
@@ -283,7 +283,7 @@ export async function skipIssue(
     entityId: issueId,
   });
   revalidatePath("/admin/serials");
-  return { ok: true, message: "Marked as not published — it won't be claimed." };
+  return { ok: true, message: "Marked as not published, so it won't be claimed." };
 }
 
 export async function claimIssue(
@@ -311,7 +311,7 @@ export async function claimIssue(
     ok: true,
     message: issue.serial.claimEmail
       ? `Claim queued to ${issue.serial.claimEmail}.`
-      : "No vendor contact set — administrators alerted instead.",
+      : "No vendor contact set, so administrators were alerted instead.",
   };
 }
 
@@ -334,7 +334,7 @@ export async function extendSchedule(
   if (serial.issues.length === 0) return { ok: false, message: "This serial has no schedule to extend." };
   const total = await prisma.serialIssue.count({ where: { serialId } });
   if (total >= MAX_OPEN_ISSUES)
-    return { ok: false, message: "Schedule is at its maximum length — check issues in first." };
+    return { ok: false, message: "Schedule is at its maximum length. Check issues in first." };
 
   const last = serial.issues[0];
   const add = predictIssues(serial.frequency as Frequency, last.seq, last.expectedAt, EXTEND_BY);

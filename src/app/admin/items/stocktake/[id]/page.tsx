@@ -78,7 +78,7 @@ export default async function StocktakeDetailPage({ params }: { params: Promise<
     };
     frozenMissingBarcodes = s.missingBarcodes ?? [];
   } else {
-    // Live derivation for an OPEN stocktake, aggregated in the database — an
+    // Live derivation for an OPEN stocktake, aggregated in the database: an
     // unscoped stocktake spans every copy in the library, so no query here
     // may materialise the whole copy table. A NULL scope parameter collapses
     // its condition to true.

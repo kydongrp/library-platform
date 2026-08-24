@@ -125,7 +125,7 @@ export function ResourceForm({
                 </select>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {designation === "SERIAL"
-                    ? "Issued in a continuing sequence — eligible for issue tracking."
+                    ? "Issued in a continuing sequence, eligible for issue tracking."
                     : "A standalone work."}
                 </p>
               </div>
@@ -156,7 +156,7 @@ export function ResourceForm({
                 </label>
                 <input id="provider" name="provider" list="provider-options" value={provider}
                   onChange={(e) => setProvider(e.target.value)}
-                  placeholder="e.g. IEEE Xplore — blank for local collection" className={inputCls} />
+                  placeholder="e.g. IEEE Xplore (blank for local collection)" className={inputCls} />
                 <datalist id="provider-options">
                   {PROVIDERS.map((p) => <option key={p} value={p} />)}
                 </datalist>

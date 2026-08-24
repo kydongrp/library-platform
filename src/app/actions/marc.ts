@@ -85,7 +85,7 @@ export async function saveMarcField(
   if (!fieldId && def && !def.repeatable) {
     const existing = await prisma.marcField.count({ where: { resourceId, tag } });
     if (existing > 0)
-      return { ok: false, message: `${tag} (${def.label}) is not repeatable — edit the existing field instead.` };
+      return { ok: false, message: `${tag} (${def.label}) is not repeatable. Edit the existing field instead.` };
   }
 
   const data = {
@@ -170,7 +170,7 @@ export async function saveTagDef(
   const label = clip(formData.get("label"), 120);
   if (!label) return { ok: false, message: "A display label is required." };
 
-  // "a=Title, b=Subtitle" — the compact form cataloguers actually type.
+  // "a=Title, b=Subtitle" is the compact form cataloguers actually type.
   const subfieldSpec = clip(formData.get("subfieldSpec"), 1000);
   const subfields = subfieldSpec
     .split(",")
@@ -205,7 +205,7 @@ export async function saveTagDef(
 
   await audit({
     action: "marc.tagdef.save",
-    summary: `Saved MARC tag definition ${tag} — ${label}`,
+    summary: `Saved MARC tag definition ${tag} (${label})`,
     entity: "MarcTagDef",
   });
   revalidatePath("/admin/cataloguing");
@@ -225,7 +225,7 @@ export async function deleteTagDef(
   if (inUse > 0)
     return {
       ok: false,
-      message: `${inUse} record${inUse === 1 ? "" : "s"} still use tag ${tag} — the definition can't be removed while it's in use.`,
+      message: `${inUse} record${inUse === 1 ? "" : "s"} still use tag ${tag}, so the definition can't be removed while it's in use.`,
     };
   await prisma.marcTagDef.delete({ where: { tag } }).catch(() => {});
   await audit({ action: "marc.tagdef.delete", summary: `Deleted MARC tag definition ${tag}`, entity: "MarcTagDef" });
@@ -287,7 +287,7 @@ export async function saveAuthorityType(
     if (isUniqueViolation(e)) return { ok: false, message: `Authority type ${code} already exists.` };
     throw e;
   }
-  await audit({ action: "marc.authorityType.create", summary: `Added authority type ${code} — ${name}`, entity: "AuthorityType" });
+  await audit({ action: "marc.authorityType.create", summary: `Added authority type ${code} (${name})`, entity: "AuthorityType" });
   revalidatePath("/admin/cataloguing");
   return { ok: true, message: `${code} added.` };
 }
@@ -361,7 +361,7 @@ export async function saveDomainCode(
     if (isUniqueViolation(e)) return { ok: false, message: `Domain code ${code} already exists.` };
     throw e;
   }
-  await audit({ action: "marc.domain.create", summary: `Added domain code ${code} — ${name}`, entity: "DomainCode" });
+  await audit({ action: "marc.domain.create", summary: `Added domain code ${code} (${name})`, entity: "DomainCode" });
   revalidatePath("/admin/cataloguing");
   return { ok: true, message: `${code} added.` };
 }

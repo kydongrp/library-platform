@@ -1,10 +1,10 @@
 // Acquisitions (SDD): suppliers, fiscal-year funds, purchase orders, and
 // invoices. Budget positions are always DERIVED, never stored:
-//   committed = open POs (ORDERED / RECEIVED)  — money promised
-//   spent     = PAID invoices                  — money gone
+//   committed = open POs (ORDERED / RECEIVED)  [money promised]
+//   spent     = PAID invoices                  [money gone]
 //   available = fund amount − committed − spent
 // A PO stops committing when CANCELLED, or when it CLOSEs (fully received
-// and its invoice paid) — at which point the paid invoice carries the cost.
+// and its invoice paid). From then on the paid invoice carries the cost.
 
 import { zonedYearKey } from "@/lib/tz";
 import { prisma } from "@/lib/db";

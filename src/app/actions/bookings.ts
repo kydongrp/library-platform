@@ -100,7 +100,7 @@ export async function createBooking(_p: ActionState, formData: FormData): Promis
   if (copy.itemType && !copy.itemType.loanable)
     return {
       ok: false,
-      message: `${copy.barcode} is "${copy.itemType.name}" — a reference-only item cannot be booked.`,
+      message: `${copy.barcode} is "${copy.itemType.name}". A reference-only item cannot be booked.`,
     };
   if (copy.status === "LOST")
     return { ok: false, message: `${copy.barcode} is marked lost.` };
@@ -177,7 +177,7 @@ export async function confirmBooking(_p: ActionState, formData: FormData): Promi
   if (clash)
     return {
       ok: false,
-      message: `Cannot confirm — ${b.copy.barcode} is now booked in that window by ${clash.member.name}.`,
+      message: `Cannot confirm: ${b.copy.barcode} is now booked in that window by ${clash.member.name}.`,
     };
 
   const res = await prisma.booking.updateMany({
@@ -207,7 +207,7 @@ export async function cancelBooking(_p: ActionState, formData: FormData): Promis
   });
   if (!b) return { ok: false, message: "Booking not found." };
   if (b.status === "COLLECTED")
-    return { ok: false, message: "That booking was collected — check the loan in instead." };
+    return { ok: false, message: "That booking was collected. Check the loan in instead." };
   if (b.status === "CANCELLED") return { ok: false, message: "Already cancelled." };
 
   await prisma.booking.update({
@@ -216,7 +216,7 @@ export async function cancelBooking(_p: ActionState, formData: FormData): Promis
   });
   await audit({
     action: "bookings.cancel",
-    summary: `Cancelled ${b.member.name}'s booking of ${b.copy.barcode} (${describeWindow(b)}) — the window is free again`,
+    summary: `Cancelled ${b.member.name}'s booking of ${b.copy.barcode} (${describeWindow(b)}); the window is free again`,
     entity: "Booking",
     entityId: id,
   });
@@ -254,7 +254,7 @@ export async function collectBooking(_p: ActionState, formData: FormData): Promi
   if (b.copy.status !== "AVAILABLE")
     return {
       ok: false,
-      message: `${b.copy.barcode} is ${b.copy.status.toLowerCase().replace(/_/g, " ")} — it is not on the shelf to hand over.`,
+      message: `${b.copy.barcode} is ${b.copy.status.toLowerCase().replace(/_/g, " ")}, so it is not on the shelf to hand over.`,
     };
 
   // Due at the end of the booked window: the member booked it until then, and
@@ -289,7 +289,7 @@ export async function collectBooking(_p: ActionState, formData: FormData): Promi
 
   await audit({
     action: "bookings.collect",
-    summary: `${b.member.name} collected ${b.copy.barcode} ("${b.copy.resource.title}") against a booking — due ${describeWindow({ startAt: b.startAt, endAt: dueAt }).split("–").pop()?.trim() ?? ""}`,
+    summary: `${b.member.name} collected ${b.copy.barcode} ("${b.copy.resource.title}") against a booking, due ${describeWindow({ startAt: b.startAt, endAt: dueAt }).split("–").pop()?.trim() ?? ""}`,
     entity: "Booking",
     entityId: id,
     detail: { loanId, dueAt },
@@ -297,7 +297,7 @@ export async function collectBooking(_p: ActionState, formData: FormData): Promi
   revalidateBookings();
   return {
     ok: true,
-    message: `Handed to ${b.member.name} — due back ${formatDate(dueAt)}, ${formatTime(dueAt)}.`,
+    message: `Handed to ${b.member.name}. Due back ${formatDate(dueAt)}, ${formatTime(dueAt)}.`,
   };
 }
 

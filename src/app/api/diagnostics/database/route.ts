@@ -9,7 +9,7 @@ import { denyUnlessCron } from "../../cron/_guard";
  * projects that looked like this system's database and were not, and nothing
  * could contradict it. The only claim that cannot be argued with comes from the
  * running Postgres itself, and the only place worth asking from is the deployed
- * application — checking locally proves what `.env` says, not what production
+ * application. Checking locally proves what `.env` says, not what production
  * does.
  *
  * It also answers the two questions a repoint gets wrong quietly:

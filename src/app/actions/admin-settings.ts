@@ -100,7 +100,7 @@ export async function updateGroupMatrix(
     const canEdit = formData.get(`edit_${area}`) === "on";
     await prisma.adminGroupPermission.upsert({
       where: { groupId_area: { groupId, area } },
-      // Edit implies view — a matrix row can't be editable but invisible.
+      // Edit implies view: a matrix row can't be editable but invisible.
       update: { canView: canView || canEdit, canEdit },
       create: { groupId, area, canView: canView || canEdit, canEdit },
     });
@@ -191,7 +191,7 @@ export async function updatePolicy(
     const v = Math.round(parseFloat(raw) * 100);
     return v >= 0 && v <= 100_000_000 ? v : fallback;
   };
-  /** Blank means "no cap" — stored as null, not zero. */
+  /** Blank means "no cap", stored as null, not zero. */
   const centsOrNull = (name: string) => {
     const raw = String(formData.get(name) ?? "").trim();
     return raw === "" ? null : cents(name, 0);

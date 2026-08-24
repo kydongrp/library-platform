@@ -2,8 +2,8 @@
  * Backup encryption.
  *
  * A dump is a file full of member names and emails. Once it leaves the
- * database it must be ciphertext, so that whatever holds it — a laptop, an
- * object store, a CI runner — never sees personal data. Encrypting at the
+ * database it must be ciphertext, so that whatever holds it (a laptop, an
+ * object store, a CI runner) never sees personal data. Encrypting at the
  * source is also what makes an offsite copy defensible: the storage provider
  * holds bytes it cannot read.
  *

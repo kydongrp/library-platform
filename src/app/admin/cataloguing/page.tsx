@@ -1,3 +1,4 @@
+import { NO_VALUE } from "@/lib/format";
 import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
@@ -13,7 +14,7 @@ import {
 export const dynamic = "force-dynamic";
 
 function subfieldSummary(raw: unknown): string {
-  if (!Array.isArray(raw) || raw.length === 0) return "—";
+  if (!Array.isArray(raw) || raw.length === 0) return NO_VALUE;
   return raw
     .filter((s): s is { code?: unknown; label?: unknown } => !!s && typeof s === "object")
     .map((s) => `$${String(s.code ?? "")}`)
@@ -58,7 +59,7 @@ export default async function CataloguingPage() {
       <Card className="mb-6 p-5">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-lg font-semibold">
-            Information Context — MARC tags{" "}
+            Information Context: MARC tags{" "}
             <Badge tone="muted">{tagDefs.length} defined</Badge>
           </h2>
           {editable && (
@@ -100,7 +101,7 @@ export default async function CataloguingPage() {
                       {d.label}
                       {d.repeatable && <span className="ml-1 text-xs text-muted-foreground">· repeatable</span>}
                     </td>
-                    <td className="px-2 py-2 text-xs text-muted-foreground">{d.alias ?? "—"}</td>
+                    <td className="px-2 py-2 text-xs text-muted-foreground">{d.alias ?? NO_VALUE}</td>
                     <td className="px-2 py-2 font-mono text-xs text-muted-foreground">{subfieldSummary(d.subfields)}</td>
                     <td className="px-2 py-2 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>
                       {useCount.get(d.tag) ?? 0}

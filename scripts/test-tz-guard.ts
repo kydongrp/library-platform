@@ -106,7 +106,7 @@ for (const [file, why] of Object.entries(ALLOWED)) console.log(`  ${file}\n    $
 
 console.log(
   violations === 0
-    ? "\nCLEAN — no unzoned date handling outside the allowlist."
-    : `\nFAILED — ${violations} site(s) handle dates without naming a zone.`,
+    ? "\nCLEAN: no unzoned date handling outside the allowlist."
+    : `\nFAILED: ${violations} site(s) handle dates without naming a zone.`,
 );
 process.exit(violations === 0 ? 0 : 1);

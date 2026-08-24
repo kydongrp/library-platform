@@ -5,7 +5,7 @@
  * A routing run is a snapshot of the serial's routing list taken when staff
  * start routing a received issue. Each stop is routed OUT to a member and
  * later routed back IN; at most one stop is ever out at a time. Row 72
- * (treating each hop as an automatic loan) is deliberately not modelled —
+ * (treating each hop as an automatic loan) is deliberately not modelled:
  * the deployed Vibrant system has it switched off.
  */
 
@@ -38,7 +38,7 @@ export function runState(stops: Stop[]): RunState {
 
 /**
  * Guard for routing out: only when nothing is currently out, and only to the
- * next unvisited stop — an issue is one physical object.
+ * next unvisited stop. An issue is one physical object.
  */
 export function canRouteOut(stops: Stop[]): { ok: true; to: Stop } | { ok: false; why: string } {
   const out = currentStop(stops);

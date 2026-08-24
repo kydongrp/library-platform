@@ -74,7 +74,7 @@ export default async function BatchPage() {
         </div>
         {!lastLinkRun ? (
           <p className="py-3 text-sm text-muted-foreground">
-            No scan yet — run “Check external links” to test every access URL in the catalogue.
+            No scan yet. Run “Check external links” to test every access URL in the catalogue.
           </p>
         ) : brokenLinks.length === 0 ? (
           <p className="py-3 text-sm text-green-700">All external access links are healthy. ✓</p>
@@ -120,7 +120,7 @@ export default async function BatchPage() {
             </>
           ) : (
             <Badge tone="accent">
-              Not configured — set SFTP_HOST, SFTP_USER, credentials, SFTP_PROVIDER (and CRON_SECRET) in the environment.
+              Not configured. Set SFTP_HOST, SFTP_USER, credentials, SFTP_PROVIDER (and CRON_SECRET) in the environment.
             </Badge>
           )}
           <Badge tone="muted">schedule: daily 03:00 UTC</Badge>

@@ -1,4 +1,4 @@
-// Merge Bib (Vibrant: Merge Bib) — fold a duplicate bibliographic record into
+// Merge Bib (Vibrant: Merge Bib). Folds a duplicate bibliographic record into
 // the one being kept, moving everything attached to it.
 //
 // Eleven relations hang off a Resource and six of them carry a uniqueness

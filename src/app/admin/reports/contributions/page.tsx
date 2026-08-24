@@ -6,7 +6,7 @@ import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-// Categorical palette, fixed series order — validated (six checks, light surface).
+// Categorical palette with a fixed series order, validated (six checks, light surface).
 const SERIES = [
   { key: "epPicks", label: "Editor's Picks curated", color: "#0d9488" },
   { key: "decisions", label: "Nominations decided", color: "#b45309" },
@@ -76,7 +76,7 @@ function ContributionChart({ rows, chartId }: { rows: StaffTotals[]; chartId: st
               const w = x(v);
               return (
                 <g key={s.key} clipPath={`url(#plot-${chartId})`}>
-                  <title>{`${r.name} — ${s.label}: ${v}`}</title>
+                  <title>{`${r.name} · ${s.label}: ${v}`}</title>
                   {v > 0 && (
                     <rect
                       x={LABEL_W - 4}
@@ -137,7 +137,7 @@ export default async function ContributionsPage() {
           <h1 className="font-display text-3xl font-semibold">Staff Contributions</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Who curates Editor&apos;s Picks, decides learner nominations, and writes
-            reviews — all-time and for the trailing three calendar months.
+            reviews. Counts are all-time and for the trailing three calendar months.
             Follower counts live in the Learner Portal and will appear here once
             the portal integration lands.
           </p>

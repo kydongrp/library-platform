@@ -31,7 +31,7 @@ export const ITEM_IMPORT_MAX_ROWS = 5_000;
 /**
  * Importable statuses. Circulation states (ON_LOAN, RESERVED) are refused:
  * they assert a loan or hold that has no backing row, and would wedge the
- * copy — checkout and reservation are the only writers of those states.
+ * copy: checkout and reservation are the only writers of those states.
  */
 export const IMPORTABLE_STATUSES = ["AVAILABLE", "MAINTENANCE", "LOST"] as const;
 
@@ -164,7 +164,7 @@ export function parseItemRows(text: string, filename?: string): ItemParseResult 
   const warnings: string[] = [];
   const format = detectFormat(text, filename);
 
-  // Records keep their positions here — all-blank rows are reported as
+  // Records keep their positions here: all-blank rows are reported as
   // skipped below, never silently dropped (which would also shift the line
   // numbers of every later error).
   let records: Record<string, string>[];

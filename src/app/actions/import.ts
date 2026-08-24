@@ -27,7 +27,7 @@ async function alreadyImported(record: DedupKey): Promise<boolean> {
   });
   if (existing) {
     // A source record matching an EXTERNAL Editor's Pick proves the title
-    // exists outside the shelf — claim it as internal so removing the pick
+    // exists outside the shelf. Claim it as internal so removing the pick
     // later can't delete it (see removeFromEditorsPick, BR-366G/I).
     await prisma.resource.updateMany({
       where: {
@@ -41,7 +41,7 @@ async function alreadyImported(record: DedupKey): Promise<boolean> {
 }
 
 async function importOne(record: ScholarlyRecord, category: string): Promise<"imported" | "duplicate" | "skipped"> {
-  // LiveFetch records come from third-party APIs via a client form field —
+  // LiveFetch records come from third-party APIs via a client form field, so
   // never persist a non-http(s) link as the access URL.
   const oaUrl = record.oaUrl && /^https?:\/\//i.test(record.oaUrl) ? record.oaUrl : null;
   if (!/^https?:\/\//i.test(record.url) && !oaUrl) return "skipped";
@@ -121,7 +121,7 @@ export async function importScholarly(
 }
 
 /**
- * Add a single scholarly article by hand — for subscription sources with no
+ * Add a single scholarly article by hand, for subscription sources with no
  * search API (Janes, Knovel, IHS, etc.). Creates a digital, link-out resource
  * tagged with the chosen provider.
  */
@@ -184,7 +184,7 @@ export async function addManualArticle(
         coverColor: coverColorFor(provider + title),
         digital: true,
         digitalUrl: url,
-        provider, // exact provider chosen (Janes, etc.) — bypasses providerFor mapping
+        provider, // exact provider chosen (Janes, etc.), bypassing providerFor mapping
         subtitle: record.venue,
       },
     });
@@ -206,7 +206,7 @@ export type DraftResult =
 
 /**
  * AI cataloguing assistant: draft a record from a DOI, URL, or free-text
- * citation. Read-only — nothing is saved; the draft prefills the manual-entry
+ * citation. Read-only: nothing is saved. The draft prefills the manual-entry
  * form for staff review. Warns when the draft matches an existing title.
  */
 export async function draftArticle(input: string): Promise<DraftResult> {
@@ -218,7 +218,7 @@ export async function draftArticle(input: string): Promise<DraftResult> {
   try {
     draft = await draftRecord(String(input ?? ""));
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Drafting failed — try again." };
+    return { ok: false, error: e instanceof Error ? e.message : "Drafting failed. Try again." };
   }
 
   // Non-blocking dedup check so staff see a clash before they hit save.

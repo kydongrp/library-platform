@@ -29,7 +29,7 @@ export default async function LandingPage() {
             DLS Admin
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
-            The staff back-office for the DLS (Digital Library System) —
+            The staff back-office for the DLS (Digital Library System):
             catalogue and members, circulation, loan policies, reporting, and
             scholarly content import, all in one place.
           </p>

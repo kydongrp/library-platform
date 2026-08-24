@@ -4,7 +4,7 @@
 
 export type ScholarlyRecord = {
   source: string; // adapter key
-  externalId: string; // DOI or source id — used for dedup
+  externalId: string; // DOI or source id, used for dedup
   title: string;
   authors: string; // display string
   year: number | null;
@@ -21,11 +21,11 @@ export const SOURCES = [
   {
     key: "ieee",
     name: "IEEE (via Crossref)",
-    description: "IEEE journals, transactions & conference papers — no API key needed.",
+    description: "IEEE journals, transactions & conference papers. No API key needed.",
   },
   {
     key: "crossref",
-    name: "Crossref — all publishers",
+    name: "Crossref (all publishers)",
     description: "DOI metadata across Springer, Elsevier, ACM, Wiley, IEEE and thousands more.",
   },
   {
@@ -36,7 +36,7 @@ export const SOURCES = [
   {
     key: "xplore",
     name: "IEEE Xplore API",
-    description: "IEEE's official metadata API — requires IEEE_API_KEY.",
+    description: "IEEE's official metadata API. Requires IEEE_API_KEY.",
   },
   {
     key: "manual",
@@ -46,7 +46,7 @@ export const SOURCES = [
   {
     key: "bulk",
     name: "Bulk file import",
-    description: "Upload a whole batch at once — CSV, JSON, XML, or Knovel MARCXML — and import every record in one go.",
+    description: "Upload a whole batch at once (CSV, JSON, XML, or Knovel MARCXML) and import every record in one go.",
   },
 ] as const;
 export type SourceKey = (typeof SOURCES)[number]["key"];
@@ -246,7 +246,7 @@ type XploreArticle = {
 
 async function searchXplore(query: string): Promise<ScholarlyRecord[]> {
   const key = process.env.IEEE_API_KEY;
-  if (!key) throw new Error("IEEE_API_KEY is not configured — use the Crossref-backed IEEE source instead.");
+  if (!key) throw new Error("IEEE_API_KEY is not configured. Use the Crossref-backed IEEE source instead.");
   const params = new URLSearchParams({
     querytext: query,
     max_records: "20",

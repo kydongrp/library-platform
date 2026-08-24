@@ -1,6 +1,6 @@
 // AI cataloguing assistant (roadmap #3): draft a catalogue record from a DOI,
 // URL, or free-text citation. Server-only. Three paths, cheapest first:
-//   1. DOI          → Crossref works API (deterministic, keyless — no AI).
+//   1. DOI          → Crossref works API (deterministic, keyless, no AI).
 //   2. URL          → guarded page fetch, then Claude extracts the metadata.
 //   3. Free text    → Claude drafts from the citation/bibliographic knowledge.
 // Nothing is auto-committed: the draft prefills the manual-entry form and
@@ -94,7 +94,7 @@ async function draftFromDoi(doi: string): Promise<ArticleDraft | null> {
       url: `https://doi.org/${doi}`,
       abstract: w.abstract ? stripJats(w.abstract) : null,
       source: "crossref",
-      note: "Metadata resolved from the DOI via Crossref — registry data, no AI involved.",
+      note: "Metadata resolved from the DOI via Crossref: registry data, no AI involved.",
     };
   } catch {
     return null;
@@ -118,7 +118,7 @@ async function fetchPageText(url: string): Promise<string | null> {
     });
     if (!res.ok || !res.body) return null;
 
-    // Read at most PAGE_BYTES_MAX — never buffer an arbitrary-size body.
+    // Read at most PAGE_BYTES_MAX: never buffer an arbitrary-size body.
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let bytes = 0;
@@ -163,7 +163,7 @@ const DRAFT_SCHEMA = {
     },
     venue: {
       type: ["string", "null"],
-      description: "Journal, proceedings, series, or subtitle — null if not applicable",
+      description: "Journal, proceedings, series, or subtitle; null if not applicable",
     },
     publisher: { type: ["string", "null"] },
     year: { type: ["integer", "null"], description: "Publication year" },
@@ -191,7 +191,7 @@ Rules:
 - Never invent URLs or ISBNs. Only return a url you are confident is the canonical location (a doi.org link, a publisher's known landing page, or a URL present in the input).
 - "authors" is a display string, names separated by "; ".
 - Pick the closest type and category from the allowed values.
-- The note field is your provenance statement to the librarian — say what you drew on and flag anything they should double-check.`;
+- The note field is your provenance statement to the librarian: say what you drew on and flag anything they should double-check.`;
 
 async function draftWithClaude(input: string, pageText: string | null): Promise<ArticleDraft> {
   const client = new Anthropic();
@@ -214,7 +214,7 @@ async function draftWithClaude(input: string, pageText: string | null): Promise<
   if (response.stop_reason === "refusal")
     throw new Error("The assistant declined to draft this record.");
   if (response.stop_reason === "max_tokens")
-    throw new Error("The draft was cut off — try a shorter input.");
+    throw new Error("The draft was cut off. Try a shorter input.");
 
   const text = response.content.find((b) => b.type === "text")?.text;
   if (!text) throw new Error("The assistant returned no draft.");
@@ -251,7 +251,7 @@ export async function draftRecord(rawInput: string): Promise<ArticleDraft> {
     throw new Error(
       doi
         ? "That DOI wasn't found in Crossref, and the AI assistant is not configured (set ANTHROPIC_API_KEY)."
-        : "The AI assistant is not configured — set ANTHROPIC_API_KEY in the environment. (DOIs still work: they resolve via Crossref.)",
+        : "The AI assistant is not configured: set ANTHROPIC_API_KEY in the environment. (DOIs still work: they resolve via Crossref.)",
     );
 
   // URL → fetch the page (guarded) so the model extracts rather than recalls.

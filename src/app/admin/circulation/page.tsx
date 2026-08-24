@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function CirculationPage() {
   await requireAdminView("CIRCULATION");
 
-  // Every member is listed — statuses that block borrowing are labelled in
+  // Every member is listed: statuses that block borrowing are labelled in
   // the picker rather than hidden, so staff can see why a checkout is refused.
   const [borrowable, allMembers, recent, availableSample] = await Promise.all([
     prisma.memberStatus.findMany({ where: { canBorrow: true }, select: { name: true } }),
@@ -34,7 +34,7 @@ export default async function CirculationPage() {
   const canBorrow = new Set(borrowable.map((s) => s.name));
   const members = allMembers.map((m) => ({
     id: m.id,
-    name: canBorrow.has(m.status) ? m.name : `${m.name} — ${m.status} (cannot borrow)`,
+    name: canBorrow.has(m.status) ? m.name : `${m.name} (${m.status}, cannot borrow)`,
     memberType: m.memberType,
   }));
 

@@ -11,7 +11,7 @@ import { isBlockedHost } from "@/lib/net";
 import { WEBHOOK_EVENTS, sendTestDelivery, type WebhookEvent } from "@/lib/webhooks";
 
 // Integration credentials are Administrators-only (ADMIN area), like Admin
-// Settings. Server actions are directly invocable endpoints — re-check here.
+// Settings. Server actions are directly invocable endpoints; re-check here.
 async function requireApiAdmin(): Promise<{ name: string } | null> {
   const admin = await getCurrentAdmin();
   if (!canEdit(admin, "ADMIN")) return null;
@@ -44,10 +44,10 @@ export async function createApiClient(
     entityId: client.id,
   });
   revalidatePath("/admin/portal-api");
-  // The one and only time the full key is shown — only its hash is stored.
+  // The one and only time the full key is shown: only its hash is stored.
   return {
     ok: true,
-    message: `Key created — copy it now, it won't be shown again: ${key}`,
+    message: `Key created. Copy it now, it won't be shown again: ${key}`,
   };
 }
 
@@ -71,7 +71,7 @@ export async function revokeApiClient(
     entityId: id,
   });
   revalidatePath("/admin/portal-api");
-  return { ok: true, message: "Key revoked — requests with it now get 403." };
+  return { ok: true, message: "Key revoked. Requests with it now get 403." };
 }
 
 /* ---------- Webhooks ---------- */
@@ -106,7 +106,7 @@ export async function createWebhook(
   revalidatePath("/admin/portal-api");
   return {
     ok: true,
-    message: `Webhook registered. Signing secret — copy it now: ${secret}`,
+    message: `Webhook registered. Copy the signing secret now: ${secret}`,
   };
 }
 
@@ -129,7 +129,7 @@ export async function toggleWebhook(
     entityId: id,
   });
   revalidatePath("/admin/portal-api");
-  return { ok: true, message: status === "ACTIVE" ? "Webhook enabled." : "Webhook disabled — no deliveries until re-enabled." };
+  return { ok: true, message: status === "ACTIVE" ? "Webhook enabled." : "Webhook disabled. No deliveries until re-enabled." };
 }
 
 export async function deleteWebhook(
@@ -171,5 +171,5 @@ export async function testWebhook(
   revalidatePath("/admin/portal-api");
   return result.ok
     ? { ok: true, message: "Test delivery succeeded (2xx)." }
-    : { ok: false, message: "Test delivery failed — see the delivery log below." };
+    : { ok: false, message: "Test delivery failed. See the delivery log below." };
 }

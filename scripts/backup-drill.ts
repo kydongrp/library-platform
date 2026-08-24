@@ -48,7 +48,7 @@ void (async () => {
 
   let failures = 0;
   const check = (ok: boolean, label: string, detail = "") => {
-    console.log(`${ok ? "  PASS" : "  FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
+    console.log(`${ok ? "  PASS" : "  FAIL"}  ${label}${detail ? `: ${detail}` : ""}`);
     if (!ok) failures++;
   };
 
@@ -184,8 +184,8 @@ void (async () => {
 
   console.log(
     failures === 0
-      ? "\nDRILL PASSED — this backup restores to a byte-faithful copy."
-      : `\nDRILL FAILED — ${failures} check(s) did not pass.`,
+      ? "\nDRILL PASSED. This backup restores to a byte-faithful copy."
+      : `\nDRILL FAILED: ${failures} check(s) did not pass.`,
   );
   process.exit(failures === 0 ? 0 : 1);
 })();

@@ -69,7 +69,7 @@ export function parseMemberRows(
       rows: [],
       skipped: [],
       warnings: [
-        `Couldn't find the required columns. Found headers: ${headers.slice(0, 8).join(", ")} — need at least "name" and "email".`,
+        `Couldn't find the required columns. Found headers: ${headers.slice(0, 8).join(", ")}. Need at least "name" and "email".`,
       ],
     };
   const get = (r: Record<string, string>, field: string) => (headerFor.has(field) ? (r[headerFor.get(field)!] ?? "").trim() : "");
@@ -127,9 +127,9 @@ export function parseMemberRows(
   });
 
   if (records.length > MAX_ROWS)
-    warnings.push(`File has ${records.length} rows — only the first ${MAX_ROWS} were read.`);
+    warnings.push(`File has ${records.length} rows; only the first ${MAX_ROWS} were read.`);
   if (unknownStatuses > 0)
-    warnings.push(`${unknownStatuses} row${unknownStatuses === 1 ? "" : "s"} had a status that isn't defined — defaulted to "${defaultStatus}".`);
+    warnings.push(`${unknownStatuses} row${unknownStatuses === 1 ? "" : "s"} had a status that isn't defined; defaulted to "${defaultStatus}".`);
 
   return { rows, skipped, warnings };
 }

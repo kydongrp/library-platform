@@ -154,7 +154,7 @@ function MarcFieldEditor({
             <p className="pb-2 text-xs text-muted-foreground">
               {def
                 ? `${def.label}${def.alias ? ` (${def.alias})` : ""}${def.repeatable ? " · repeatable" : ""}`
-                : "Undefined tag — it will still be saved and exported."}
+                : "Undefined tag. It will still be saved and exported."}
             </p>
           </div>
 
@@ -275,7 +275,7 @@ export function MarcRecordSection({
 
       {fields.length === 0 ? (
         <p className="py-3 text-sm text-muted-foreground">
-          No catalogued fields yet. Export still works — MARC is derived from the
+          No catalogued fields yet. Export still works: MARC is derived from the
           details above until you add fields here.
         </p>
       ) : (

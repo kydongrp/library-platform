@@ -54,7 +54,7 @@ export default async function PoliciesPage() {
         <Card className="mt-6 p-5">
           <h2 className="mb-1 font-display text-lg font-semibold">Add an item-type rule</h2>
           <p className="mb-4 text-xs text-muted-foreground">
-            Overrides the member type&apos;s &quot;any item type&quot; row for one format —
+            Overrides the member type&apos;s &quot;any item type&quot; row for one format:
             the real DLS loan matrix is member type × item type.
           </p>
           <AddOverrideForm itemTypes={itemTypes} memberTypes={ORDER} />

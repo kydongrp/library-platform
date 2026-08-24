@@ -1,4 +1,4 @@
-// Overdue fine accrual — pure, no Prisma, so it is client-safe and testable.
+// Overdue fine accrual: pure, no Prisma, so it is client-safe and testable.
 //
 // A fine accrues per OPEN day the item is late (library closures are not
 // chargeable), after the policy's grace period, capped at maxFineCents.

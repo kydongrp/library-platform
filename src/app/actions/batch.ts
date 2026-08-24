@@ -19,7 +19,7 @@ const INACTIVE_MONTHS = 6;
 /**
  * End-of-day batch (SDD: EodProcess). Generates templated notifications:
  * predue, overdue, cancel expired READY reservations, welcome, inactive.
- * Idempotent per day — a notification of the same type for the same subject
+ * Idempotent per day: a notification of the same type for the same subject
  * is not repeated within 24h.
  */
 export async function runEodProcess(
@@ -53,9 +53,9 @@ export async function runEodProcess(
     if (d < 0) {
       // daysOverdue belongs to this branch alone. Both notices used to share
       // one vars object built with Math.abs(d), so the due-soon reminder was
-      // also handed a daysOverdue that actually meant days *until* due —
-      // undeclared, so unadvertised, but it would have substituted if anyone
-      // put the token in that template.
+      // also handed a daysOverdue that actually meant days *until* due. That
+      // was undeclared, so unadvertised, but it would have substituted if
+      // anyone put the token in that template.
       const vars = { ...common, daysOverdue: String(-d) };
       const template = await prisma.emailTemplate.findUnique({ where: { code: "OVERDUE" } });
       const key = `OVERDUE:${loan.memberId}:${template ? renderKey(template.subject, vars, loan.member.name) : ""}`;
@@ -84,7 +84,7 @@ export async function runEodProcess(
   const calendar = await loadCalendar();
   for (const hold of readyHolds) {
     const policy = await policyFor(hold.member.memberType);
-    // A pickup window that ends on a closed day runs to the next open day —
+    // A pickup window that ends on a closed day runs to the next open day:
     // a member can't collect a hold from a shut library.
     const expiry = nextOpenDay(
       new Date((hold.readyAt ?? hold.reservedAt).getTime() + policy.holdPickupDays * DAY),
@@ -184,9 +184,9 @@ export async function runEodProcess(
     data: { process: "EOD", summary, ranBy: admin?.name ?? "system" },
   });
 
-  await audit({ action: "batch.eod", summary: `Ran EodProcess — ${summary}`, entity: "BatchRun" });
+  await audit({ action: "batch.eod", summary: `Ran EodProcess. ${summary}`, entity: "BatchRun" });
   revalidatePath("/admin", "layout");
-  return { ok: true, message: `EodProcess complete — ${summary}` };
+  return { ok: true, message: `EodProcess complete. ${summary}` };
 }
 
 // Dedup key mirrors how notify() renders the subject line.
@@ -211,10 +211,10 @@ export async function runLinkCheck(
 
   const { summary } = await runLinkCheckCore(admin?.name ?? "system");
 
-  await audit({ action: "batch.linkcheck", summary: `Ran link check — ${summary}`, entity: "BatchRun" });
+  await audit({ action: "batch.linkcheck", summary: `Ran link check: ${summary}`, entity: "BatchRun" });
   revalidatePath("/admin/batch");
   revalidatePath("/admin/access-health");
-  return { ok: true, message: `Link check complete — ${summary}.` };
+  return { ok: true, message: `Link check complete: ${summary}.` };
 }
 
 /**
@@ -232,6 +232,6 @@ export async function triggerSftpFetch(
     return { ok: false, message: "You don't have permission to run batch processes." };
 
   const summary = await runSftpFetch("manual");
-  await audit({ action: "batch.sftpFetch", summary: `Triggered SFTP fetch — ${summary.message.slice(0, 200)}`, entity: "BatchRun" });
+  await audit({ action: "batch.sftpFetch", summary: `Triggered SFTP fetch: ${summary.message.slice(0, 200)}`, entity: "BatchRun" });
   return { ok: summary.status !== "error", message: summary.message };
 }

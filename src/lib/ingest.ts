@@ -1,6 +1,6 @@
 // Shared import pipeline: turn parsed rows into catalogue resources, and the
 // scheduled SFTP re-fetch that feeds vendor batch files through it. Server-only
-// (imports prisma + the SFTP adapter). No admin-session checks here — callers
+// (imports prisma + the SFTP adapter). No admin-session checks here: callers
 // authorise (an admin session for the manual trigger, CRON_SECRET for cron).
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
@@ -42,7 +42,7 @@ const CREATE_BATCH = 500; // rows per createMany (well under Postgres param limi
  * Core row importer, shared by the browser-chunked manual importer and the
  * SFTP job. Validates each row (title + http(s) URL), dedups on the access URL
  * (the identity for link-out resources), and bulk-inserts. No auth, no
- * revalidate — the caller owns both.
+ * revalidate: the caller owns both.
  */
 export async function importResourceRowsCore(
   rows: BulkRow[],
@@ -75,7 +75,7 @@ export async function importResourceRowsCore(
 
   if (valid.length === 0) return { imported: 0, duplicates: 0, skipped, skipReasons };
 
-  // Dedup on access URL — batched existence queries.
+  // Dedup on access URL, using batched existence queries.
   const urls = Array.from(new Set(valid.map((r) => r.url)));
   const seen = new Set<string>();
   for (let i = 0; i < urls.length; i += DEDUP_BATCH) {
@@ -86,7 +86,7 @@ export async function importResourceRowsCore(
     });
     existing.forEach((e) => e.digitalUrl && seen.add(e.digitalUrl));
     // A feed row matching an EXTERNAL Editor's Pick proves the title exists in
-    // the collection's sources — claim it as internal so removing it from the
+    // the collection's sources. Claim it as internal so removing it from the
     // picks later can't delete a vendor-supplied title (it stays deduped here).
     await prisma.resource.updateMany({
       where: { digitalUrl: { in: batch }, epExternal: true },
@@ -167,8 +167,8 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
   const ranBy = trigger === "cron" ? "cron" : "admin";
 
   if (!sftpConfigured()) {
-    const message = "SFTP source not configured — set SFTP_HOST, SFTP_USER, credentials and SFTP_PROVIDER.";
-    await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: `Skipped — ${message}`, ranBy } });
+    const message = "SFTP source not configured. Set SFTP_HOST, SFTP_USER, credentials and SFTP_PROVIDER.";
+    await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: `Skipped: ${message}`, ranBy } });
     revalidatePath("/admin/batch");
     return { status: "skipped", filesFound: 0, filesImported: 0, resourcesImported: 0, duplicates: 0, skipped: 0, message };
   }
@@ -271,7 +271,7 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
     await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: message, ranBy } });
     // The manual trigger audits with the admin's session; cron has no session.
     if (trigger === "cron")
-      await audit({ actor: { name: "cron" }, action: "batch.sftpFetch", summary: `Scheduled SFTP fetch — ${message.slice(0, 200)}`, entity: "BatchRun" });
+      await audit({ actor: { name: "cron" }, action: "batch.sftpFetch", summary: `Scheduled SFTP fetch: ${message.slice(0, 200)}`, entity: "BatchRun" });
     if (resourcesImported > 0) {
       emitEventAfter("resources.imported", {
         count: resourcesImported,

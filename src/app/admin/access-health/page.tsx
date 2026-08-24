@@ -6,7 +6,7 @@ import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { runLinkCheck } from "@/app/actions/batch";
 import { getAccessHealth, type ProviderHealth } from "@/lib/linkcheck";
-import { formatDate, formatTime } from "@/lib/format";
+import { NO_VALUE, formatDate, formatTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -95,7 +95,7 @@ export default async function AccessHealthPage() {
       <p className="mb-4 text-xs text-muted-foreground">
         {health.lastScanAt
           ? `Last scan ${formatDate(health.lastScanAt)} at ${formatTime(health.lastScanAt)} by ${health.lastScanBy ?? "unknown"}.`
-          : "No scan has run yet — run one to populate this page."}
+          : "No scan has run yet. Run one to populate this page."}
       </p>
 
       {/* Summary tiles */}
@@ -126,8 +126,8 @@ export default async function AccessHealthPage() {
               <h2 className="font-display text-lg font-semibold">Providers</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Worst first. Down = at least 3 failing links and half the provider&apos;s
-                links unreachable — usually an outage or subscription problem, not
-                individual titles.
+                links unreachable. That usually means an outage or a subscription
+                problem, not individual titles.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -150,7 +150,7 @@ export default async function AccessHealthPage() {
                       <td className="px-5 py-3"><HealthMeter p={p} /></td>
                       <td className="px-5 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{p.checked}</td>
                       <td className={`px-5 py-3 text-right ${p.broken > 0 ? "font-semibold text-red-700" : ""}`} style={{ fontVariantNumeric: "tabular-nums" }}>{p.broken}</td>
-                      <td className="px-5 py-3 text-xs text-muted-foreground">{p.sampleError ?? "—"}</td>
+                      <td className="px-5 py-3 text-xs text-muted-foreground">{p.sampleError ?? NO_VALUE}</td>
                     </tr>
                   ))}
                 </tbody>

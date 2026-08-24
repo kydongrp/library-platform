@@ -12,7 +12,7 @@ import {
   restoreSuggestion,
 } from "@/app/actions/editors-pick";
 import { getCurationSuggestions, DEMAND_WINDOW_DAYS } from "@/lib/curation";
-import { formatDate } from "@/lib/format";
+import { NO_VALUE, formatDate } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS } from "@/lib/constants";
 import {
   PromoteForm,
@@ -45,7 +45,7 @@ export default async function EditorsPickPage() {
     prisma.epSubmission.findMany({
       where: { status: "PENDING" },
       include: { resource: { select: { title: true, author: true, editorsPick: true } } },
-      orderBy: { createdAt: "asc" }, // oldest first — review in arrival order
+      orderBy: { createdAt: "asc" }, // oldest first: review in arrival order
     }),
     prisma.epSubmission.findMany({
       where: { status: { not: "PENDING" } },
@@ -70,8 +70,8 @@ export default async function EditorsPickPage() {
         <h1 className="font-display text-3xl font-semibold">Editor&apos;s Picks</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           The staff-curated shelf featured on the Learner Portal. Learner nominations
-          arrive via the portal&apos;s form.sg flow (or WhatsApp for external links) —
-          record them here and approve to promote in one click. Removing an{" "}
+          arrive via the portal&apos;s form.sg flow (or WhatsApp for external links).
+          Record them here and approve to promote in one click. Removing an{" "}
           <strong>external</strong> pick deletes it from the library; removing an{" "}
           <strong>internal</strong> pick keeps the title in the catalogue.
         </p>
@@ -142,13 +142,13 @@ export default async function EditorsPickPage() {
       </h2>
       <p className="mb-2 max-w-3xl text-xs text-muted-foreground">
         Catalogue titles scored from circulation demand ({DEMAND_WINDOW_DAYS}-day
-        loans and holds), learner ratings, new arrivals, and shelf variety —
-        with the evidence shown, so you judge. Broken-link titles and rejected
+        loans and holds), learner ratings, new arrivals, and shelf variety. The
+        evidence is shown, so you judge. Broken-link titles and rejected
         nominations are excluded. Nothing is promoted automatically.
       </p>
       {curation.suggestions.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-          No stand-out candidates right now — suggestions appear as loans,
+          No stand-out candidates right now. Suggestions appear as loans,
           ratings, and new arrivals accumulate.
         </p>
       ) : (
@@ -313,7 +313,7 @@ export default async function EditorsPickPage() {
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {CHANNEL_LABELS[s.channel] ?? s.channel}
-                    {s.submitter ? ` · ${s.submitter}` : ""} · decided by {s.decidedBy ?? "—"}
+                    {s.submitter ? ` · ${s.submitter}` : ""} · decided by {s.decidedBy ?? NO_VALUE}
                     {s.staffNote ? ` · ${s.staffNote}` : ""}
                   </p>
                 </div>

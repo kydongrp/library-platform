@@ -56,7 +56,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   await audit({
     action: "catalogue.exportMarc",
-    summary: `Exported ${records.length} record${records.length === 1 ? "" : "s"} as MARC 21 (${format.toUpperCase()}), ${catalogued} with catalogued fields${filters ? ` — filters: ${filters}` : ""}`,
+    summary: `Exported ${records.length} record${records.length === 1 ? "" : "s"} as MARC 21 (${format.toUpperCase()}), ${catalogued} with catalogued fields${filters ? `; filters: ${filters}` : ""}`,
     entity: "Resource",
   });
 

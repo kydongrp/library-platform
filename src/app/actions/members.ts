@@ -9,7 +9,7 @@ import { audit } from "@/lib/audit";
 import { MEMBER_LANGUAGES } from "@/lib/constants";
 import { parseMemberRows } from "@/lib/member-import";
 
-// Server actions are directly invocable endpoints — re-check rights here.
+// Server actions are directly invocable endpoints, so re-check rights here.
 async function canEditMembers(): Promise<boolean> {
   return canEdit(await getCurrentAdmin(), "MEMBERS");
 }
@@ -202,7 +202,7 @@ export async function deleteMemberStatus(
   if (s.isDefault) return { ok: false, message: "Make another status the default first." };
   const inUse = await prisma.member.count({ where: { status: s.name } });
   if (inUse > 0)
-    return { ok: false, message: `${inUse} member${inUse === 1 ? "" : "s"} still ${inUse === 1 ? "has" : "have"} status "${s.name}" — reassign them first.` };
+    return { ok: false, message: `${inUse} member${inUse === 1 ? "" : "s"} still ${inUse === 1 ? "has" : "have"} status "${s.name}". Reassign them first.` };
   await prisma.memberStatus.delete({ where: { id } });
   await audit({
     action: "members.status.delete",
@@ -286,13 +286,13 @@ export async function importMembers(
   let source = "pasted";
   if (file instanceof File && file.size > 0) {
     if (file.size > MAX_UPLOAD_BYTES)
-      return { ok: false, message: "That file is over 3.5MB — split it and import in parts." };
+      return { ok: false, message: "That file is over 3.5MB. Split it and import in parts." };
     text = await file.text();
     source = file.name.slice(0, 120) || "upload";
   } else {
     text = String(formData.get("pasted") ?? "");
     if (text.length > MAX_UPLOAD_BYTES)
-      return { ok: false, message: "Pasted content is too large — import in parts." };
+      return { ok: false, message: "Pasted content is too large. Import in parts." };
   }
   if (!text.trim())
     return { ok: false, message: "Upload a CSV file or paste rows (header must include name and email)." };
@@ -305,7 +305,7 @@ export async function importMembers(
     return { ok: false, message: why || "No importable rows found." };
   }
 
-  // Existing emails (chunked lookup) — createMany(skipDuplicates) is the
+  // Existing emails (chunked lookup): createMany(skipDuplicates) is the
   // real guard; this is for honest reporting.
   const emails = parsed.rows.map((r) => r.email);
   const existing = new Set<string>();

@@ -4,7 +4,7 @@
  *   npx tsx --env-file=.env scripts/backup.ts [outDir]
  *
  * Writes <outDir>/dls-backup-<timestamp>.ndjson.gz (default outDir: ./backups,
- * which is git-ignored — the repo is public and these rows are personal data).
+ * which is git-ignored: the repo is public and these rows are personal data).
  */
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -28,7 +28,7 @@ void (async () => {
   console.log(`OK  ${manifest.totalRows} rows across ${manifest.tableOrder.length} tables -> ${path} (${kb} KB)`);
   console.log(encrypted
     ? "    ENCRYPTED with BACKUP_KEY (AES-256-GCM). Keep that key somewhere the backup is not."
-    : "    NOT ENCRYPTED — set BACKUP_KEY before this file leaves the machine; it holds member names and emails.");
+    : "    NOT ENCRYPTED. Set BACKUP_KEY before this file leaves the machine; it holds member names and emails.");
   const nonEmpty = Object.entries(manifest.rowCounts).filter(([, n]) => n > 0);
   console.log(`    ${nonEmpty.length} non-empty tables, server ${manifest.serverVersion}`);
 })();

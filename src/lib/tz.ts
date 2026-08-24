@@ -18,8 +18,8 @@
 
 /**
  * Asia/Singapore: UTC+8, and no daylight saving since 1982, so in practice a
- * fixed offset. The code below does not assume that — it asks Intl for the
- * offset at each instant — so moving the library to a zone with DST would not
+ * fixed offset. The code below does not assume that (it asks Intl for the
+ * offset at each instant), so moving the library to a zone with DST would not
  * silently break it.
  */
 export const LIBRARY_TZ = "Asia/Singapore";

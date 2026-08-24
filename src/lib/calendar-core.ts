@@ -1,4 +1,4 @@
-// Library service calendar — pure date math, no Prisma, so it is client-safe
+// Library service calendar: pure date math, no Prisma, so it is client-safe
 // and directly testable with tsx. The Prisma-backed loader lives in
 // src/lib/calendar.ts.
 //
@@ -59,7 +59,7 @@ export function parseDateKey(raw: string): Date | null {
 
 /**
  * Build the lookup index. A calendar that closes all seven weekdays is a
- * configuration error — the weekly rule is dropped so the library is not
+ * configuration error; the weekly rule is dropped so the library is not
  * permanently shut (specific closure dates still apply).
  */
 export function buildCalendar(closedWeekdays: number[], closedDates: string[]): CalendarIndex {
@@ -127,7 +127,7 @@ function weekdayOccurrences(firstDow: number, n: number, w: number): number {
  * Returns 0 when `to` is not after `from`.
  *
  * Counted arithmetically rather than by walking day by day, so a loan overdue
- * for years is still charged exactly — a bounded loop would silently stop
+ * for years is still charged exactly; a bounded loop would silently stop
  * counting and under-charge.
  */
 export function openDaysBetween(from: Date, to: Date, cal: CalendarIndex): number {

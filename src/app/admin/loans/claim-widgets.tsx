@@ -8,7 +8,7 @@ const fieldCls =
 
 /**
  * Raising a claim takes a note ("says returned to the drop box on Tuesday"),
- * so it is a small form rather than a one-click action — the note is what
+ * so it is a small form rather than a one-click action. The note is what
  * makes the claim answerable later.
  *
  * The disclosure is a native <details> rather than React state on purpose:

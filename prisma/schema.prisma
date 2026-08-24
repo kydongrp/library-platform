@@ -1,4 +1,4 @@
-// Library Platform — data model for the core loop MVP.
+// Library Platform: data model for the core loop MVP.
 // SQLite has no native enums, so status/type fields are strings with the
 // allowed values documented inline next to each field.
 
@@ -34,10 +34,10 @@ model Resource {
   provider              String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
   licenseSeats          Int? // concurrent-user limit for digital titles; null = unlimited (contract FR 8.2)
   editorsPick           Boolean                @default(false) // staff-curated highlight (live system: "editorspick" rail)
-  epExternal            Boolean                @default(false) // pick exists ONLY as an Editor's Pick (promoted from outside the collection) — removing it from the picks deletes it from the library (BR-366G); internal picks stay in the catalogue (BR-366I)
+  epExternal            Boolean                @default(false) // pick exists ONLY as an Editor's Pick (promoted from outside the collection). Removing it from the picks deletes it from the library (BR-366G); internal picks stay in the catalogue (BR-366I)
   epBlurb               String? // curator's note shown with the pick
   epPickedAt            DateTime?
-  epPickedBy            String? // staff name — feeds contribution tracking later
+  epPickedBy            String? // staff name, feeds contribution tracking later
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   copies                Copy[]
@@ -56,7 +56,7 @@ model Resource {
 model Copy {
   id         String   @id @default(cuid())
   barcode    String   @unique
-  status     String   @default("AVAILABLE") // AVAILABLE, ON_LOAN, RESERVED, LOST, MAINTENANCE — circulation state, system-controlled
+  status     String   @default("AVAILABLE") // AVAILABLE, ON_LOAN, RESERVED, LOST, MAINTENANCE. Circulation state, system-controlled
   location   String   @default("Main Shelf") // legacy free-text shelf; superseded by locationId when set
   createdAt  DateTime @default(now())
   resourceId String
@@ -90,7 +90,7 @@ model MarcTagDef {
   description String?
   repeatable  Boolean  @default(false)
   isControl   Boolean  @default(false) // 00X: no indicators, no subfields
-  /// [{ code, label, repeatable }] — the subfields this tag may carry.
+  /// [{ code, label, repeatable }]: the subfields this tag may carry.
   subfields   Json     @default("[]")
   local       Boolean  @default(false) // 9XX local-use tags
   sortOrder   Int      @default(0)
@@ -127,7 +127,7 @@ model AuthorityType {
   authorities Authority[]
 }
 
-/// A controlled heading. `uri` holds external linked data — the live system
+/// A controlled heading. `uri` holds external linked data; the live system
 /// points name authorities at OCLC WorldCat.
 model Authority {
   id        String        @id @default(cuid())
@@ -143,7 +143,7 @@ model Authority {
   @@index([heading])
 }
 
-/// Domain code (Vibrant: Domain Code) — the DSTA subject taxonomy that the
+/// Domain code (Vibrant: Domain Code), the DSTA subject taxonomy that the
 /// custom bib tags reference.
 model DomainCode {
   id        String          @id @default(cuid())
@@ -195,7 +195,7 @@ model ItemType {
   name      String
   loanable  Boolean      @default(true) // false = reference-only, never issued
   // Row 56 (Hourly Loans): when set, this type circulates by the hour rather
-  // than by days — equipment, reserve-shelf items. Drives the due time at
+  // than by days (equipment, reserve-shelf items). Drives the due time at
   // checkout and the hourly-loans view. null = the usual day-based policy.
   loanHours Int?
   createdAt DateTime     @default(now())
@@ -324,7 +324,7 @@ model BrowsingHistory {
   @@unique([memberId, resourceId])
 }
 
-/// Search terms a member has run — feeds "based on past searches".
+/// Search terms a member has run, feeding "based on past searches".
 model SearchHistory {
   id         String   @id @default(cuid())
   query      String
@@ -359,7 +359,7 @@ model Loan {
   returnedAt DateTime?
   status     String    @default("ACTIVE") // ACTIVE, RETURNED
   renewals   Int       @default(0)
-  recalledAt DateTime? // staff recall (contract FR 8.2) — due date shortened, member notified
+  recalledAt DateTime? // staff recall (contract FR 8.2): due date shortened, member notified
 
   // Return tracking: both axes are recorded at check-in so loan history can
   // be filtered on either. Timeliness is frozen at return (an ACTIVE loan's
@@ -369,7 +369,7 @@ model Loan {
   returnedBy      String? // staff member who checked it in
 
   // Row 51 (Claimed Return): the member says they returned it, the shelf says
-  // otherwise. The loan stays ACTIVE — nothing came back — but fines stop
+  // otherwise. The loan stays ACTIVE (nothing came back), but fines stop
   // accruing while it is investigated, and it appears on the claims list.
   claimedReturnedAt DateTime?
   claimedReturnNote String?
@@ -427,7 +427,7 @@ model AdminGroup {
   permissions AdminGroupPermission[]
 }
 
-/// One row per (group, area) — the user access matrix (SDD: AdminGroupArea).
+/// One row per (group, area): the user access matrix (SDD: AdminGroupArea).
 model AdminGroupPermission {
   id      String     @id @default(cuid())
   area    String // DASHBOARD, CIRCULATION, CATALOGUE, MEMBERS, LOANS, RESERVATIONS, POLICIES, TEMPLATES, REPORTS, BATCH, ADMIN
@@ -509,7 +509,7 @@ model Notification {
   member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }
 
-/// Outbound email queue (SDD: MailQ). No SMTP in the prototype — rows are
+/// Outbound email queue (SDD: MailQ). No SMTP in the prototype; rows are
 /// visible in the admin outbox as proof of the notification flow.
 model MailQueue {
   id        String   @id @default(cuid())
@@ -532,7 +532,7 @@ model BatchRun {
 }
 
 /// A learner's request for a resource the library doesn't hold (contract FR
-/// 8.1 "Information Resource Requests" — built natively instead of the
+/// 8.1 "Information Resource Requests", built natively instead of the
 /// permitted FormSG placeholder).
 model ResourceRequest {
   id        String   @id @default(cuid())
@@ -563,7 +563,7 @@ model LinkCheck {
 /// A learner nomination for the Editor's Pick shelf (BR-366E/404). Learners
 /// submit via the portal's form.sg flow (or send an external link over
 /// WhatsApp); staff record the retrieved submissions here and approve or
-/// reject them — approval promotes with one click instead of manual re-entry.
+/// reject them. Approval promotes with one click instead of manual re-entry.
 model EpSubmission {
   id         String    @id @default(cuid())
   kind       String // INTERNAL (nominates a catalogue title) | EXTERNAL (new outside link)
@@ -648,7 +648,7 @@ model AcqFund {
 
 /// A purchase order: commits fund money while ORDERED/RECEIVED, stops on
 /// CANCELLED, and CLOSED once fully received and its invoice is paid.
-// Acquisition accounts (SDD row 60). A fund is a BUDGET line — how much may
+// Acquisition accounts (SDD row 60). A fund is a BUDGET line: how much may
 // be spent on monographs this year. An account is the finance-side code the
 // spend is booked against, which is what the finance team reconciles on. They
 // are different axes: one fund can be charged to several accounts, and one
@@ -757,7 +757,7 @@ model StocktakeScan {
 
 // Bookings (SDD rows 52-53). A booking is NOT a reservation: a reservation
 // queues for a title that is currently out, while a booking holds one SPECIFIC
-// copy for a definite window — the projector on Tuesday 2-4pm. This is what
+// copy for a definite window (the projector on Tuesday 2-4pm). This is what
 // makes hourly item types usable, and no two live bookings for the same copy
 // may overlap.
 model Booking {
@@ -770,7 +770,7 @@ model Booking {
   endAt     DateTime
   // REQUESTED  asked for, awaiting approval
   // CONFIRMED  approved; the copy is committed for that window
-  // COLLECTED  handed over — loanId points at the resulting loan
+  // COLLECTED  handed over; loanId points at the resulting loan
   // CANCELLED  withdrawn before collection
   // NO_SHOW    the window passed without collection
   status    String    @default("REQUESTED")
@@ -840,7 +840,7 @@ model ApiClient {
 
 /// An outbound webhook the portal (or any consumer) registers to hear about
 /// catalogue and Editor's Pick changes. Deliveries are HMAC-SHA256 signed
-/// with `secret` (stored as entered — it is a shared signing secret).
+/// with `secret`, stored as entered because it is a shared signing secret.
 model Webhook {
   id         String            @id @default(cuid())
   url        String
@@ -867,7 +867,7 @@ model WebhookDelivery {
   @@index([webhookId, createdAt])
 }
 
-/// A staff "no" to an auto-curation suggestion — dismissed titles are never
+/// A staff "no" to an auto-curation suggestion. Dismissed titles are never
 /// re-suggested (restorable from the same panel).
 model EpSuggestionDismissal {
   id          String   @id @default(cuid())
@@ -878,7 +878,7 @@ model EpSuggestionDismissal {
 }
 
 /// A provider subscription (e-resource licence): the registry behind the
-/// E-Resources dashboard — renewal tracking and cost-per-use.
+/// E-Resources dashboard, covering renewal tracking and cost-per-use.
 model Subscription {
   id              String    @id @default(cuid())
   provider        String    @unique // matches Resource.provider display values
@@ -893,7 +893,7 @@ model Subscription {
   updatedAt       DateTime  @updatedAt
 }
 
-/// Monthly e-resource usage per provider — COUNTER R5.1 ingest or manual
+/// Monthly e-resource usage per provider: COUNTER R5.1 ingest or manual
 /// entry. Drives the cost-per-use figures.
 model UsageStat {
   id        String   @id @default(cuid())
@@ -908,7 +908,7 @@ model UsageStat {
 }
 
 /// Append-only audit trail of every admin mutation (IM8: accountability).
-/// Rows are only ever inserted — no update/delete path exists in the app.
+/// Rows are only ever inserted; no update/delete path exists in the app.
 model AuditLog {
   id       String   @id @default(cuid())
   at       DateTime @default(now())
@@ -927,7 +927,7 @@ model AuditLog {
 }
 
 /// A batch metadata file already ingested by the scheduled import service
-/// (SDD: Metadata Import Service — vendor XML dropped via SFTP). Gives the
+/// (SDD: Metadata Import Service, vendor XML dropped via SFTP). Gives the
 /// re-fetch job idempotency: a filename is imported once per source.
 model ImportedFile {
   id                String   @id @default(cuid())
@@ -936,7 +936,7 @@ model ImportedFile {
   resourcesImported Int      @default(0)
   status            String   @default("OK") // OK, PARSE_ERROR, SKIPPED_OVERSIZE
   detail            String?
-  remoteMtime       BigInt? // SFTP modifyTime (ms) — re-import when a same-name file changes
+  remoteMtime       BigInt? // SFTP modifyTime (ms): re-import when a same-name file changes
   remoteSize        BigInt? // SFTP file size (bytes) seen when last processed
   fetchedAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
