@@ -184,7 +184,7 @@ export async function checkRenewalAlerts(now = new Date()): Promise<RenewalAlert
     const auto = s.autoRenews
       ? "This subscription AUTO-RENEWS — act before the date if you intend to cancel or renegotiate."
       : "This subscription does not auto-renew — access lapses unless it is renewed.";
-    const body = `The ${s.provider} subscription renewal ${timing}.\n\n${auto}\n${cost}${s.seats != null ? `\nLicensed seats: ${s.seats}.` : ""}\n\nReview usage and cost-per-use on the E-Resources dashboard before deciding.`;
+    const body = `The ${s.provider} subscription renewal ${timing}.\n\n${auto}\n${cost}${s.seats != null ? `\nLicensed seats: ${s.seats}.` : ""}\n\nReview usage and cost-per-use on the Subscriptions page before deciding.`;
 
     if (admins.length > 0) {
       await prisma.mailQueue.createMany({

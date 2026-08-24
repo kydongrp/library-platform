@@ -84,7 +84,7 @@ export default async function SerialsDashboard() {
             Soonest renewal first, from the e-resource registry.
           </p>
           {renewals.length === 0 ? (
-            <EmptyState title="No subscriptions registered" description="Register providers under E-Resources." />
+            <EmptyState title="No subscriptions registered" description="Register providers under Subscriptions." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

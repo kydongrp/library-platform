@@ -12,7 +12,7 @@ const ACTION_FAMILIES: { key: string; label: string }[] = [
   { key: "auth", label: "Sign-in / sign-out" },
   { key: "catalogue", label: "Catalogue" },
   { key: "ep", label: "Editor's Picks" },
-  { key: "eresources", label: "E-Resources" },
+  { key: "eresources", label: "Subscriptions" },
   { key: "portal", label: "Portal API" },
   { key: "serials", label: "Serials" },
   { key: "acq", label: "Acquisitions" },

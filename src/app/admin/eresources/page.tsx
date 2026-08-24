@@ -148,7 +148,7 @@ export default async function EresourcesPage({
       </datalist>
 
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-semibold">E-Resources</h1>
+        <h1 className="font-display text-3xl font-semibold">Subscriptions</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           The subscription registry behind every provider link in the catalogue:
           licence terms, seats, and renewal dates, joined with COUNTER

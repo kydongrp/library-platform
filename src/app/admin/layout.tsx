@@ -46,7 +46,7 @@ const GROUPS: (Omit<NavGroup, "items"> & { items: Entry[] })[] = [
     items: [
       { href: "/admin/acquisitions", label: "Acquisitions", icon: "¤", area: "CATALOGUE" },
       { href: "/admin/serials", label: "Serials", icon: "◫", area: "CATALOGUE" },
-      { href: "/admin/eresources", label: "E-Resources", icon: "◈", area: "CATALOGUE" },
+      { href: "/admin/eresources", label: "Subscriptions", icon: "◈", area: "CATALOGUE" },
       { href: "/admin/access-health", label: "Access Health", icon: "✚", area: "BATCH" },
     ],
   },

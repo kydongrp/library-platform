@@ -13,7 +13,7 @@ async function canEditEresources(): Promise<boolean> {
   return canEdit(await getCurrentAdmin(), "CATALOGUE");
 }
 
-const NO_PERMISSION = { ok: false as const, message: "You don't have permission to manage e-resources." };
+const NO_PERMISSION = { ok: false as const, message: "You don't have permission to manage subscriptions." };
 const MAX_UPLOAD_BYTES = 3_500_000; // stay under the 4MB server-action body limit
 
 const clip = (v: FormDataEntryValue | null, max: number) =>
