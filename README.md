@@ -131,7 +131,10 @@ database. It does not run the `test:*` suites, which need one.
 
 ## What is in it
 
-Twenty-four modules, gated by a per-module view/edit matrix.
+Twenty-four modules, grouped in the sidebar under Circulation, Catalogue, Collections,
+Members, Reports and Configuration, and gated by a per-module view/edit matrix. A section
+opens itself when you are inside it, and a section this account cannot see at all is not
+shown.
 
 **Catalogue and metadata.** Bibliographic records with a full MARC 21 field editor working
 against a staff-editable tag dictionary (33 seeded tags including the five DSTA local 9XX
