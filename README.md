@@ -19,21 +19,27 @@ specification, records which of those are complete and which are not.
 
 Five things to know before treating any of it as production-ready:
 
-1. **There is no authentication.** `/admin/signin` lists the active staff accounts and one
-   click becomes that person. The session cookie holds the account id, unsigned. This is a
-   deliberate placeholder: authorisation on top of it is fully built and enforced
-   server-side on every page and every action, so swapping in Azure AD replaces the
-   sign-in flow without touching the permission model. Nothing should reach a real
-   deployment until it is replaced.
+1. **There is no real identity.** `/admin/signin` lists the active staff accounts and one
+   click becomes that person. The session behind it is real (a 256-bit token stored only as
+   a SHA-256 hash, a 12 hour expiry, revoked on sign-out), and authorisation on top of it
+   is fully built and enforced server-side on every page and every action, so swapping in
+   Microsoft Entra ID replaces the sign-in flow without touching either. Until it is
+   replaced, anyone who reaches the page can be anyone. Nothing should reach a real
+   deployment before then.
 2. **Two pages disclose data without a session**, both consequences of (1): the sign-in
    page lists staff names and email addresses, and `/` shows live counts of titles,
    copies, members and active loans. There is no `middleware.ts`; each page guards itself.
-3. **No mail is sent.** Notices are generated and recorded in an outbox. No SMTP is
-   configured, so email is simulated end to end.
-4. **Nothing sets a timezone.** Due-today and overdue calculations use the server clock, so
-   on a UTC runtime a loan due today reads as overdue between midnight and 8am Singapore
-   time. The scheduled jobs are pinned to the Singapore region but their cron expressions
-   are UTC.
+3. **Mail sends only once a provider is configured.** Notices are queued in an outbox and
+   drained by a scheduled job every ten minutes, with retries, backoff and expiry. Set
+   `MAIL_ENABLED`, `MAIL_API_KEY` and `MAIL_FROM` and they go out; leave them unset, which
+   is the default, and they wait in the queue. Preview deployments never send whatever is
+   configured, and `MAIL_ALLOWLIST` confines any other non-production environment to known
+   addresses.
+4. **Cron expressions are UTC.** The zone itself is fixed: every calendar decision goes
+   through `src/lib/tz.ts`, which pins Asia/Singapore rather than reading the runtime, and
+   `npm run test:tz:guard` fails the build if a new edit reaches for the server clock. What
+   remains is that `vercel.json` schedules are written in UTC, so the nightly jobs run at
+   10am and 11am Singapore time rather than the small hours their expressions suggest.
 5. **`Resource` and `Member` carry no indexes.** Fine for the demo dataset, not for the
    528,000-record parity target. Index design has not been done.
 
@@ -99,7 +105,7 @@ backup pointed at whatever the other two still name. Change all three together.
 | Command                            | What it does                                             |
 | ---------------------------------- | -------------------------------------------------------- |
 | `npm run dev`                      | Dev server                                               |
-| `npm run build`                    | `prisma db push`, seed-if-empty, then the production build |
+| `npm run build`                    | Sync the schema (except on Preview), seed-if-empty, then build |
 | `npm run lint`                     | ESLint                                                   |
 | `npm run db:push`                  | Apply the schema                                         |
 | `npm run db:seed`                  | Load demo data                                           |
@@ -116,16 +122,26 @@ backup pointed at whatever the other two still name. Change all three together.
 | `npm run test:fidelity`            | Prove the dump round-trips awkward values                |
 | `npm run neon:retention`           | Show or set the point-in-time recovery window            |
 | `npm run neon:move`                | Move the database to another Neon project                |
+| `npm run test:tz`                  | Timezone primitives, re-run under three runtime zones    |
+| `npm run test:calendar`            | Due dates, open days and fines across the day boundary   |
+| `npm run test:tz:guard`            | Scan `src/` for unzoned date handling                    |
+| `npm run test:style`               | No em dashes in tracked files                            |
+| `npm run test:build`               | Prove the build syncs the schema everywhere except Preview |
+| `npm run test:mail`                | Mail policy and transport, against a stub provider       |
+| `npm run test:mail:db`             | The same, plus the queue cases, against `neondb_test`     |
 
-The three `test:*` suites cover the operational tooling. **Nothing under `src/` has a
-test.** The pure rule libraries (`calendar-core`, `fines`, `booking-core`,
-`stocktake-core`, `item-import`, `member-import`, `routing-core`, `flexi-core`) take no
-database and were written to be testable, so they are the cheapest place to start.
+The `test:*` suites cover the operational tooling and the rules that are expensive to get
+wrong. **Nothing under `src/` has a conventional test.** The pure rule libraries
+(`calendar-core`, `fines`, `booking-core`, `stocktake-core`, `item-import`,
+`member-import`, `routing-core`, `flexi-core`) take no database and were written to be
+testable, so they are the cheapest place to start.
 
-CI (`.github/workflows/ci.yml`) runs lint and a production build on every push and pull
-request against `master`, on Node 24 to match the Vercel builder. It points the three
-connection strings at a closed port, so a green run proves the build never needed a
-database. It does not run the `test:*` suites, which need one.
+CI (`.github/workflows/ci.yml`) runs lint, a production build, and every suite that does
+not need a database, on every push and pull request against `master`, on Node 24 to match
+the Vercel builder. It points the three connection strings at a closed port, so a green
+run proves the build never needed one. `test:mail` notices this and names its queue cases
+as skipped rather than pretending to have run them; `test:compare`, `test:fidelity` and
+`test:crypt` need a real database and stay local.
 
 ---
 

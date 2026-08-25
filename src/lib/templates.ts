@@ -25,6 +25,13 @@ export async function notify(
     });
   }
   if (template.emailEnabled) {
+    // QUEUED, not SENT. This used to write SENT immediately with a comment
+    // saying the send was simulated, which meant the outbox reported success
+    // for mail nobody received. The scheduled drain in lib/mail/queue.ts is
+    // what moves a row to SENT now, and only after a provider accepted it.
+    //
+    // Enqueue and return: sending inline would put an external service in the
+    // path of a checkout, so a slow provider would become a slow desk.
     await prisma.mailQueue.create({
       data: {
         toEmail: member.email,
@@ -32,7 +39,7 @@ export async function notify(
         subject,
         body,
         template: code,
-        status: "SENT", // simulated send: no SMTP in the prototype
+        status: "QUEUED",
       },
     });
   }

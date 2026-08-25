@@ -85,5 +85,12 @@ jobs:
 
       # House style. Asking for em dashes to be removed by hand did not make
       # them stop coming back, so it is a build failure now.
+      # Outbound mail, minus the cases that need a database. What CI covers
+      # here is the half that decides whether to send at all, including the
+      # rule that a Preview deployment never mails anyone. The queue cases run
+      # against neondb_test locally and name themselves as skipped here.
+      - name: Mail policy and transport
+        run: npm run test:mail
+
       - name: House style
         run: npm run test:style

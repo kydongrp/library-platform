@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/sftp-fetch",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/mail-drain",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

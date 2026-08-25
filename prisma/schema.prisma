@@ -544,15 +544,40 @@ model Notification {
 
 /// Outbound email queue (SDD: MailQ). No SMTP in the prototype; rows are
 /// visible in the admin outbox as proof of the notification flow.
+/// One outbound notice. Rows are written by notify() and drained by the
+/// scheduled mail job; nothing sends inline, so a slow provider can never
+/// delay a checkout.
+///
+/// status:
+///   QUEUED     waiting for the drain, or waiting out a backoff
+///   SENDING    claimed by a drain that has not finished yet
+///   SENT       accepted by the provider, providerId records its id
+///   SUPPRESSED policy declined it (allowlist, or sending disabled)
+///   EXPIRED    sat unsent past MAIL_MAX_AGE_HOURS, deliberately not sent
+///   FAILED     retries exhausted, lastError says why
+///
+/// Rows written before delivery existed carry status SENT with a null sentAt.
+/// They were never actually sent, and the outbox reports them as simulated
+/// rather than rewriting history.
 model MailQueue {
-  id        String   @id @default(cuid())
-  toEmail   String
-  toName    String
-  subject   String
-  body      String
-  template  String
-  status    String   @default("QUEUED") // QUEUED, SENT (simulated)
-  createdAt DateTime @default(now())
+  id            String    @id @default(cuid())
+  toEmail       String
+  toName        String
+  subject       String
+  body          String
+  template      String
+  status        String    @default("QUEUED")
+  attempts      Int       @default(0)
+  lastError     String?
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
+  sentAt        DateTime?
+  providerId    String?
+  transport     String?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([createdAt])
 }
 
 /// One row per EodProcess execution, with a summary of what was generated.

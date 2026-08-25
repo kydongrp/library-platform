@@ -5,10 +5,31 @@ import Link from "next/link";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import { runEodProcess, runLinkCheck, triggerSftpFetch } from "@/app/actions/batch";
+import { sendQueuedMail, retryOutbox, sendTestMail } from "@/app/actions/mail";
+import { outboxCounts } from "@/lib/mail/queue";
+import { sendingEnabled } from "@/lib/mail/policy";
+import { resolveTransport } from "@/lib/mail/transport";
 import { sftpSourceInfo } from "@/lib/sftp";
 import { formatDate, formatTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Outbox status colours. SENT with no sentAt is a row from before delivery
+ * existed: it was recorded as sent and never went anywhere, so it is shown as
+ * simulated rather than quietly counted as a success.
+ */
+const MAIL_TONE = {
+  SENT: "success",
+  QUEUED: "primary",
+  SENDING: "primary",
+  FAILED: "danger",
+  SUPPRESSED: "accent",
+  EXPIRED: "muted",
+} as const;
+
+const MAIL_ORDER = ["QUEUED", "SENDING", "SENT", "FAILED", "SUPPRESSED", "EXPIRED"] as const;
+
 
 export default async function BatchPage() {
   const admin = await requireAdminView("BATCH");
@@ -28,6 +49,9 @@ export default async function BatchPage() {
       prisma.batchRun.findMany({ where: { process: "SFTP_FETCH" }, orderBy: { ranAt: "desc" }, take: 5 }),
       prisma.importedFile.findMany({ orderBy: { fetchedAt: "desc" }, take: 12 }),
     ]);
+  const mailCounts = await outboxCounts();
+  const delivery = sendingEnabled();
+  const transportName = resolveTransport().name;
   const sftpInfo = sftpSourceInfo();
   const brokenResources = brokenLinks.length
     ? await prisma.resource.findMany({
@@ -181,25 +205,70 @@ export default async function BatchPage() {
 
         {/* Mail outbox */}
         <Card className="p-5">
-          <h2 className="mb-3 font-display text-lg font-semibold">Mail outbox</h2>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-semibold">Mail outbox</h2>
+            <Badge tone={delivery.enabled ? "success" : "muted"}>
+              {delivery.enabled ? `Sending via ${transportName}` : "Not sending"}
+            </Badge>
+          </div>
           <p className="mb-3 text-xs text-muted-foreground">
-            Emails the system would send (no SMTP is wired in this prototype).
+            {delivery.enabled
+              ? "Queued notices leave on a ten-minute schedule. Nothing sends inline, so a slow provider cannot hold up the desk."
+              : delivery.reason}
           </p>
+
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {MAIL_ORDER.filter((state) => mailCounts[state]).map((state) => (
+              <Badge key={state} tone={MAIL_TONE[state]}>
+                {state.toLowerCase()} {mailCounts[state]}
+              </Badge>
+            ))}
+            {Object.keys(mailCounts).length === 0 && (
+              <span className="text-xs text-muted-foreground">Nothing queued yet.</span>
+            )}
+          </div>
+
+          {editable && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              <ActionButton action={sendQueuedMail} fields={{}} variant="outline" pendingLabel="Sending…">
+                ✉ Send queued now
+              </ActionButton>
+              <ActionButton action={retryOutbox} fields={{}} variant="outline" pendingLabel="Requeueing…">
+                ↻ Retry failed
+              </ActionButton>
+              <ActionButton action={sendTestMail} fields={{}} variant="outline" pendingLabel="Testing…">
+                Send test to me
+              </ActionButton>
+            </div>
+          )}
+
           {outbox.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No emails generated yet.</p>
           ) : (
             <ul className="divide-y divide-border">
-              {outbox.map((m) => (
-                <li key={m.id} className="py-2.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="min-w-0 truncate text-sm font-medium">{m.subject}</p>
-                    <Badge tone="primary">{m.template}</Badge>
-                  </div>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    To {m.toName} &lt;{m.toEmail}&gt; · {formatDate(m.createdAt)}
-                  </p>
-                </li>
-              ))}
+              {outbox.map((m) => {
+                const simulated = m.status === "SENT" && !m.sentAt;
+                return (
+                  <li key={m.id} className="py-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="min-w-0 truncate text-sm font-medium">{m.subject}</p>
+                      <Badge tone={simulated ? "muted" : (MAIL_TONE[m.status as keyof typeof MAIL_TONE] ?? "neutral")}>
+                        {simulated ? "simulated" : m.status.toLowerCase()}
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {m.template} · to {m.toName} &lt;{m.toEmail}&gt; ·{" "}
+                      {m.sentAt ? `sent ${formatDate(m.sentAt)}` : formatDate(m.createdAt)}
+                      {m.attempts > 1 ? ` · ${m.attempts} attempts` : ""}
+                    </p>
+                    {m.lastError && (
+                      <p className="mt-1 truncate text-xs text-red-700" title={m.lastError}>
+                        {m.lastError}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
