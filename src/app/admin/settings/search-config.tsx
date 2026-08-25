@@ -23,13 +23,8 @@ export function SearchConfigSection({
 }) {
   return (
     <div>
-      <h2 className="mb-1 font-display text-xl font-semibold">Search configuration</h2>
-      <p className="mb-4 max-w-3xl text-sm text-muted-foreground">
-        Applies to the catalogue search here and to the Learner Portal API. Stop words are
-        dropped from searches so clutter words never decide a match; variant spellings make a
-        search for either form find both.
-      </p>
-
+      {/* No heading or blurb here: the tab that contains this section carries
+          both, and repeating them put the same sentence on screen twice. */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <h3 className="mb-1 font-display text-base font-semibold">
