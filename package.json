@@ -27,6 +27,7 @@
     "test:calendar": "tsx scripts/test-calendar-tz.ts",
     "test:tz:guard": "tsx scripts/test-tz-guard.ts",
     "test:style": "tsx scripts/test-style.ts",
+    "test:build": "tsx scripts/test-build-sync.ts",
     "db:harden": "tsx --env-file=.env scripts/db-harden.ts",
     "db:harden:test": "tsx --env-file=.env.test scripts/db-harden.ts"
   },

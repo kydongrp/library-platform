@@ -63,6 +63,13 @@ jobs:
       - name: Build
         run: npx next build
 
+      # The step above is deliberately not `npm run build`, which means nothing
+      # in CI would otherwise execute the part of the build that decides whether
+      # to touch a real database. This suite executes that decision directly,
+      # in both directions, against a closed port.
+      - name: Build syncs the schema everywhere except Preview
+        run: npm run test:build
+
       # These three need no database: the modules under test are pure. They are
       # the guard on the timezone fix, and the reason the guard is in CI rather
       # than in a runbook is that the defect they cover was invisible on a
