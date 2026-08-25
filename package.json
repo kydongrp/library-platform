@@ -26,7 +26,9 @@
     "test:tz": "tsx scripts/test-tz.ts",
     "test:calendar": "tsx scripts/test-calendar-tz.ts",
     "test:tz:guard": "tsx scripts/test-tz-guard.ts",
-    "test:style": "tsx scripts/test-style.ts"
+    "test:style": "tsx scripts/test-style.ts",
+    "db:harden": "tsx --env-file=.env scripts/db-harden.ts",
+    "db:harden:test": "tsx --env-file=.env.test scripts/db-harden.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -62,5 +64,8 @@
     "postcss": "^8.5.26",
     "js-yaml": "^4.3.1",
     "sharp": "^0.35.3"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

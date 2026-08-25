@@ -31,11 +31,12 @@ jobs:
       DATABASE_URL_UNPOOLED: postgresql://ci:ci@127.0.0.1:1/nodb
 
     steps:
-      - uses: actions/checkout@v7
+      # Pinned to the v7.0.1 commit: a mutable tag is a supply-chain input.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # 24.x is what the Vercel project builds on, so a green run here means the
       # same thing it will mean at deploy time.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -44,6 +45,12 @@ jobs:
       # so without this nothing can resolve @/generated/prisma.
       - name: Install
         run: npm ci
+
+      # High-or-worse advisories fail the build. This will occasionally go red
+      # through no fault of the diff, when a new advisory lands upstream; that
+      # is the point of a patch-management gate.
+      - name: Dependency audit
+        run: npm audit --audit-level=high
 
       - name: Lint
         run: npx eslint . --max-warnings 0

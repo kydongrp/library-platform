@@ -8,17 +8,34 @@ import {
   ADMIN_AREAS,
   getCurrentAdmin,
   canEdit,
-  setCurrentAdmin,
+  createAdminSession,
   clearCurrentAdmin,
+  evalSignInAllowed,
+  requestMeta,
 } from "@/lib/admin-session";
+import { rateLimit } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
 
 /* ---------- Act-as session ---------- */
 
 export async function signInAsAdmin(formData: FormData): Promise<void> {
+  // The switcher is an evaluation affordance: in production it exists only
+  // when ALLOW_EVAL_SIGNIN=1 is set, and disappears when Entra ID lands.
+  if (!evalSignInAllowed()) redirect("/admin/signin");
+
+  // Sign-in attempts are the classic brute-force surface, so they are
+  // rate-limited per source address even while the switcher needs no secret.
+  const meta = await requestMeta();
+  if (!(await rateLimit(`signin:${meta.ip ?? "unknown"}`, 30, 60))) {
+    redirect("/admin/signin?limited=1");
+  }
+
   const id = String(formData.get("adminId") ?? "");
   if (!id) return;
-  await setCurrentAdmin(id);
+  // Validation happens BEFORE a session exists: a nonexistent or suspended
+  // account gets no cookie and no audit noise attributed to a raw id.
+  const ok = await createAdminSession(id);
+  if (!ok) redirect("/admin/signin");
   const user = await prisma.adminUser.findUnique({ where: { id }, select: { name: true } });
   await audit({
     action: "auth.signIn",

@@ -7,9 +7,14 @@ import { audit } from "@/lib/audit";
 // CSV of the filtered loan history (mirrors the audit-trail export pattern).
 export const dynamic = "force-dynamic";
 
+// Mirrors toCsv() in src/lib/reports.ts: a leading =, +, -, @, tab, or CR
+// executes as a formula when the CSV opens in a spreadsheet, so such cells are
+// prefixed with a quote unless they are plain numbers.
+const PLAIN_NUMBER = /^-?\$?[\d,]+(\.\d+)?%?$/;
 function csvCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const raw = v == null ? "" : String(v);
+  const s = /^[=+@\t\r-]/.test(raw) && !PLAIN_NUMBER.test(raw) ? `'${raw}` : raw;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 // The Singapore calendar day, not the UTC one: a loan returned at

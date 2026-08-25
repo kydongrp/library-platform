@@ -7,6 +7,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const KEY_PREFIX = "dls_live_";
 const PREFIX_DISPLAY_LEN = KEY_PREFIX.length + 8;
@@ -38,12 +39,25 @@ export function apiError(status: number, code: string, message: string): NextRes
 
 /** Gate a portal route: Authorization: Bearer dls_live_… → ApiClient. */
 export async function authenticatePortalRequest(request: Request): Promise<ApiAuth> {
+  // The portal is one trusted server-to-server consumer, so the per-address
+  // window counts only FAILED authentications: it throttles key guessing
+  // without rationing legitimate traffic that all arrives from one egress.
+  const ip =
+    request.headers.get("x-real-ip") ??
+    (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  const authFailLimited = async () =>
+    !(await rateLimit(`portal:authfail:${ip}`, 60, 60))
+      ? apiError(429, "rate_limited", "Too many failed authentications; retry in a minute.")
+      : null;
+
   const header = request.headers.get("authorization") ?? "";
   const key = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!key.startsWith(KEY_PREFIX)) {
+    const limited = await authFailLimited();
     return {
       ok: false,
-      response: apiError(401, "missing_key", "Pass an API key: Authorization: Bearer dls_live_…"),
+      response:
+        limited ?? apiError(401, "missing_key", "Pass an API key: Authorization: Bearer dls_live_…"),
     };
   }
 
@@ -51,10 +65,16 @@ export async function authenticatePortalRequest(request: Request): Promise<ApiAu
   // findUnique on the hash already proves possession; the timing-safe compare
   // is a belt-and-braces recheck that costs nothing.
   if (!client || !hashesEqual(client.keyHash, hashKey(key))) {
-    return { ok: false, response: apiError(401, "invalid_key", "Unknown API key.") };
+    const limited = await authFailLimited();
+    return { ok: false, response: limited ?? apiError(401, "invalid_key", "Unknown API key.") };
   }
   if (client.status !== "ACTIVE") {
     return { ok: false, response: apiError(403, "revoked_key", "This API key has been revoked.") };
+  }
+  // Sized for the portal backend's fan-out (20 requests/second sustained),
+  // a ceiling against runaway loops rather than a ration.
+  if (!(await rateLimit(`portal:client:${client.id}`, 1200, 60))) {
+    return { ok: false, response: apiError(429, "rate_limited", "Request rate exceeded for this key; retry shortly.") };
   }
 
   // Bump lastUsedAt at most once a minute: no write amplification per request.

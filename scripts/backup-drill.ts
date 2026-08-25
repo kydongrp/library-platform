@@ -24,6 +24,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { Client } from "pg";
 import { backup, restore, connectionString, describeTarget } from "./lib/dump";
+import { applyAuditAppendOnly } from "./lib/harden";
 import { compareDatabases } from "./lib/db-compare";
 
 /** Swap the database name in a connection URL, keeping every other param. */
@@ -90,6 +91,9 @@ void (async () => {
     const drill = new Client({ connectionString: drillUrl });
     drill.on("error", (e) => console.error(`  [drill connection] ${e.message}`));
     await drill.connect();
+    // Production carries the append-only trigger (scripts/db-harden.ts);
+    // without it here, the rules comparison below flags a trigger diff.
+    await applyAuditAppendOnly(drill);
     const tblCount = await drill.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM pg_tables WHERE schemaname = 'public'`,
     );

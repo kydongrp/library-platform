@@ -274,8 +274,14 @@ export async function backup(outPath: string, url: string): Promise<BackupResult
     const gz = gzipSync(Buffer.from(body, "utf8"), { level: 9 });
     // Encrypt whenever a key is configured, so a dump on disk is never
     // readable personal data.
-    const encrypted = hasBackupKey();
-    writeFileSync(outPath, encrypted ? encrypt(gz) : gz);
+    // Encryption is mandatory, not opt-in: a dump holds member names and
+    // emails, and "it warned on the console" is not a control. Set BACKUP_KEY.
+    if (!hasBackupKey())
+      throw new Error(
+        "Refusing to write a plaintext backup: BACKUP_KEY is not set, and dumps hold member names and emails.",
+      );
+    const encrypted = true;
+    writeFileSync(outPath, encrypt(gz));
 
     // Read it back. A backup that reports success and cannot be opened is the
     // worst possible outcome, and with BACKUP_KEY passed inline a typo produces

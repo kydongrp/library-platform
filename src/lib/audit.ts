@@ -3,7 +3,7 @@
 // documents, so failures are swallowed; and the app exposes no update or
 // delete path for AuditLog rows.
 import { prisma } from "@/lib/db";
-import { getCurrentAdmin } from "@/lib/admin-session";
+import { getCurrentAdmin, requestMeta } from "@/lib/admin-session";
 
 export type AuditEntry = {
   action: string; // dot notation: "catalogue.update", "ep.approve", …
@@ -34,6 +34,7 @@ export async function audit(entry: AuditEntry): Promise<void> {
       const admin = await getCurrentAdmin();
       actor = admin ? { name: admin.name, id: admin.id } : { name: "unknown" };
     }
+    const meta = await requestMeta();
     await prisma.auditLog.create({
       data: {
         actor: actor.name,
@@ -43,10 +44,18 @@ export async function audit(entry: AuditEntry): Promise<void> {
         entityId: entry.entityId ?? null,
         summary: entry.summary.slice(0, 500),
         detail: boundDetail(entry.detail) as never,
+        ip: meta.ip ?? null,
+        userAgent: meta.userAgent ? meta.userAgent.slice(0, 300) : null,
       },
     });
-  } catch {
-    // Auditing must never take down the mutation it records.
+  } catch (e) {
+    // Auditing must never take down the mutation it records, but a failed
+    // write must not vanish either: this tag is the hook for log-based alerts.
+    console.error(
+      "[audit-write-failed]",
+      entry.action,
+      e instanceof Error ? e.message : e,
+    );
   }
 }
 

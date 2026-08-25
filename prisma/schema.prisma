@@ -415,6 +415,7 @@ model AdminUser {
   createdAt DateTime   @default(now())
   groupId   String
   group     AdminGroup @relation(fields: [groupId], references: [id])
+  sessions  AdminSessionToken[]
 }
 
 /// A staff role (SDD: AdminGroups) holding per-area permissions.
@@ -437,6 +438,38 @@ model AdminGroupPermission {
   group   AdminGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, area])
+}
+
+/// Server-side staff session (IM8: identification and authentication).
+/// The cookie carries a random 256-bit token; only its SHA-256 hash is stored,
+/// so a database read cannot mint a session. Sign-out revokes the row
+/// immediately, expiry is enforced on every lookup, and expired rows are
+/// pruned opportunistically at sign-in.
+model AdminSessionToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  ip        String?
+  userAgent String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Fixed-window rate limiting (IM8: application security). One row per
+/// (key, window start); the count increments atomically via upsert so the
+/// limiter works across serverless instances. Stale windows are pruned
+/// opportunistically by the limiter itself.
+model RateWindow {
+  key      String
+  windowAt DateTime
+  count    Int      @default(0)
+
+  @@id([key, windowAt])
 }
 
 /// Configurable circulation rules (SDD: LoansPolicies). One row per member
@@ -919,6 +952,10 @@ model AuditLog {
   entityId String?
   summary  String // human-readable one-liner
   detail   Json? // before/after snapshot or payload extract
+  // Request metadata for forensic attribution (IM8: accountability). Nullable
+  // because scripts and cron jobs have no request context.
+  ip        String?
+  userAgent String?
 
   @@index([at])
   @@index([action])

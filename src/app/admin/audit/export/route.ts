@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin, canView } from "@/lib/admin-session";
+import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 
 const EXPORT_MAX = 10_000;
 
+// Mirrors toCsv() in src/lib/reports.ts: a leading =, +, -, @, tab, or CR
+// executes as a formula when the CSV opens in a spreadsheet, so such cells are
+// prefixed with a quote unless they are plain numbers.
+const PLAIN_NUMBER = /^-?\$?[\d,]+(\.\d+)?%?$/;
 function csvCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const raw = v == null ? "" : String(v);
+  const s = /^[=+@\t\r-]/.test(raw) && !PLAIN_NUMBER.test(raw) ? `'${raw}` : raw;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -44,6 +50,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       .map(csvCell)
       .join(","),
   );
+
+  // Downloading the trail is itself an accountable act: unlike viewing, an
+  // export leaves the building, so it gets its own audit row.
+  await audit({
+    action: "audit.export",
+    summary: `Exported ${entries.length} audit rows${family ? ` (family ${family})` : ""}${actor ? ` (actor ${actor})` : ""}`,
+    entity: "AuditLog",
+    detail: { rows: entries.length, family: family || null, actor: actor || null, q: q || null },
+  });
 
   // UTF-8 BOM so Excel opens the CSV with correct encoding.
   const csv = "﻿" + [header.join(","), ...rows].join("\n");

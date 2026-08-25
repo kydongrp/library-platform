@@ -24,6 +24,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { Client } from "pg";
 import { backup, restore, connectionString, describeTarget } from "./lib/dump";
+import { applyAuditAppendOnly } from "./lib/harden";
 import { compareDatabases } from "./lib/db-compare";
 
 function withDatabase(url: string, dbName: string): string {
@@ -69,6 +70,14 @@ void (async () => {
         stdio: "pipe",
       },
     );
+    {
+      // Match production's hardening or the very first comparison fails on
+      // the trigger diff.
+      const h = new Client({ connectionString: copyUrl });
+      await h.connect();
+      await applyAuditAppendOnly(h);
+      await h.end();
+    }
     await restore(dumpPath, copyUrl);
     console.log(`Copy built: ${manifest.totalRows} rows, ${manifest.tableOrder.length} tables\n`);
 
@@ -113,9 +122,15 @@ void (async () => {
         skipIf: `SELECT count(*) = 0 AS skip FROM "Resource" WHERE description IS NOT NULL`,
       },
       {
-        label: "a deleted row",
+        // The realistic tamper path now that the trigger exists: an attacker
+        // with DDL rights disables it, deletes, and re-enables. The trigger
+        // definitions end up identical, so only the row count betrays it,
+        // which is exactly what this case must prove the comparison catches.
+        label: "a deleted row (trigger disabled and restored)",
         kind: "counts",
-        damage: `DELETE FROM "AuditLog" WHERE id = (SELECT id FROM "AuditLog" ORDER BY id LIMIT 1)`,
+        damage: `ALTER TABLE "AuditLog" DISABLE TRIGGER auditlog_append_only;
+                 DELETE FROM "AuditLog" WHERE id = (SELECT id FROM "AuditLog" ORDER BY id LIMIT 1);
+                 ALTER TABLE "AuditLog" ENABLE TRIGGER auditlog_append_only`,
       },
       {
         label: "a dropped unique index",

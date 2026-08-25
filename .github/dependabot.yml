@@ -1,0 +1,23 @@
+# Automated dependency updates (IM8: vulnerability and patch management).
+# Security advisories arrive as PRs immediately; routine updates weekly, so
+# the five pinned overrides in package.json stop being hand-maintained.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Singapore
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Singapore

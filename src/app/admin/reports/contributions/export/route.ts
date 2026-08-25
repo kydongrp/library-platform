@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { getCurrentAdmin, canView } from "@/lib/admin-session";
 import { getContributionCsvRows } from "@/lib/contributions";
 
+// Mirrors toCsv() in src/lib/reports.ts: formula-leading cells are neutralised.
+const PLAIN_NUMBER = /^-?\$?[\d,]+(\.\d+)?%?$/;
 function csvCell(v: string): string {
-  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const s = /^[=+@\t\r-]/.test(v) && !PLAIN_NUMBER.test(v) ? `'${v}` : v;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export async function GET(): Promise<NextResponse> {

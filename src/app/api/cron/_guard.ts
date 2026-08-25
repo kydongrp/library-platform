@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 
 /**
@@ -17,7 +18,13 @@ export function denyUnlessCron(request: Request): NextResponse | null {
       { status: 503 },
     );
   }
-  if (request.headers.get("authorization") !== `Bearer ${secret}`) {
+  // Hash both sides first so the comparison is constant-time regardless of
+  // length, matching the pattern portal-auth.ts already uses for API keys.
+  const presented = createHash("sha256")
+    .update(request.headers.get("authorization") ?? "")
+    .digest();
+  const expected = createHash("sha256").update(`Bearer ${secret}`).digest();
+  if (!timingSafeEqual(presented, expected)) {
     return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
   }
   return null;
