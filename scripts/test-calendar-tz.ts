@@ -161,8 +161,14 @@ function run() {
     "24 Aug 2026, 14:00 – 25 Aug 2026, 10:00",
     "a window across midnight names both days",
   );
-  eq(validateWindow({ startAt: bkStart, endAt: bkEnd }), null, "a normal window validates");
-  eq(validateWindow({ startAt: bkEnd, endAt: bkStart }), "END_BEFORE_START", "reversed is refused");
+  // validateWindow defaults `now` to the real clock, and these fixtures name
+  // 24 Aug 2026: without pinning the clock, the suite starts failing the
+  // moment the real world passes the window (which it did, one day after the
+  // fixtures were written). 10:00 SGT on the fixture morning keeps the window
+  // in the future forever.
+  const fixtureNow = new Date("2026-08-24T02:00:00.000Z");
+  eq(validateWindow({ startAt: bkStart, endAt: bkEnd }, fixtureNow), null, "a normal window validates");
+  eq(validateWindow({ startAt: bkEnd, endAt: bkStart }, fixtureNow), "END_BEFORE_START", "reversed is refused");
   // The half-open comparison is what lets one booking end as the next begins.
   const nextSlot = { startAt: bkEnd, endAt: parseZonedDateTimeLocal("2026-08-24T18:00")! };
   eq(
