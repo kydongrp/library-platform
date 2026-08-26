@@ -92,5 +92,10 @@ jobs:
       - name: Mail policy and transport
         run: npm run test:mail
 
+      # When outbound access links are wrapped in the authenticating proxy,
+      # and when they must be left alone. Pure, no database.
+      - name: Proxy link-out rules
+        run: npm run test:proxy
+
       - name: House style
         run: npm run test:style

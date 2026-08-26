@@ -2,6 +2,8 @@
 // serialises resources identically, and so member/staff data can never
 // leak by accident: only the fields named here leave the system.
 
+import { proxiedUrl } from "@/lib/proxy-link";
+
 type ResourceWithCopies = {
   id: string;
   title: string;
@@ -45,7 +47,10 @@ export function toPublicResource(r: ResourceWithCopies) {
     language: r.language,
     description: r.description,
     digital: r.digital,
-    accessUrl: r.digitalUrl,
+    // Wrapped in the library's authenticating proxy when one is configured,
+    // so a learner reaches licensed full text instead of the paywall. The
+    // stored URL stays canonical; see src/lib/proxy-link.ts.
+    accessUrl: proxiedUrl(r.digitalUrl, r.provider),
     provider: r.provider,
     editorsPick: r.editorsPick,
     editorsPickBlurb: r.editorsPick ? r.epBlurb : null,
