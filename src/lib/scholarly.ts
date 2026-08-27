@@ -51,25 +51,39 @@ export const SOURCES = [
 ] as const;
 export type SourceKey = (typeof SOURCES)[number]["key"];
 
-// Providers offered in the manual-entry form (and the catalogue source filter).
-// Janes/Knovel/IHS have no public metadata API, so admins add them by hand.
-export const MANUAL_PROVIDERS = [
-  "IEEE Xplore",
-  "Janes",
-  "Knovel",
-  "IHS Markit",
-  "ScienceDirect",
-  "JSTOR",
-  "ACM Digital Library",
-  "ProQuest",
-  "SPIE Digital Library",
-] as const;
+// The provider list lives in constants.ts (PROVIDER_GROUPS) so every dropdown
+// in the app offers the same names. Most of these have no public metadata API,
+// so admins add their titles by hand or via the bulk file import.
 
-// Sensible default resource type per provider for the manual form.
+// Sensible default resource type per provider for the manual form. Providers
+// absent from this map simply keep the form's current selection; only add an
+// entry where the provider publishes overwhelmingly one kind of thing.
 export const PROVIDER_DEFAULT_TYPE: Record<string, string> = {
   Janes: "JOURNAL",
   Knovel: "EBOOK",
   "IHS Markit": "STANDARD",
+  "Aviation Week Network": "MAGAZINE",
+  "SPIE Digital Library": "CONFERENCE",
+  "ASME Digital Collection": "JOURNAL",
+  "AIAA Aerospace Research Central": "JOURNAL",
+  "SAE Mobilus": "STANDARD",
+  "ASTM Compass": "STANDARD",
+  "BSI Knowledge": "STANDARD",
+  "IEC Webstore": "STANDARD",
+  ISO: "STANDARD",
+  "Singapore Standards eShop": "STANDARD",
+  Techstreet: "STANDARD",
+  ScienceDirect: "JOURNAL",
+  SpringerLink: "JOURNAL",
+  "Wiley Online Library": "JOURNAL",
+  "Taylor & Francis Online": "JOURNAL",
+  "SAGE Journals": "JOURNAL",
+  "Cambridge Core": "JOURNAL",
+  "Oxford Academic": "JOURNAL",
+  "Emerald Insight": "JOURNAL",
+  "MIT Press Direct": "EBOOK",
+  "O'Reilly Learning": "EBOOK",
+  "NLB eResources": "EBOOK",
 };
 
 const TIMEOUT_MS = 10_000;

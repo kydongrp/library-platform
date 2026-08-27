@@ -6,11 +6,38 @@ import { Card, buttonVariants } from "@/components/ui";
 import { importScholarly, addManualArticle, importResourceRows, draftArticle } from "@/app/actions/import";
 import type { ArticleDraft } from "@/lib/ai-draft";
 import { useToast } from "@/components/toast";
-import { CATEGORIES, RESOURCE_TYPES, RESOURCE_TYPE_LABELS } from "@/lib/constants";
+import {
+  CATEGORIES,
+  RESOURCE_TYPES,
+  RESOURCE_TYPE_LABELS,
+  PROVIDERS,
+  PROVIDER_GROUPS,
+} from "@/lib/constants";
 import { parseBulk, type BulkRow } from "@/lib/bulk-import";
 import type { ScholarlyRecord } from "@/lib/scholarly";
 
 const selectCls = "rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs";
+
+/** Provider name the forms start on. See PROVIDER_GROUPS for why it is first. */
+const DEFAULT_PROVIDER = PROVIDERS[0] ?? "";
+
+/**
+ * Options for a provider <select>, grouped by kind.
+ *
+ * Grouped rather than flat because the list is long enough that a single run of
+ * forty names is hard to scan. Callers add their own "Other…" option after this.
+ */
+function ProviderOptions() {
+  return PROVIDER_GROUPS.map((group) => (
+    <optgroup key={group.label} label={group.label}>
+      {group.providers.map((p) => (
+        <option key={p} value={p}>
+          {p}
+        </option>
+      ))}
+    </optgroup>
+  ));
+}
 
 /** Per-row import: pick a category, import one record. */
 export function ImportButton({ record }: { record: ScholarlyRecord }) {
@@ -84,14 +111,8 @@ const SOURCE_LABELS: Record<ArticleDraft["source"], string> = {
  * (Janes, Knovel, IHS, etc.). Creates a digital, link-out resource. The AI
  * assistant drafts the fields from a DOI/URL/citation; staff review and save.
  */
-export function ManualArticleForm({
-  providers,
-  aiEnabled,
-}: {
-  providers: readonly string[];
-  aiEnabled: boolean;
-}) {
-  const [provider, setProvider] = useState(providers[0] ?? "");
+export function ManualArticleForm({ aiEnabled }: { aiEnabled: boolean }) {
+  const [provider, setProvider] = useState(DEFAULT_PROVIDER);
   const [draftInput, setDraftInput] = useState("");
   const [draft, setDraft] = useState<ArticleDraft | null>(null);
   const [draftRev, setDraftRev] = useState(0); // remounts the fields with new defaults
@@ -179,7 +200,7 @@ export function ManualArticleForm({
                 <label className={labelCls} htmlFor="ma-provider">Provider *</label>
                 <select id="ma-provider" name="provider" value={provider}
                   onChange={(e) => setProvider(e.target.value)} className={fieldCls}>
-                  {providers.map((p) => <option key={p} value={p}>{p}</option>)}
+                  <ProviderOptions />
                   <option value="__custom__">Other…</option>
                 </select>
                 {provider === "__custom__" && (
@@ -258,9 +279,11 @@ export function ManualArticleForm({
  * against the catalogue, and the result reports imported / duplicate / skipped
  * counts with reasons.
  */
-export function BulkImportForm({ providers }: { providers: readonly string[] }) {
+export function BulkImportForm() {
+  // Bulk import starts on Janes rather than the global default: a whole file at
+  // once is how the no-API providers get loaded, and Janes is the usual one.
   const [provider, setProvider] = useState(
-    (providers as readonly string[]).includes("Janes") ? "Janes" : providers[0] ?? "",
+    PROVIDERS.includes("Janes") ? "Janes" : DEFAULT_PROVIDER,
   );
 
   function download(filename: string, mime: string, body: string) {
@@ -420,7 +443,7 @@ export function BulkImportForm({ providers }: { providers: readonly string[] }) 
             <label className={labelCls} htmlFor="bi-provider">Provider *</label>
             <select id="bi-provider" name="provider" value={provider}
               onChange={(e) => setProvider(e.target.value)} className={fieldCls}>
-              {providers.map((p) => <option key={p} value={p}>{p}</option>)}
+              <ProviderOptions />
               <option value="__custom__">Other…</option>
             </select>
             {provider === "__custom__" && (

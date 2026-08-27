@@ -3,7 +3,7 @@ import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
 import { Card, Badge, EmptyState } from "@/components/ui";
-import { SOURCES, searchScholarly, xploreConfigured, MANUAL_PROVIDERS, type ScholarlyRecord, type SourceKey } from "@/lib/scholarly";
+import { SOURCES, searchScholarly, xploreConfigured, type ScholarlyRecord, type SourceKey } from "@/lib/scholarly";
 import { aiConfigured } from "@/lib/ai-draft";
 import { ImportButton, ImportAllBar, ManualArticleForm, BulkImportForm } from "./widgets";
 
@@ -94,9 +94,9 @@ export default async function LiveFetchPage({ searchParams }: { searchParams: Se
         !editable ? (
           <EmptyState title="Read-only access" description="Your group can view the catalogue but not add to it." />
         ) : isBulk ? (
-          <BulkImportForm providers={MANUAL_PROVIDERS} />
+          <BulkImportForm />
         ) : (
-          <ManualArticleForm providers={MANUAL_PROVIDERS} aiEnabled={aiConfigured()} />
+          <ManualArticleForm aiEnabled={aiConfigured()} />
         )
       ) : (
       <>

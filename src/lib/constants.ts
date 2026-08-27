@@ -65,8 +65,99 @@ export const DIGITAL_TYPES = new Set([
   "STANDARD",
 ]);
 
-// Known external subscription providers, offered as quick-pick options.
-export const PROVIDERS = ["IEEE Xplore", "Janes", "Knovel", "IHS Markit", "ScienceDirect", "JSTOR", "ACM Digital Library", "ProQuest", "SPIE Digital Library"];
+// Known external content providers, offered as quick-pick options wherever an
+// admin tags a resource, subscription or usage figure.
+//
+// This is the ONLY list. It used to be duplicated as MANUAL_PROVIDERS in
+// scholarly.ts, which meant adding a provider in one place left the other
+// dropdowns without it.
+//
+// The field is free text everywhere (datalists here, selects with an "Other…"
+// option on the import screens), so this list is a convenience and never a
+// constraint. Names must match the strings already stored, because `provider`
+// is the only join between Subscription, Resource and UsageStat: renaming an
+// entry here silently detaches that provider's cost-per-use figures. That is
+// why "MIT OCW" keeps its abbreviated form.
+//
+// Grouped so the select stays navigable as the list grows. Prune freely: a
+// provider nobody subscribes to is just a line an admin scrolls past.
+export const PROVIDER_GROUPS = [
+  {
+    // The very first provider in the very first group is what the manual and
+    // bulk import forms preselect, so IEEE Xplore leads: it is the largest
+    // holding and the only registered subscription. Reordering this group
+    // changes what admins get by default.
+    label: "Defence, aerospace & engineering",
+    providers: [
+      "IEEE Xplore",
+      "Janes",
+      "IHS Markit",
+      "Knovel",
+      "SPIE Digital Library",
+      "ASME Digital Collection",
+      "AIAA Aerospace Research Central",
+      "SAE Mobilus",
+      "Aviation Week Network",
+    ],
+  },
+  {
+    label: "Standards",
+    providers: [
+      "ASTM Compass",
+      "BSI Knowledge",
+      "IEC Webstore",
+      "ISO",
+      "Singapore Standards eShop",
+      "Techstreet",
+    ],
+  },
+  {
+    label: "Journals & books",
+    providers: [
+      "ScienceDirect",
+      "SpringerLink",
+      "Wiley Online Library",
+      "Taylor & Francis Online",
+      "SAGE Journals",
+      "Cambridge Core",
+      "Oxford Academic",
+      "Emerald Insight",
+      "MIT Press Direct",
+      "ACM Digital Library",
+    ],
+  },
+  {
+    label: "Databases & aggregators",
+    providers: [
+      "JSTOR",
+      "ProQuest",
+      "EBSCOhost",
+      "Gale",
+      "Scopus",
+      "Web of Science",
+      "Statista",
+      "NLB eResources",
+    ],
+  },
+  {
+    label: "Professional & skills learning",
+    providers: [
+      "O'Reilly Learning",
+      "LinkedIn Learning",
+      "Coursera",
+      "Udemy Business",
+      "Harvard Business Publishing",
+      "MIT OCW",
+    ],
+  },
+  {
+    label: "Open access & metadata",
+    providers: ["Crossref", "arXiv", "DOAJ", "OpenAlex"],
+  },
+] as const;
+
+/** Flat list of every provider, for datalists and plain membership checks. */
+export const PROVIDERS: string[] = PROVIDER_GROUPS.flatMap((g) => [...g.providers]);
 
 export const MEMBER_TYPES = ["STUDENT", "STAFF", "EXTERNAL"] as const;
 export type MemberType = (typeof MEMBER_TYPES)[number];
