@@ -3,9 +3,12 @@ import { requireAdminView } from "@/lib/admin-guard";
 import { Card, EmptyState } from "@/components/ui";
 import { BarChart, ColumnChart, StackedBars, CHART_SERIES } from "@/components/charts";
 import { CUBES, FLEXI_ROW_CAP, getCube, parseRange } from "@/lib/flexi";
-import { pivot, type DimensionDef, type Pivot } from "@/lib/flexi-core";
+import { pivot, VIEWS, VIEWS_NEEDING_COLUMNS, type DimensionDef, type Pivot } from "@/lib/flexi-core";
 import { formatFine } from "@/lib/fines";
 import { FlexiForm } from "./flexi-form";
+import { NlReportBox } from "./nl-box";
+import { PROMPT_MAX } from "@/lib/flexi-nl";
+import { nlReportsConfigured } from "@/lib/flexi-ai";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +21,6 @@ type SearchParams = Promise<{
   from?: string;
   to?: string;
 }>;
-
-const VIEWS = [
-  { key: "table", label: "Table only" },
-  { key: "bar", label: "Bar chart" },
-  { key: "columns", label: "Column chart" },
-  { key: "stacked", label: "Stacked bars" },
-] as const;
 
 const inputCls =
   "rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -62,7 +58,7 @@ export default async function FlexiReportsPage({ searchParams }: { searchParams:
       cube.measures.find((m) => m.key === cube.defaults.measure) ??
       cube.measures[0];
     // Chart modes that cross two dimensions need a column dimension.
-    if (!colDim && (view === "columns" || view === "stacked")) view = "bar";
+    if (!colDim && VIEWS_NEEDING_COLUMNS.includes(view)) view = "bar";
 
     const data = await cube.fetch(parseRange(sp.from, sp.to));
     rowCount = data.length;
@@ -107,6 +103,11 @@ export default async function FlexiReportsPage({ searchParams }: { searchParams:
           as a graph, export to Excel-compatible CSV.
         </p>
       </div>
+
+      {/* Ask in words. Sits above the cube selectors because it is the fastest
+          route in, but it only ever proposes criteria: the admin still presses
+          Run, and the criteria form below stays the authoritative control. */}
+      <NlReportBox maxLength={PROMPT_MAX} configured={nlReportsConfigured()} />
 
       {/* Cube selectors: the five preset starting points. */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

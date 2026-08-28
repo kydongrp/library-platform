@@ -22,6 +22,26 @@ import { zonedMonthKey, zonedYearKey } from "@/lib/tz";
  */
 export const MISSING = "(none)";
 
+/**
+ * How a pivot can be presented. Lives here rather than in the page so the
+ * natural-language layer (src/lib/flexi-nl.ts) validates against the same list
+ * the page renders, instead of a second copy that can drift out of step.
+ *
+ * "columns" and "stacked" need a column dimension to stack or group by; the
+ * page downgrades them to "bar" when none was chosen.
+ */
+export const VIEWS = [
+  { key: "table", label: "Table only" },
+  { key: "bar", label: "Bar chart" },
+  { key: "columns", label: "Column chart" },
+  { key: "stacked", label: "Stacked bars" },
+] as const;
+
+export type ViewKey = (typeof VIEWS)[number]["key"];
+
+/** Views that are meaningless without a column dimension. */
+export const VIEWS_NEEDING_COLUMNS: readonly string[] = ["columns", "stacked"];
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type DimensionDef<R = any> = {
   key: string;
