@@ -3,8 +3,9 @@ import { requireAdminView } from "@/lib/admin-guard";
 import { Card, EmptyState } from "@/components/ui";
 import { REPORTS, runReport } from "@/lib/reports";
 import { MODULE_REPORTS, DATE_RANGED_MODULE_REPORTS } from "@/lib/reports-modules";
-import { MEMBER_TYPES, MEMBER_TYPE_LABELS } from "@/lib/constants";
+
 import { resolvePaging } from "@/lib/paging";
+import { listMemberTypes } from "@/lib/member-types";
 import { TablePager } from "@/components/pagination";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ const inputCls =
 
 export default async function ReportsPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdminView("REPORTS");
+  const memberTypes = await listMemberTypes();
   const {
     report = "",
     from = "",
@@ -177,8 +179,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
                       <label className="mb-1 block text-xs text-muted-foreground" htmlFor="rpt-mt">Member type</label>
                       <select id="rpt-mt" name="memberType" defaultValue={memberType} className={inputCls}>
                         <option value="">All</option>
-                        {MEMBER_TYPES.map((t) => (
-                          <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
+                        {memberTypes.map((t) => (
+                          <option key={t.name} value={t.name}>{t.label}</option>
                         ))}
                       </select>
                     </div>

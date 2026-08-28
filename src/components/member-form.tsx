@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { StatefulForm, SubmitButton } from "@/components/forms";
-import { MEMBER_TYPES, MEMBER_TYPE_LABELS, MEMBER_LANGUAGES } from "@/lib/constants";
+import { MEMBER_LANGUAGES } from "@/lib/constants";
 import type { ActionState } from "@/lib/types";
 
 type Defaults = {
@@ -27,6 +27,7 @@ const inputCls =
 export function MemberForm({
   action,
   statuses,
+  memberTypes,
   locations = [],
   departments = [],
   defaults = {},
@@ -34,13 +35,21 @@ export function MemberForm({
 }: {
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   statuses: StatusOption[];
+  /**
+   * Member types to offer. Passed in rather than imported: the list is managed
+   * in the database, and this is a client component. Includes any type a member
+   * is already on, so editing that member does not silently reassign them.
+   */
+  memberTypes: { name: string; label: string }[];
   /** Managed registration lists; empty = the field falls back to free text. */
   locations?: string[];
   departments?: string[];
   defaults?: Defaults;
   submitLabel?: string;
 }) {
-  const [memberType, setMemberType] = useState(defaults.memberType ?? "STUDENT");
+  const [memberType, setMemberType] = useState(
+    defaults.memberType ?? memberTypes[0]?.name ?? "",
+  );
   const defaultStatus =
     defaults.status ?? statuses.find((s) => s.isDefault)?.name ?? statuses[0]?.name ?? "Active";
 
@@ -99,8 +108,8 @@ export function MemberForm({
               <label className={labelCls} htmlFor="memberType">Member type</label>
               <select id="memberType" name="memberType" value={memberType}
                 onChange={(e) => setMemberType(e.target.value)} className={inputCls}>
-                {MEMBER_TYPES.map((t) => (
-                  <option key={t} value={t}>{MEMBER_TYPE_LABELS[t]}</option>
+                {memberTypes.map((t) => (
+                  <option key={t.name} value={t.name}>{t.label}</option>
                 ))}
               </select>
               <p className="mt-1 text-xs text-muted-foreground">

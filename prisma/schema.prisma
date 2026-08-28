@@ -264,6 +264,22 @@ model ResourceCategory {
   createdAt DateTime @default(now())
 }
 
+/// Member category (the "Type" field on a member record). Institution-specific
+/// vocabulary, so a managed list rather than a fixed enum: DSTA's categories
+/// are not the next client's.
+///
+/// `name` is the short stable value stored on Member.memberType and referenced
+/// by LoanPolicy.memberType; `label` is the long wording staff see. Keeping
+/// them apart means the loan matrix is not keyed on a sentence, and rewording a
+/// label does not orphan every member and policy that used it.
+model MemberTypeDef {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  label     String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
 model MemberDepartment {
   id        String   @id @default(cuid())
   name      String   @unique // e.g. "Business School"

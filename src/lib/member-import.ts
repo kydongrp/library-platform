@@ -3,7 +3,7 @@
 // Lenient header aliases, same philosophy as the resource bulk importer.
 
 import { parseCsv } from "@/lib/bulk-import";
-import { MEMBER_TYPES, MEMBER_LANGUAGES } from "@/lib/constants";
+import { MEMBER_TYPES, MEMBER_LANGUAGES, SEED_MEMBER_TYPES } from "@/lib/constants";
 
 export type MemberRow = {
   name: string;
@@ -93,7 +93,11 @@ export function parseMemberRows(
     seenEmails.add(email);
 
     const typeRaw = get(r, "memberType").toUpperCase();
-    const memberType = (MEMBER_TYPES as readonly string[]).includes(typeRaw) ? typeRaw : "STUDENT";
+    // Falls back to the first configured type rather than "STUDENT", which is
+    // a legacy value this institution does not use.
+    const memberType = (MEMBER_TYPES as readonly string[]).includes(typeRaw)
+      ? typeRaw
+      : SEED_MEMBER_TYPES[0].name;
 
     const statusRaw = get(r, "status");
     let status = defaultStatus;

@@ -221,7 +221,7 @@ export function ResourceForm({
               <div>
                 <label className={labelCls} htmlFor="digitalUrl">Access URL</label>
                 <input id="digitalUrl" name="digitalUrl" type="url" defaultValue={defaults.digitalUrl ?? ""}
-                  placeholder="https://ieeexplore.ieee.org/document/…" className={inputCls} />
+                  placeholder="Please add an access URL" className={inputCls} />
               </div>
             </div>
 

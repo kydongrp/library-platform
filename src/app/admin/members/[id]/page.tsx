@@ -2,6 +2,7 @@ import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { listMemberTypes } from "@/lib/member-types";
 import { HOLD_QUEUE_ORDER } from "@/lib/hold-queue";
 import { Card, Badge } from "@/components/ui";
 import { MemberForm } from "@/components/member-form";
@@ -18,6 +19,7 @@ export default async function MemberDetailPage({
   params: Promise<{ id: string }>;
 }) {
   await requireAdminView("MEMBERS");
+  const memberTypes = await listMemberTypes();
 
   const { id } = await params;
 
@@ -207,6 +209,7 @@ export default async function MemberDetailPage({
         <h2 className="mb-4 font-display text-lg font-semibold">Edit member</h2>
         <MemberForm
           action={updateMember}
+          memberTypes={memberTypes}
           statuses={statuses}
           locations={regLocations.map((l) => l.name)}
           departments={regDepartments.map((d) => d.name)}

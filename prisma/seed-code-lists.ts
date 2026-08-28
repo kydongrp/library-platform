@@ -12,7 +12,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { SEED_CATEGORIES, UNCATEGORISED } from "../src/lib/constants";
+import { SEED_CATEGORIES, UNCATEGORISED, SEED_MEMBER_TYPES } from "../src/lib/constants";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -35,6 +35,26 @@ async function main(): Promise<void> {
     created > 0
       ? `Code lists: added ${created} category/categories, ${total} in total.`
       : `Code lists: all ${total} categories already present.`,
+  );
+
+  // Member types. Labels ARE updated for existing rows, unlike names: the
+  // wording is the client's and may be corrected, while the name is referenced
+  // by Member.memberType and LoanPolicy.memberType and must never move.
+  let typesAdded = 0;
+  let labelsFixed = 0;
+  for (const [i, t] of SEED_MEMBER_TYPES.entries()) {
+    const existing = await prisma.memberTypeDef.findUnique({ where: { name: t.name } });
+    if (!existing) {
+      await prisma.memberTypeDef.create({ data: { name: t.name, label: t.label, sortOrder: i } });
+      typesAdded++;
+    } else if (existing.label !== t.label) {
+      await prisma.memberTypeDef.update({ where: { name: t.name }, data: { label: t.label } });
+      labelsFixed++;
+    }
+  }
+  const typeTotal = await prisma.memberTypeDef.count();
+  console.log(
+    `Code lists: ${typesAdded} member type(s) added, ${labelsFixed} label(s) updated, ${typeTotal} in total.`,
   );
 }
 

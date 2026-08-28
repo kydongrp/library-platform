@@ -183,10 +183,42 @@ export const PROVIDER_GROUPS = [
 /** Flat list of every provider, for datalists and plain membership checks. */
 export const PROVIDERS: string[] = PROVIDER_GROUPS.flatMap((g) => [...g.providers]);
 
-export const MEMBER_TYPES = ["STUDENT", "STAFF", "EXTERNAL"] as const;
+/**
+ * Seed for the managed MemberTypeDef table. The live list is a database
+ * question: use listMemberTypes() from src/lib/member-types.ts.
+ *
+ * Wording is the client's own, including their spelling, because these strings
+ * appear on a member record and in their own procedures.
+ */
+export const SEED_MEMBER_TYPES = [
+  { name: "DSTA_STAFF", label: "DSTA Staff" },
+  {
+    name: "DSTA_AUTHORISED",
+    label: "Authorized DSTA Staff, e.g. Contract IT, Interns, Project Accounts",
+  },
+  {
+    name: "NON_DSTA",
+    label: "Non-DSTA Members, e.g. Course Participants from external organizations.",
+  },
+  { name: "ILL", label: "For Interlibrary Loans" },
+  { name: "FRIENDS_IRC", label: "Friends of IRC" },
+] as const;
+
+/**
+ * @deprecated The original three types, kept so existing members and loan
+ * policies keep working and remain selectable while they are still in use.
+ * New records use the managed list.
+ */
+export const LEGACY_MEMBER_TYPES = ["STUDENT", "STAFF", "EXTERNAL"] as const;
+
+export const MEMBER_TYPES = [
+  ...SEED_MEMBER_TYPES.map((t) => t.name),
+  ...LEGACY_MEMBER_TYPES,
+] as const;
 export type MemberType = (typeof MEMBER_TYPES)[number];
 
 export const MEMBER_TYPE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(SEED_MEMBER_TYPES.map((t) => [t.name, t.label])),
   STUDENT: "Student",
   STAFF: "Staff",
   EXTERNAL: "External",

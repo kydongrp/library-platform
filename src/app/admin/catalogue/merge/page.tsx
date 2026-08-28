@@ -17,19 +17,47 @@ export default async function MergeBibPage({ searchParams }: { searchParams: Sea
   const editable = canEdit(admin, "CATALOGUE");
   const { winner = "", loser = "" } = await searchParams;
 
-  const [choices, plan, recentMerges] = await Promise.all([
+  // The plan is computed defensively. It reads eleven relations, and a failure
+  // in any of them used to escape as an unhandled exception, which reaches the
+  // reader as a blank "application error" page with nothing to act on. A merge
+  // screen that cannot explain why it will not proceed is worse than one that
+  // refuses, so the reason is captured and shown.
+  let plan: Awaited<ReturnType<typeof planMerge>> = null;
+  let planError: string | null = null;
+
+  const [choices, recentMerges] = await Promise.all([
     prisma.resource.findMany({
       select: { id: true, title: true, author: true, isbn: true },
       orderBy: { title: "asc" },
       take: 800,
     }),
-    winner && loser ? planMerge(winner, loser) : Promise.resolve(null),
     prisma.bibMerge.findMany({ orderBy: { mergedAt: "desc" }, take: 10 }),
   ]);
+
+  if (winner && loser) {
+    try {
+      plan = await planMerge(winner, loser);
+    } catch (e) {
+      planError = e instanceof Error ? e.message : "The merge plan could not be computed.";
+      console.error("[merge] planMerge failed", { winner, loser, error: planError });
+    }
+  }
 
   const inputCls =
     "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
   const blocked = (plan?.blockers.length ?? 0) > 0;
+
+  // Which side failed to resolve, so the message can name it rather than
+  // telling the reader to check both.
+  const known = new Set(choices.map((c) => c.id));
+  const notFound = {
+    keep: !!winner && !known.has(winner) && !plan,
+    absorb: !!loser && !known.has(loser) && !plan,
+  };
+  const missing = [
+    ...(notFound.keep ? ["record to keep"] : []),
+    ...(notFound.absorb ? ["duplicate to absorb"] : []),
+  ];
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -83,9 +111,42 @@ export default async function MergeBibPage({ searchParams }: { searchParams: Sea
       </Card>
 
       {/* The plan */}
-      {winner && loser && !plan && (
-        <p className="mb-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-          One of those records could not be found. Check both identifiers.
+      {planError && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p className="font-medium">The merge plan could not be computed.</p>
+          <p className="mt-1">{planError}</p>
+          <p className="mt-1 text-xs">
+            Nothing was changed. Quote this message when reporting it.
+          </p>
+        </div>
+      )}
+
+      {winner && loser && !plan && !planError && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p className="font-medium">
+            {missing.length === 2
+              ? "Neither identifier matches a record."
+              : `That ${missing[0]} identifier does not match any record.`}
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-xs">
+            {notFound.keep && <li>Record to KEEP: <code className="font-mono">{winner}</code></li>}
+            {notFound.absorb && <li>Duplicate to ABSORB: <code className="font-mono">{loser}</code></li>}
+          </ul>
+          <p className="mt-1 text-xs">
+            Identifiers are case sensitive and easy to truncate when copied. Pick from the list
+            above, or open the record and use Merge into another record.
+          </p>
+        </div>
+      )}
+
+      {winner && !loser && (
+        <p className="mb-6 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
+          Fill in the duplicate to absorb, then press Preview merge.
+        </p>
+      )}
+      {!winner && loser && (
+        <p className="mb-6 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
+          Fill in the record to keep, then press Preview merge.
         </p>
       )}
 
