@@ -2,6 +2,7 @@ import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { listCategories } from "@/lib/categories";
 import { Card, Badge, BookCover } from "@/components/ui";
 import { SubmitButton } from "@/components/forms";
 import { AddCopiesForm, EditResourceSection, MarcRecordSection } from "./sections";
@@ -46,6 +47,7 @@ export default async function ResourceDetailPage({
   if (!resource) notFound();
 
   const tagDefs = await prisma.marcTagDef.findMany({ orderBy: { sortOrder: "asc" } });
+  const categories = await listCategories();
   const digital = isDigital(resource);
 
   return (
@@ -167,7 +169,7 @@ export default async function ResourceDetailPage({
       )}
 
       {/* Edit details */}
-      <EditResourceSection resource={resource} />
+      <EditResourceSection resource={resource} categories={categories} />
 
       <MarcRecordSection
         resourceId={resource.id}

@@ -11,7 +11,7 @@ import {
   removeFromEditorsPick,
   keepPickInCatalogue,
 } from "@/app/actions/editors-pick";
-import { CATEGORIES, RESOURCE_TYPES, RESOURCE_TYPE_LABELS, PROVIDERS } from "@/lib/constants";
+import { RESOURCE_TYPES, RESOURCE_TYPE_LABELS, PROVIDERS } from "@/lib/constants";
 
 const fieldCls =
   "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
@@ -59,7 +59,7 @@ export function PromoteForm({ options }: { options: TitleOption[] }) {
 }
 
 /** Add an external resource (e.g. a WhatsApp link) straight onto the shelf. */
-export function ExternalPickForm() {
+export function ExternalPickForm({ categories }: { categories: string[] }) {
   return (
     <Card className="p-5">
       <h2 className="font-display text-lg font-semibold">Add an external pick</h2>
@@ -102,8 +102,8 @@ export function ExternalPickForm() {
           </div>
           <div>
             <label className={labelCls} htmlFor="xf-category">Category</label>
-            <select id="xf-category" name="category" defaultValue="Technology" className={fieldCls}>
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            <select id="xf-category" name="category" defaultValue={categories[0] ?? "Uncategorised"} className={fieldCls}>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </div>
@@ -206,7 +206,7 @@ export type PickInfo = {
 };
 
 /** Inline editor + remove control for one current pick. */
-export function PickActions({ pick }: { pick: PickInfo }) {
+export function PickActions({ pick, categories }: { pick: PickInfo; categories: string[] }) {
   const [editing, setEditing] = useState(false);
   return (
     <div className="w-full">
@@ -278,7 +278,7 @@ export function PickActions({ pick }: { pick: PickInfo }) {
                 <div>
                   <label className={labelCls}>Category</label>
                   <select name="category" defaultValue={pick.category} className={fieldCls}>
-                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>

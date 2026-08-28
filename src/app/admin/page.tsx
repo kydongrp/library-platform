@@ -3,12 +3,13 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Card, Badge } from "@/components/ui";
 import { formatDate, daysUntil } from "@/lib/format";
-import { CATEGORIES } from "@/lib/constants";
+import { listCategories } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
   await requireAdminView("DASHBOARD");
+  const categories = await listCategories();
 
   const now = new Date();
 
@@ -167,7 +168,7 @@ export default async function AdminDashboard() {
         <Card className="p-5">
           <h2 className="mb-4 font-display text-lg font-semibold">Collection by category</h2>
           <ul className="space-y-2.5">
-            {CATEGORIES.map((cat) => {
+            {categories.map((cat) => {
               const count = catMap.get(cat) ?? 0;
               return (
                 <li key={cat} className="flex items-center gap-3">

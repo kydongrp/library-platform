@@ -4,7 +4,6 @@ import { useState } from "react";
 import { StatefulForm, SubmitButton } from "@/components/forms";
 import { BookCover, Card } from "@/components/ui";
 import {
-  CATEGORIES,
   RESOURCE_TYPES,
   RESOURCE_TYPE_LABELS,
   DIGITAL_TYPES,
@@ -12,7 +11,9 @@ import {
   MATERIAL_DESIGNATIONS,
   MATERIAL_DESIGNATION_LABELS,
   defaultDesignationFor,
+  RESOURCE_LANGUAGES,
 } from "@/lib/constants";
+import { CategoryAdder } from "@/components/category-adder";
 import type { ActionState } from "@/lib/types";
 
 const COLORS = [
@@ -36,6 +37,8 @@ type Defaults = {
   provider?: string | null;
   digitalUrl?: string | null;
   materialDesignation?: string;
+  language?: string;
+  licenseSeats?: number | null;
 };
 
 const labelCls = "block text-sm font-medium text-foreground mb-1.5";
@@ -46,16 +49,28 @@ export function ResourceForm({
   action,
   defaults = {},
   submitLabel = "Save",
+  categories,
 }: {
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   defaults?: Defaults;
   submitLabel?: string;
+  /**
+   * Areas of Interest to offer. Passed in rather than imported: the list is
+   * managed in the database, and this is a client component so it cannot read
+   * it. Includes any value already stored on a record, so a category later
+   * removed from the list still round-trips instead of being reset on save.
+   */
+  categories: string[];
 }) {
   const [title, setTitle] = useState(defaults.title ?? "");
   const [author, setAuthor] = useState(defaults.author ?? "");
   const [type, setType] = useState(defaults.type ?? "BOOK");
   const [color, setColor] = useState(defaults.coverColor ?? COLORS[0]);
   const [provider, setProvider] = useState(defaults.provider ?? "");
+  const [categoryList, setCategoryList] = useState(categories);
+  const [category, setCategory] = useState(
+    defaults.category ?? categories[0] ?? "Uncategorised",
+  );
   const [designation, setDesignation] = useState(
     defaults.materialDesignation ?? defaultDesignationFor(defaults.type ?? "BOOK"),
   );
@@ -131,9 +146,25 @@ export function ResourceForm({
               </div>
               <div>
                 <label className={labelCls} htmlFor="category">Category</label>
-                <select id="category" name="category" defaultValue={defaults.category ?? "Technology"} className={inputCls}>
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                <select
+                  id="category"
+                  name="category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className={inputCls}
+                >
+                  {categoryList.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+                <CategoryAdder
+                  onAdded={(name) => {
+                    // Show and select it straight away: needing a new category
+                    // means wanting to use it on this record.
+                    setCategoryList((list) =>
+                      list.some((c) => c.toLowerCase() === name.toLowerCase()) ? list : [...list, name],
+                    );
+                    setCategory(name);
+                  }}
+                />
               </div>
             </div>
 
@@ -147,6 +178,32 @@ export function ResourceForm({
                 <input id="publishedYear" name="publishedYear" type="number" min="0" max="2100"
                   defaultValue={defaults.publishedYear ?? ""} className={inputCls} />
               </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelCls} htmlFor="language">Language</label>
+                <select id="language" name="language"
+                  defaultValue={defaults.language ?? "English"} className={inputCls}>
+                  {RESOURCE_LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The language of the work. Sets the language code in the exported MARC record.
+                </p>
+              </div>
+              {isDigital && (
+                <div>
+                  <label className={labelCls} htmlFor="licenseSeats">
+                    Licence seats <span className="font-normal text-muted-foreground">(optional)</span>
+                  </label>
+                  <input id="licenseSeats" name="licenseSeats" type="number" min="1" max="100000"
+                    defaultValue={defaults.licenseSeats ?? ""} className={inputCls}
+                    placeholder="Unlimited" />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    How many people may use this title at once. Blank means unlimited.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

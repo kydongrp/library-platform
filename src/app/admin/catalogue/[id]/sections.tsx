@@ -51,13 +51,26 @@ type ResourceLike = {
   coverColor: string;
   provider: string | null;
   digitalUrl: string | null;
+  language: string;
+  licenseSeats: number | null;
 };
 
-export function EditResourceSection({ resource }: { resource: ResourceLike }) {
+export function EditResourceSection({
+  resource,
+  categories,
+}: {
+  resource: ResourceLike;
+  categories: string[];
+}) {
   return (
     <Card className="mb-6 p-5">
       <h2 className="mb-4 font-display text-lg font-semibold">Edit details</h2>
-      <ResourceForm action={updateResource} defaults={resource} submitLabel="Save changes" />
+      <ResourceForm
+        action={updateResource}
+        defaults={resource}
+        submitLabel="Save changes"
+        categories={categories}
+      />
     </Card>
   );
 }

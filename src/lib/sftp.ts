@@ -17,7 +17,6 @@ export type SftpSourceInfo = {
   port: number;
   remoteDir: string;
   provider: string;
-  defaultCategory: string;
   defaultType: string;
   auth: "key" | "password";
 };
@@ -39,7 +38,6 @@ export function sftpSourceInfo(): SftpSourceInfo | null {
     port: e.SFTP_PORT ? parseInt(e.SFTP_PORT, 10) : 22,
     remoteDir: e.SFTP_REMOTE_DIR || ".",
     provider: e.SFTP_PROVIDER!,
-    defaultCategory: e.SFTP_DEFAULT_CATEGORY || "Technology",
     defaultType: e.SFTP_DEFAULT_TYPE || "EBOOK",
     auth: e.SFTP_PRIVATE_KEY ? "key" : "password",
   };

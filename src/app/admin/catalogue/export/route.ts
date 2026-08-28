@@ -2,10 +2,11 @@ import { zonedDayKey } from "@/lib/tz";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin, canView } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
+import { listCategories } from "@/lib/categories";
 import { bibSearchWhere } from "@/lib/search-config";
 import { audit } from "@/lib/audit";
 import { toMarcRecord, toMarcXml, toMarc2709 } from "@/lib/marc";
-import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
+import { RESOURCE_TYPES } from "@/lib/constants";
 
 // MARC 21 export of the catalogue (SDD: MARC exchange). Two formats:
 //   ?format=xml  -> MARCXML collection (MARC21-slim)
@@ -34,7 +35,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Token search with stop words dropped and variant spellings expanded.
     Object.assign(where, await bibSearchWhere(q, ["title", "author", "isbn"]));
   }
-  if (category && (CATEGORIES as readonly string[]).includes(category)) where.category = category;
+  // The managed list, so exporting a staff-added category is not silently
+  // ignored (an unmatched filter here would export the whole catalogue).
+  if (category && (await listCategories()).includes(category)) where.category = category;
   if (type && (RESOURCE_TYPES as readonly string[]).includes(type)) where.type = type;
   if (designation === "MONOGRAPH" || designation === "SERIAL")
     where.materialDesignation = designation;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
+import { listCategories } from "@/lib/categories";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { ActionButton } from "@/components/forms";
 import {
@@ -33,6 +34,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 
 export default async function EditorsPickPage() {
   const admin = await requireAdminView("CATALOGUE");
+  const categories = await listCategories();
   const editable = canEdit(admin, "CATALOGUE");
 
   // Pending and decided are queried separately: a shared capped query sorted
@@ -229,7 +231,7 @@ export default async function EditorsPickPage() {
           <RecordSubmissionForm options={options} />
           <div className="space-y-6">
             <PromoteForm options={options} />
-            <ExternalPickForm />
+            <ExternalPickForm categories={categories} />
           </div>
         </div>
       )}
@@ -281,6 +283,7 @@ export default async function EditorsPickPage() {
                 {editable && (
                   <div className="mt-2">
                     <PickActions
+                      categories={categories}
                       pick={{
                         id: p.id,
                         title: p.title,

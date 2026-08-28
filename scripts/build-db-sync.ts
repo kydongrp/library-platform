@@ -93,3 +93,7 @@ console.log(`Syncing schema for a ${target} build against ${host}.`);
 
 run("prisma db push");
 run("tsx prisma/seed-if-empty.ts");
+// Code lists run on EVERY deploy, not just an empty database: an existing
+// production database still needs the categories, and a dropdown that is
+// empty because its table was never seeded is a broken screen.
+run("tsx prisma/seed-code-lists.ts");

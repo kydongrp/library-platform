@@ -1,7 +1,17 @@
 // Shared domain vocabulary. SQLite has no enums, so these arrays are the
 // single source of truth for the allowed string values used across the app.
 
-export const CATEGORIES = [
+/**
+ * The original fixed Areas of Interest, now a SEED for the managed
+ * ResourceCategory table rather than the allowed set.
+ *
+ * Staff add their own categories from the catalogue form, so the live list is a
+ * database question: use listCategories() from src/lib/categories.ts anywhere a
+ * dropdown or a validation needs it. This array remains only so a fresh
+ * deployment starts with something, and as the fallback when the table has not
+ * been seeded yet.
+ */
+export const SEED_CATEGORIES = [
   "Technology",
   "Business",
   "Science",
@@ -10,7 +20,21 @@ export const CATEGORIES = [
   "Health",
   "Fiction",
 ] as const;
-export type Category = (typeof CATEGORIES)[number];
+
+/**
+ * Where a record lands when nobody has classified it, including everything that
+ * arrives through an import. A real, selectable category rather than an empty
+ * string, so staff can filter the catalogue for exactly the records that still
+ * need attention.
+ */
+export const UNCATEGORISED = "Uncategorised";
+
+/**
+ * @deprecated Kept only for modules not yet converted to listCategories().
+ * A hard-coded list cannot see a category staff added.
+ */
+export const CATEGORIES = SEED_CATEGORIES;
+export type Category = (typeof SEED_CATEGORIES)[number];
 
 export const RESOURCE_TYPES = [
   "BOOK",
@@ -170,6 +194,27 @@ export const MEMBER_TYPE_LABELS: Record<string, string> = {
 
 // Notice/preference languages offered on member records (SG official languages).
 export const MEMBER_LANGUAGES = ["English", "Chinese", "Malay", "Tamil"] as const;
+
+/**
+ * Languages a catalogue record can be IN. Distinct from MEMBER_LANGUAGES, which
+ * is about which language a member wants notices in.
+ *
+ * Every entry here must have a MARC code in LANG_CODES (src/lib/marc.ts),
+ * because Resource.language drives the language bytes of the 008 fixed field on
+ * export. A language offered here without a code would silently export as
+ * undetermined.
+ */
+export const RESOURCE_LANGUAGES = [
+  "English",
+  "Chinese",
+  "Malay",
+  "Tamil",
+  "Japanese",
+  "Korean",
+  "French",
+  "German",
+  "Spanish",
+] as const;
 
 // Circulation rules now live in the LoanPolicy table (see src/lib/policies.ts),
 // editable from Admin → Loan Policies.

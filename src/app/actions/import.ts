@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
-import { CATEGORIES, RESOURCE_TYPES, defaultDesignationFor } from "@/lib/constants";
+import { RESOURCE_TYPES, defaultDesignationFor, UNCATEGORISED } from "@/lib/constants";
 import type { BulkRow } from "@/lib/bulk-import";
 import { coverColorFor, importResourceRowsCore } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
@@ -89,10 +89,9 @@ export async function importScholarly(
   const records = parseRecords(String(formData.get("records") ?? ""));
   if (records.length === 0) return { ok: false, message: "Nothing to import." };
 
-  const rawCategory = String(formData.get("category") ?? "");
-  const category = (CATEGORIES as readonly string[]).includes(rawCategory)
-    ? rawCategory
-    : "Technology";
+  // Imports are not classified at import time; staff classify from the
+  // catalogue, which can filter for exactly the unclassified records.
+  const category = UNCATEGORISED;
 
   let imported = 0;
   let duplicates = 0;
@@ -148,8 +147,7 @@ export async function addManualArticle(
 
   const type = String(formData.get("type") ?? "JOURNAL");
   const rawType = (RESOURCE_TYPES as readonly string[]).includes(type) ? type : "JOURNAL";
-  const rawCategory = String(formData.get("category") ?? "");
-  const category = (CATEGORIES as readonly string[]).includes(rawCategory) ? rawCategory : "Technology";
+  const category = UNCATEGORISED;
   const yearRaw = String(formData.get("year") ?? "").trim();
   const year = yearRaw ? parseInt(yearRaw, 10) : null;
 
@@ -242,7 +240,6 @@ export async function draftArticle(input: string): Promise<DraftResult> {
 export type BulkImportOptions = {
   provider: string; // already resolved (custom provider substituted client-side)
   defaultType: string;
-  defaultCategory: string;
 };
 
 export type BulkImportChunkResult = {
@@ -285,7 +282,6 @@ export async function importResourceRows(
   const r = await importResourceRowsCore(rows, {
     provider,
     defaultType: opts.defaultType,
-    defaultCategory: opts.defaultCategory,
   });
   if (r.imported > 0) {
     await audit({ action: "import.bulk", summary: `Bulk import chunk: ${r.imported} added (${provider})`, entity: "Resource", detail: { imported: r.imported, duplicates: r.duplicates, skipped: r.skipped } });

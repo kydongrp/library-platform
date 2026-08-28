@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { listCategories } from "@/lib/categories";
 import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
-import { CATEGORIES, RESOURCE_TYPES, defaultDesignationFor } from "@/lib/constants";
+import { RESOURCE_TYPES, defaultDesignationFor } from "@/lib/constants";
 import { coverColorFor } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -93,7 +94,8 @@ export async function addExternalPick(
   const rawType = String(formData.get("type") ?? "EBOOK");
   const type = (RESOURCE_TYPES as readonly string[]).includes(rawType) ? rawType : "EBOOK";
   const rawCategory = String(formData.get("category") ?? "");
-  const category = (CATEGORIES as readonly string[]).includes(rawCategory)
+  const allowedCategories = await listCategories();
+  const category = allowedCategories.includes(rawCategory)
     ? rawCategory
     : "Technology";
   const blurb = clip(formData.get("blurb"), NOTE_MAX) || null;
@@ -177,7 +179,7 @@ export async function updatePick(
     const rawType = String(formData.get("type") ?? "");
     if ((RESOURCE_TYPES as readonly string[]).includes(rawType)) data.type = rawType;
     const rawCategory = String(formData.get("category") ?? "");
-    if ((CATEGORIES as readonly string[]).includes(rawCategory)) data.category = rawCategory;
+    if ((await listCategories()).includes(rawCategory)) data.category = rawCategory;
   }
 
   try {

@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { parseBulk, type BulkRow } from "@/lib/bulk-import";
-import { CATEGORIES, RESOURCE_TYPES, defaultDesignationFor } from "@/lib/constants";
+import { RESOURCE_TYPES, UNCATEGORISED, defaultDesignationFor } from "@/lib/constants";
 import { sftpConfigured, sftpSourceInfo, fetchNewSftpFiles } from "@/lib/sftp";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -25,7 +25,6 @@ export function coverColorFor(seed: string): string {
 export type ImportRowsOptions = {
   provider: string;
   defaultType: string;
-  defaultCategory: string;
 };
 
 export type ImportRowsResult = {
@@ -52,9 +51,6 @@ export async function importResourceRowsCore(
   const defaultType = (RESOURCE_TYPES as readonly string[]).includes(opts.defaultType)
     ? opts.defaultType
     : "JOURNAL";
-  const defaultCategory = (CATEGORIES as readonly string[]).includes(opts.defaultCategory)
-    ? opts.defaultCategory
-    : "Technology";
 
   let skipped = 0;
   const skipReasons: string[] = [];
@@ -104,10 +100,6 @@ export async function importResourceRowsCore(
     seen.add(row.url); // collapse repeats within this batch too
     const type =
       row.type && (RESOURCE_TYPES as readonly string[]).includes(row.type) ? row.type : defaultType;
-    const category =
-      row.category && (CATEGORIES as readonly string[]).includes(row.category)
-        ? row.category
-        : defaultCategory;
     toCreate.push({
       title: String(row.title).trim(),
       subtitle: row.venue ?? null,
@@ -116,7 +108,11 @@ export async function importResourceRowsCore(
       type,
       // Imported records get the bib-level designation their type implies.
       materialDesignation: defaultDesignationFor(type),
-      category,
+      // Everything imported lands Uncategorised. Classifying at import time
+      // was slow and usually wrong: whoever loads a batch is rarely whoever
+      // decides its subject. Staff filter the catalogue for Uncategorised and
+      // classify from there.
+      category: UNCATEGORISED,
       publisher: row.publisher ?? null,
       publishedYear: typeof row.year === "number" ? row.year : null,
       description: row.abstract ?? null,
@@ -233,7 +229,6 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
         const res = await importResourceRowsCore(rows, {
           provider: source.provider,
           defaultType,
-          defaultCategory: source.defaultCategory,
         });
         resourcesImported += res.imported;
         duplicates += res.duplicates;

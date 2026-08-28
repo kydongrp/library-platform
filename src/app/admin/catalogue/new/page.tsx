@@ -2,9 +2,11 @@ import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { ResourceForm } from "@/components/resource-form";
 import { createResource } from "@/app/actions/catalogue";
+import { listCategories } from "@/lib/categories";
 
 export default async function NewResourcePage() {
   await requireAdminView("CATALOGUE");
+  const categories = await listCategories();
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -12,7 +14,7 @@ export default async function NewResourcePage() {
         ← Back to catalogue
       </Link>
       <h1 className="mb-6 mt-2 font-display text-3xl font-semibold">Add a title</h1>
-      <ResourceForm action={createResource} submitLabel="Create title" />
+      <ResourceForm action={createResource} submitLabel="Create title" categories={categories} />
     </div>
   );
 }

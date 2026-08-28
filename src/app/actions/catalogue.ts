@@ -3,8 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import {
+  listCategories,
+  resolveCategory,
+  normaliseCategoryName,
+  UNCATEGORISED,
+} from "@/lib/categories";
 import type { ActionState } from "@/lib/types";
-import { DIGITAL_TYPES, MATERIAL_DESIGNATIONS, defaultDesignationFor } from "@/lib/constants";
+import { DIGITAL_TYPES, MATERIAL_DESIGNATIONS, defaultDesignationFor, RESOURCE_LANGUAGES } from "@/lib/constants";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit, diffOf } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -30,24 +36,44 @@ async function nextBarcodes(count: number): Promise<string[]> {
   return Array.from({ length: count }, () => `LIB-${String(++n).padStart(6, "0")}`);
 }
 
-function parseResourceForm(formData: FormData) {
+async function parseResourceForm(formData: FormData) {
   const type = String(formData.get("type") ?? "BOOK");
   const yearRaw = String(formData.get("publishedYear") ?? "").trim();
   const provider = String(formData.get("provider") ?? "").trim() || null;
   const designationRaw = String(formData.get("materialDesignation") ?? "").toUpperCase();
+  const seatsRaw = String(formData.get("licenseSeats") ?? "").trim();
+  const languageRaw = String(formData.get("language") ?? "").trim();
+
+  // Category is a managed list now, so the allowed set is a database question.
+  // resolveCategory matches case-insensitively and falls back to Uncategorised
+  // rather than writing an arbitrary string into what is meant to be a code
+  // list.
+  const allowed = await listCategories();
+
+  const seats = seatsRaw ? parseInt(seatsRaw, 10) : NaN;
+
   return {
     title: String(formData.get("title") ?? "").trim(),
     subtitle: String(formData.get("subtitle") ?? "").trim() || null,
     author: String(formData.get("author") ?? "").trim(),
     isbn: String(formData.get("isbn") ?? "").trim() || null,
     type,
-    category: String(formData.get("category") ?? "Technology"),
+    category: resolveCategory(formData.get("category"), allowed),
     publisher: String(formData.get("publisher") ?? "").trim() || null,
     publishedYear: yearRaw ? parseInt(yearRaw, 10) : null,
+    // Language of the work itself, which drives the MARC 008 language bytes on
+    // export. Anything unrecognised falls back to English, the column default,
+    // rather than exporting a language MARC has no code for.
+    language: (RESOURCE_LANGUAGES as readonly string[]).includes(languageRaw)
+      ? languageRaw
+      : "English",
     description: String(formData.get("description") ?? "").trim() || null,
     coverColor: String(formData.get("coverColor") ?? "#0f766e"),
     provider,
     digitalUrl: String(formData.get("digitalUrl") ?? "").trim() || null,
+    // Concurrent-user limit for a digital title; null means unlimited. A zero or
+    // negative figure is meaningless, so it is treated as unlimited too.
+    licenseSeats: Number.isFinite(seats) && seats > 0 ? seats : null,
     // External-provider and digital-format titles have no physical copies.
     digital: DIGITAL_TYPES.has(type) || !!provider,
     // Bib-level designation: staff may override, otherwise it follows the type.
@@ -63,7 +89,7 @@ export async function createResource(
 ): Promise<ActionState> {
   if (!(await canEditCatalogue()))
     return { ok: false, message: "You don't have permission to edit the catalogue." };
-  const data = parseResourceForm(formData);
+  const data = await parseResourceForm(formData);
   if (!data.title) return { ok: false, message: "Title is required." };
   if (!data.author) return { ok: false, message: "Author is required." };
 
@@ -113,7 +139,7 @@ export async function updateResource(
   if (!(await canEditCatalogue()))
     return { ok: false, message: "You don't have permission to edit the catalogue." };
   const id = String(formData.get("id") ?? "");
-  const data = parseResourceForm(formData);
+  const data = await parseResourceForm(formData);
   if (!id) return { ok: false, message: "Missing resource id." };
   if (!data.title || !data.author)
     return { ok: false, message: "Title and author are required." };
@@ -255,4 +281,98 @@ export async function deleteCopy(formData: FormData): Promise<void> {
     });
   }
   revalidatePath(`/admin/catalogue/${resourceId}`);
+}
+
+/* ---------- Category code list ---------- */
+
+/**
+ * Add an Area of Interest from the catalogue form.
+ *
+ * Added here rather than on a settings page because the moment you need a new
+ * category is the moment you are cataloguing something that does not fit the
+ * existing ones, and making staff leave the record to go and create one is how
+ * you end up with everything filed under Technology.
+ */
+export async function createResourceCategory(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  if (!(await canEditCatalogue()))
+    return { ok: false, message: "You don't have permission to manage categories." };
+
+  const name = normaliseCategoryName(formData.get("name"));
+  if (!name) return { ok: false, message: "Give the category a name." };
+
+  // Case-insensitive duplicate check before insert: the unique index is
+  // case-SENSITIVE, so "science" and "Science" would both be accepted and the
+  // list would grow two entries meaning the same thing.
+  const existing = await listCategories();
+  const clash = existing.find((c) => c.toLowerCase() === name.toLowerCase());
+  if (clash) {
+    return { ok: false, message: `"${clash}" already exists.` };
+  }
+
+  try {
+    // Sorted after everything currently listed.
+    const last = await prisma.resourceCategory.findFirst({ orderBy: { sortOrder: "desc" } });
+    await prisma.resourceCategory.create({
+      data: { name, sortOrder: (last?.sortOrder ?? 0) + 1 },
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { ok: false, message: `"${name}" already exists.` };
+    throw e;
+  }
+
+  await audit({
+    action: "catalogue.category.create",
+    summary: `Added category "${name}"`,
+    entity: "ResourceCategory",
+  });
+  revalidatePath("/admin/catalogue");
+  return { ok: true, message: `"${name}" added. Pick it from the Category list.` };
+}
+
+/**
+ * Remove an Area of Interest from the list.
+ *
+ * Resources already filed under it keep their value, exactly as the member code
+ * lists behave, and listCategories still offers any value that is in use so
+ * those records round-trip through the edit form. So this hides a category from
+ * new records rather than reclassifying old ones.
+ */
+export async function deleteResourceCategory(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  if (!(await canEditCatalogue()))
+    return { ok: false, message: "You don't have permission to manage categories." };
+
+  const id = String(formData.get("id") ?? "");
+  const row = await prisma.resourceCategory.findUnique({ where: { id } });
+  if (!row) return { ok: false, message: "That category no longer exists." };
+  if (row.name === UNCATEGORISED) {
+    return {
+      ok: false,
+      message: `"${UNCATEGORISED}" cannot be removed: it is where imported records land.`,
+    };
+  }
+
+  const inUse = await prisma.resource.count({ where: { category: row.name } });
+  await prisma.resourceCategory.delete({ where: { id } });
+
+  await audit({
+    action: "catalogue.category.delete",
+    summary: `Removed category "${row.name}" from the list`,
+    entity: "ResourceCategory",
+    entityId: id,
+    detail: { inUse },
+  });
+  revalidatePath("/admin/catalogue");
+  return {
+    ok: true,
+    message:
+      inUse > 0
+        ? `"${row.name}" removed from the list. ${inUse} record${inUse === 1 ? "" : "s"} still filed under it keep it.`
+        : `"${row.name}" removed.`,
+  };
 }

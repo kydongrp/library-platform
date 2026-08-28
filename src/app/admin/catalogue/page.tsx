@@ -1,10 +1,10 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { listCategories } from "@/lib/categories";
 import { bibSearchWhere } from "@/lib/search-config";
 import { Card, Badge, ButtonLink, BookCover, EmptyState } from "@/components/ui";
 import {
-  CATEGORIES,
   RESOURCE_TYPES,
   RESOURCE_TYPE_LABELS,
 } from "@/lib/constants";
@@ -23,6 +23,7 @@ export default async function CataloguePage({
   searchParams: SearchParams;
 }) {
   await requireAdminView("CATALOGUE");
+  const categories = await listCategories();
 
   const { q = "", category = "", type = "", source = "", designation = "" } = await searchParams;
 
@@ -100,7 +101,7 @@ export default async function CataloguePage({
         />
         <select name="category" defaultValue={category} className={inputCls}>
           <option value="">All categories</option>
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>

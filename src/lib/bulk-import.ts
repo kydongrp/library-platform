@@ -2,7 +2,12 @@
 // rows for the catalogue. Field names are matched leniently so batches from
 // different providers (Janes XML, an Excel/CSV export, a JSON dump) all work.
 import { XMLParser } from "fast-xml-parser";
-import { RESOURCE_TYPES, CATEGORIES } from "@/lib/constants";
+import {
+  parseMarcBinary,
+  looksLikeMarcBinary,
+  type BinaryRecord,
+} from "@/lib/marc-binary";
+import { RESOURCE_TYPES } from "@/lib/constants";
 
 export type BulkRow = {
   title: string;
@@ -14,11 +19,10 @@ export type BulkRow = {
   isbn: string | null;
   type: string | null; // normalised RESOURCE_TYPE or null (caller applies default)
   abstract: string | null;
-  category: string | null; // valid category or null (caller applies default)
 };
 
 export type BulkParseResult = {
-  format: "csv" | "json" | "xml" | "marcxml" | "unknown";
+  format: "csv" | "json" | "xml" | "marcxml" | "marc" | "unknown";
   rows: BulkRow[];
   errors: string[]; // row-level problems (missing title/url), capped
 };
@@ -33,7 +37,6 @@ const FIELD_ALIASES: Record<keyof BulkRow, string[]> = {
   isbn: ["isbn", "isbn13", "isbn10", "eisbn"],
   type: ["type", "resourcetype", "contenttype", "doctype", "documenttype"],
   abstract: ["abstract", "description", "summary", "synopsis", "notes"],
-  category: ["category", "domain", "subject", "topic"],
 };
 
 function normaliseKey(k: string): string {
@@ -66,7 +69,6 @@ function mapObject(obj: Record<string, unknown>): BulkRow {
     isbn: pick("isbn"),
     type: normaliseType(pick("type")),
     abstract: pick("abstract"),
-    category: normaliseCategory(pick("category")),
   };
 }
 
@@ -84,12 +86,6 @@ function normaliseType(raw: string | null): string | null {
   // Exact match against our vocabulary as a fallback.
   const upper = raw.toUpperCase();
   return (RESOURCE_TYPES as readonly string[]).includes(upper) ? upper : null;
-}
-
-function normaliseCategory(raw: string | null): string | null {
-  if (!raw) return null;
-  const hit = (CATEGORIES as readonly string[]).find((c) => c.toLowerCase() === raw.toLowerCase());
-  return hit ?? null;
 }
 
 /* ---------- CSV ---------- */
@@ -312,9 +308,6 @@ function marcRecordToRow(rec: MarcRecord): BulkRow {
   }
   isbn = isbn ?? isbnFallback;
 
-  // 650 $a: subject headings → a conservative Area-of-Interest guess.
-  const subjects = fields("650").map((d) => sub(d, "a")).filter(Boolean).join(" ");
-
   return {
     title,
     authors,
@@ -325,7 +318,6 @@ function marcRecordToRow(rec: MarcRecord): BulkRow {
     isbn,
     type: marcType(leader),
     abstract,
-    category: normaliseCategory(subjectToCategory(subjects)),
   };
 }
 
@@ -338,18 +330,6 @@ function marcType(leader: string): string {
   if (l6 === "g") return "DVD";
   if (l7 === "s" || l7 === "b") return "JOURNAL"; // serial / serial component
   return "EBOOK"; // textual monograph, delivered digitally
-}
-
-function subjectToCategory(subjects: string): string | null {
-  const s = subjects.toLowerCase();
-  if (!s) return null;
-  if (/(engineer|technolog|comput|software|electr|mechanic|material|robot)/.test(s)) return "Technology";
-  if (/(chemistr|physic|biolog|geolog|mathemat|\bscience)/.test(s)) return "Science";
-  if (/(business|management|finance|econom|market)/.test(s)) return "Business";
-  if (/(medic|health|clinical|nursing|pharma)/.test(s)) return "Health";
-  if (/(histor)/.test(s)) return "History";
-  if (/(\bart\b|arts|design|music|architect)/.test(s)) return "Arts";
-  return null;
 }
 
 function extractYear(raw: string | null): number | null {
@@ -411,4 +391,76 @@ export function parseBulk(content: string, filename?: string): BulkParseResult {
   }
 
   return { format, rows: mapped, errors };
+}
+
+/* ---------- Binary MARC21 (.mrc, ISO 2709) ---------- */
+
+/**
+ * Reshape a record from the binary reader into the XML-ish shape
+ * marcRecordToRow already understands.
+ *
+ * An adapter rather than a second mapper: 245/100/700/264/520/856/020, the
+ * inverted-name handling, the ISBD punctuation stripping and the 008 year
+ * fallback are all non-obvious and already correct. Duplicating them for a
+ * different container is how the two paths drift apart.
+ */
+function binaryRecordToXmlShape(rec: BinaryRecord): MarcRecord {
+  const controlfield: MarcControlfield[] = [];
+  const datafield: MarcDatafield[] = [];
+  for (const f of rec.fields) {
+    if (f.value !== undefined) {
+      controlfield.push({ tag: f.tag, "#text": f.value });
+    } else {
+      datafield.push({
+        tag: f.tag,
+        ind1: f.ind1 ?? " ",
+        ind2: f.ind2 ?? " ",
+        subfield: (f.subs ?? []).map(([code, value]) => ({ code, "#text": value })),
+      });
+    }
+  }
+  return { leader: rec.leader, controlfield, datafield };
+}
+
+/**
+ * Parse a binary MARC21 file (.mrc).
+ *
+ * Separate from parseBulk because a .mrc file cannot be handed over as a
+ * string: the format stores byte offsets and frames data with control bytes, so
+ * decoding it to text first shifts every offset and the records fall apart. The
+ * caller reads the file as an ArrayBuffer and passes the bytes.
+ */
+export function parseBulkBinary(bytes: Uint8Array): BulkParseResult {
+  const errors: string[] = [];
+
+  if (!looksLikeMarcBinary(bytes)) {
+    return {
+      format: "unknown",
+      rows: [],
+      errors: [
+        "This does not look like a binary MARC21 file. A .mrc file starts with a 5-digit record length; if this is MARCXML, save it as .xml or .marcxml.",
+      ],
+    };
+  }
+
+  const parsed = parseMarcBinary(bytes);
+  errors.push(...parsed.errors);
+
+  if (parsed.encoding !== "utf-8") {
+    // Leader/09 was not "a", so the file is almost certainly MARC-8, which has
+    // no TextDecoder. ASCII survives; accented and CJK characters will be
+    // wrong, so say so rather than let a cataloguer discover it later.
+    errors.push(
+      "The file is not marked as UTF-8 (probably MARC-8). Plain text imported correctly, but accented and non-Latin characters may be wrong; check those titles after import.",
+    );
+  }
+
+  let rows = parsed.records.map((r) => marcRecordToRow(binaryRecordToXmlShape(r)));
+
+  if (rows.length > MAX_ROWS) {
+    errors.push(`File had ${rows.length} records; only the first ${MAX_ROWS} were read.`);
+    rows = rows.slice(0, MAX_ROWS);
+  }
+
+  return { format: "marc", rows, errors };
 }

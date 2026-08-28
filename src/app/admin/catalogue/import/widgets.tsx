@@ -7,16 +7,13 @@ import { importScholarly, addManualArticle, importResourceRows, draftArticle } f
 import type { ArticleDraft } from "@/lib/ai-draft";
 import { useToast } from "@/components/toast";
 import {
-  CATEGORIES,
   RESOURCE_TYPES,
   RESOURCE_TYPE_LABELS,
   PROVIDERS,
   PROVIDER_GROUPS,
 } from "@/lib/constants";
-import { parseBulk, type BulkRow } from "@/lib/bulk-import";
+import { parseBulk, parseBulkBinary, type BulkRow } from "@/lib/bulk-import";
 import type { ScholarlyRecord } from "@/lib/scholarly";
-
-const selectCls = "rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs";
 
 /** Provider name the forms start on. See PROVIDER_GROUPS for why it is first. */
 const DEFAULT_PROVIDER = PROVIDERS[0] ?? "";
@@ -39,23 +36,19 @@ function ProviderOptions() {
   ));
 }
 
-/** Per-row import: pick a category, import one record. */
+/**
+ * Per-row import.
+ *
+ * No category picker: importing is about getting records IN, and classifying
+ * them one at a time at the point of import was slow and usually wrong, since
+ * the person importing a batch is rarely the person who decides its subject.
+ * Everything lands as Uncategorised and is classified afterwards from the
+ * catalogue, which can filter for exactly those records.
+ */
 export function ImportButton({ record }: { record: ScholarlyRecord }) {
-  const [category, setCategory] = useState("Technology");
   return (
     <StatefulForm action={importScholarly} className="flex items-center gap-2">
       <input type="hidden" name="records" value={JSON.stringify(record)} />
-      <input type="hidden" name="category" value={category} />
-      <select
-        value={category}
-        onChange={(e) => setCategory(e.target.value)}
-        aria-label="Category"
-        className={selectCls}
-      >
-        {CATEGORIES.map((c) => (
-          <option key={c} value={c}>{c}</option>
-        ))}
-      </select>
       <SubmitButton variant="outline" className="!px-3 !py-1.5 text-xs" pendingLabel="Importing…">
         ⇩ Import
       </SubmitButton>
@@ -65,29 +58,16 @@ export function ImportButton({ record }: { record: ScholarlyRecord }) {
 
 /** Bulk import bar: import every not-yet-imported result on the page. */
 export function ImportAllBar({ records, count }: { records: ScholarlyRecord[]; count: number }) {
-  const [category, setCategory] = useState("Technology");
   return (
     <StatefulForm
       action={importScholarly}
       className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3"
     >
       <input type="hidden" name="records" value={JSON.stringify(records)} />
-      <input type="hidden" name="category" value={category} />
       <p className="text-sm">
         <span className="font-medium">{count}</span> new record{count === 1 ? "" : "s"} on this page
       </p>
       <div className="ml-auto flex items-center gap-2">
-        <label className="text-xs text-muted-foreground" htmlFor="bulk-category">Category</label>
-        <select
-          id="bulk-category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className={selectCls}
-        >
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
         <SubmitButton className="!px-4 !py-1.5 text-sm" pendingLabel="Importing…">
           ⇩ Import all {count}
         </SubmitButton>
@@ -250,13 +230,6 @@ export function ManualArticleForm({ aiEnabled }: { aiEnabled: boolean }) {
             </div>
 
             <div>
-              <label className={labelCls} htmlFor="ma-category">Category</label>
-              <select id="ma-category" name="category" defaultValue={draft?.category ?? "Technology"} className={fieldCls}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            <div>
               <label className={labelCls} htmlFor="ma-abstract">Abstract / notes</label>
               <textarea id="ma-abstract" name="abstract" rows={3} className={fieldCls}
                 defaultValue={draft?.abstract ?? ""} />
@@ -297,9 +270,9 @@ export function BulkImportForm() {
 
   function downloadCsvTemplate() {
     download("batch-template.csv", "text/csv", [
-      "title,authors,venue,year,url,type,category,abstract",
-      `"Jane's Defence Weekly: Indo-Pacific Naval Modernisation","Jane's editorial team","Jane's Defence Weekly",2025,https://customer.janes.com/display/JDW-0001,JOURNAL,Technology,"Regional naval build-up analysis."`,
-      `"Jane's Land Warfare Platforms: Tracked Vehicles","Jane's editorial team","Jane's Land Warfare Platforms",2024,https://customer.janes.com/display/JLWP-0007,EBOOK,Technology,"Reference entry on tracked platforms."`,
+      "title,authors,venue,year,url,type,abstract",
+      `"Jane's Defence Weekly: Indo-Pacific Naval Modernisation","Jane's editorial team","Jane's Defence Weekly",2025,https://customer.janes.com/display/JDW-0001,JOURNAL,"Regional naval build-up analysis."`,
+      `"Jane's Land Warfare Platforms: Tracked Vehicles","Jane's editorial team","Jane's Land Warfare Platforms",2024,https://customer.janes.com/display/JLWP-0007,EBOOK,"Reference entry on tracked platforms."`,
     ].join("\n"));
   }
 
@@ -340,7 +313,6 @@ export function BulkImportForm() {
     const chosenProvider =
       rawProvider === "__custom__" ? String(fd.get("customProvider") ?? "").trim() : rawProvider;
     const defaultType = String(fd.get("type") ?? "JOURNAL");
-    const defaultCategory = String(fd.get("category") ?? "Technology");
     if (!chosenProvider) {
       setResult({ ok: false, message: "Choose or enter a provider for the batch." });
       return;
@@ -350,13 +322,21 @@ export function BulkImportForm() {
     const file = fd.get("file");
     let text = "";
     let filename: string | undefined;
+    // A .mrc file is binary ISO 2709: it stores byte offsets and frames data
+    // with control bytes, so decoding it to text shifts every offset and the
+    // records fall apart. Those are read as bytes instead.
+    let bytes: Uint8Array | null = null;
     if (file instanceof File && file.size > 0) {
-      text = await file.text();
       filename = file.name;
+      if (/\.(mrc|marc|mrc8)$/i.test(file.name)) {
+        bytes = new Uint8Array(await file.arrayBuffer());
+      } else {
+        text = await file.text();
+      }
     } else {
       text = String(fd.get("pasted") ?? "");
     }
-    if (!text.trim()) {
+    if (!bytes && !text.trim()) {
       setResult({ ok: false, message: "Upload a file or paste records to import." });
       return;
     }
@@ -369,12 +349,15 @@ export function BulkImportForm() {
     let errors: string[];
     let format: string;
     try {
-      const parsed = parseBulk(text, filename);
+      const parsed = bytes ? parseBulkBinary(bytes) : parseBulk(text, filename);
       ({ rows, errors, format } = parsed);
     } catch {
       setBusy(false);
       setProgress(null);
-      setResult({ ok: false, message: "Could not parse the file. Check it is valid CSV, JSON, XML, or MARCXML." });
+      setResult({
+        ok: false,
+        message: "Could not parse the file. Check it is valid CSV, JSON, XML, MARCXML, or binary MARC (.mrc).",
+      });
       return;
     }
     if (rows.length === 0) {
@@ -395,7 +378,6 @@ export function BulkImportForm() {
       const r = await importResourceRows(chunk, {
         provider: chosenProvider,
         defaultType,
-        defaultCategory,
       });
       if (r.error) {
         hardError = r.error;
@@ -457,22 +439,16 @@ export function BulkImportForm() {
             </select>
             <p className="mt-1 text-[11px] text-muted-foreground">MARCXML reads type from each record.</p>
           </div>
-          <div>
-            <label className={labelCls} htmlFor="bi-category">Default category</label>
-            <select id="bi-category" name="category" defaultValue="Technology" className={fieldCls}>
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
         </div>
 
         <div>
           <label className={labelCls} htmlFor="bi-file">Batch file</label>
           <input id="bi-file" name="file" type="file"
-            accept=".csv,.tsv,.json,.xml,.marcxml,.mrcx,text/csv,application/json,text/xml,application/xml"
+            accept=".csv,.tsv,.json,.xml,.marcxml,.mrcx,.mrc,.marc,text/csv,application/json,text/xml,application/xml,application/marc"
             className={`${fieldCls} file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary`} />
           <p className="mt-1 text-xs text-muted-foreground">
-            CSV/JSON/XML fields (matched leniently): title, authors, url, year, venue, publisher, isbn, type, category, abstract.
-            MARCXML maps 245/100/700/264/520/856/020 automatically.{" "}
+            CSV/JSON/XML fields (matched leniently): title, authors, url, year, venue, publisher, isbn, type, abstract.
+            MARCXML and binary MARC21 (.mrc) map 245/100/700/264/520/856/020 automatically.{" "}
             <button type="button" onClick={downloadCsvTemplate} className="text-primary hover:underline">
               CSV template
             </button>{" · "}
