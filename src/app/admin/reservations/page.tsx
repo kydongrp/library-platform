@@ -1,10 +1,19 @@
 import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import {
+  HOLD_QUEUE_ORDER_WITH_STATUS,
+  PRIORITY_NORMAL,
+  queuePositions,
+} from "@/lib/hold-queue";
 import { toZonedDateTimeLocalValue } from "@/lib/tz";
 import { Card, Badge, EmptyState } from "@/components/ui";
-import { ActionButton } from "@/components/forms";
-import { cancelReservation } from "@/app/actions/circulation";
+import { ActionButton, StatefulForm, SubmitButton } from "@/components/forms";
+import {
+  cancelReservation,
+  prioritiseReservation,
+  clearReservationPriority,
+} from "@/app/actions/circulation";
 import { formatDate } from "@/lib/format";
 import { canEdit } from "@/lib/admin-session";
 import {
@@ -32,7 +41,7 @@ export default async function ReservationsPage() {
     prisma.reservation.findMany({
       where: { status: { in: ["PENDING", "READY"] } },
       include: { member: true, resource: true },
-      orderBy: [{ status: "asc" }, { reservedAt: "asc" }],
+      orderBy: [...HOLD_QUEUE_ORDER_WITH_STATUS],
     }),
     // Rows 52-53: live bookings, soonest window first.
     prisma.booking.findMany({
@@ -56,6 +65,10 @@ export default async function ReservationsPage() {
       take: 8,
     }),
   ]);
+
+  // Queue position is per title, computed from the same order the promotion
+  // logic uses, so the number staff read is the number that will be honoured.
+  const positions = queuePositions(reservations.filter((r) => r.status === "PENDING"));
 
   const ready = reservations.filter((r) => r.status === "READY");
   const pending = reservations.filter((r) => r.status === "PENDING");
@@ -101,9 +114,13 @@ export default async function ReservationsPage() {
           {pending.length > 0 && (
             <section>
               <h2 className="mb-2 font-display text-lg font-semibold">Waiting queue</h2>
+              <p className="mb-2 text-xs text-muted-foreground">
+                First come, first served, unless staff move someone up. A hold that was moved up
+                shows the reason and who did it.
+              </p>
               <Card className="divide-y divide-border overflow-hidden">
                 {pending.map((r) => (
-                  <Row key={r.id} r={r} />
+                  <Row key={r.id} r={r} position={positions.get(r.id)} />
                 ))}
               </Card>
             </section>
@@ -188,6 +205,7 @@ export default async function ReservationsPage() {
 
 function Row({
   r,
+  position,
 }: {
   r: {
     id: string;
@@ -197,25 +215,75 @@ function Row({
     memberId: string;
     member: { name: string };
     resource: { id: string; title: string };
+    priority: number;
+    priorityReason: string | null;
+    prioritisedBy: string | null;
   };
+  /** 1-based place in this title's queue, when the hold is still waiting. */
+  position?: number;
 }) {
+  const boosted = r.priority > PRIORITY_NORMAL;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <Link href={`/admin/catalogue/${r.resource.id}`} className="truncate font-medium hover:underline">
-          {r.resource.title}
-        </Link>
-        <p className="truncate text-sm text-muted-foreground">
-          <Link href={`/admin/members/${r.memberId}`} className="hover:underline">{r.member.name}</Link>
-          {" · placed "}{formatDate(r.reservedAt)}
-        </p>
+    <div className="px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <Link href={`/admin/catalogue/${r.resource.id}`} className="truncate font-medium hover:underline">
+            {r.resource.title}
+          </Link>
+          <p className="truncate text-sm text-muted-foreground">
+            <Link href={`/admin/members/${r.memberId}`} className="hover:underline">{r.member.name}</Link>
+            {" · placed "}{formatDate(r.reservedAt)}
+            {position !== undefined && ` · no. ${position} in line`}
+          </p>
+        </div>
+        {boosted && <Badge tone="accent">Moved up</Badge>}
+        {r.status === "READY" ? (
+          <Badge tone="accent">Ready {formatDate(r.readyAt)}</Badge>
+        ) : (
+          <Badge tone="muted">Waiting</Badge>
+        )}
+        {r.status === "PENDING" &&
+          (boosted ? (
+            <ActionButton
+              action={clearReservationPriority}
+              fields={{ reservationId: r.id }}
+              variant="outline"
+              className="!px-3 !py-1.5 text-xs"
+              confirm="Return this hold to first-come order?"
+              pendingLabel="…"
+            >
+              Reset order
+            </ActionButton>
+          ) : (
+            /* A disclosure rather than a one-click button: the reason is
+               required, and a native <details> works before hydration. */
+            <details className="text-xs">
+              <summary className="cursor-pointer rounded-lg border border-border bg-card px-3 py-1.5 font-medium hover:bg-muted">
+                Move up
+              </summary>
+              <StatefulForm action={prioritiseReservation} className="mt-2 flex items-center gap-2">
+                <input type="hidden" name="reservationId" value={r.id} />
+                <input
+                  name="reason"
+                  required
+                  maxLength={200}
+                  placeholder="Reason, e.g. course reserve"
+                  aria-label="Reason for moving this hold up the queue"
+                  className="w-56 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <SubmitButton variant="outline" className="!px-3 !py-1.5 text-xs" pendingLabel="…">
+                  Move to front
+                </SubmitButton>
+              </StatefulForm>
+            </details>
+          ))}
+        <ActionButton action={cancelReservation} fields={{ reservationId: r.id }} variant="outline" className="!px-3 !py-1.5 text-xs" confirm="Cancel this hold?" pendingLabel="…">Cancel</ActionButton>
       </div>
-      {r.status === "READY" ? (
-        <Badge tone="accent">Ready {formatDate(r.readyAt)}</Badge>
-      ) : (
-        <Badge tone="muted">Waiting</Badge>
+      {boosted && r.priorityReason && (
+        <p className="mt-1.5 text-xs text-accent">
+          Moved up by {r.prioritisedBy ?? "staff"}: {r.priorityReason}
+        </p>
       )}
-      <ActionButton action={cancelReservation} fields={{ reservationId: r.id }} variant="outline" className="!px-3 !py-1.5 text-xs" confirm="Cancel this hold?" pendingLabel="…">Cancel</ActionButton>
     </div>
   );
 }

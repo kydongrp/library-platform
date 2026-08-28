@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { HOLD_QUEUE_ORDER } from "@/lib/hold-queue";
 import { zonedDayRange } from "@/lib/tz";
 import { NO_VALUE, formatDate } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS, MEMBER_TYPE_LABELS } from "@/lib/constants";
@@ -122,7 +123,7 @@ export async function runReport(key: string, c: ReportCriteria): Promise<ReportR
       const holds = await prisma.reservation.findMany({
         where: { status: { in: ["PENDING", "READY"] } },
         include: { member: true, resource: true },
-        orderBy: [{ resourceId: "asc" }, { reservedAt: "asc" }],
+        orderBy: [{ resourceId: "asc" }, ...HOLD_QUEUE_ORDER],
       });
       const positions = new Map<string, number>();
       return {

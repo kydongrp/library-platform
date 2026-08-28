@@ -23,7 +23,7 @@ model Resource {
   /// MONOGRAPH (standalone work) or SERIAL (journal/magazine/newspaper).
   /// Drives MARC leader/07, catalogue filtering, and serials eligibility.
   materialDesignation   String                 @default("MONOGRAPH")
-  category              String // Area of Interest: Technology, Business, Science, Arts, Fiction, History, Health
+  category              String                 @default("Uncategorised") // Area of Interest; see ResourceCategory
   publisher             String?
   publishedYear         Int?
   language              String                 @default("English")
@@ -253,6 +253,17 @@ model MemberLocation {
   createdAt DateTime @default(now())
 }
 
+/// Area of Interest for a catalogue record (the "Category" field). Seeded from
+/// the original fixed list; staff add their own from the catalogue form. As
+/// with the member code lists, removing an entry does not touch resources that
+/// already use it: the list only drives the form's choices.
+model ResourceCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
 model MemberDepartment {
   id        String   @id @default(cuid())
   name      String   @unique // e.g. "Business School"
@@ -395,26 +406,34 @@ model Loan {
 
 /// A hold placed on a Resource when no copy is currently available.
 model Reservation {
-  id         String    @id @default(cuid())
-  reservedAt DateTime  @default(now())
-  status     String    @default("PENDING") // PENDING, READY, FULFILLED, CANCELLED, EXPIRED
-  readyAt    DateTime?
-  resourceId String
-  resource   Resource  @relation(fields: [resourceId], references: [id])
-  memberId   String
-  member     Member    @relation(fields: [memberId], references: [id])
+  id             String    @id @default(cuid())
+  reservedAt     DateTime  @default(now())
+  /// Manual queue override. Higher jumps the queue; 0 is the normal case, so
+  /// the default order is still first-come by reservedAt. Staff use this for a
+  /// documented reason (a course reserve, a supervisor's request), which is why
+  /// the reason is recorded on the row rather than only in the audit log.
+  priority       Int       @default(0)
+  priorityReason String?
+  prioritisedBy  String?
+  prioritisedAt  DateTime?
+  status         String    @default("PENDING") // PENDING, READY, FULFILLED, CANCELLED, EXPIRED
+  readyAt        DateTime?
+  resourceId     String
+  resource       Resource  @relation(fields: [resourceId], references: [id])
+  memberId       String
+  member         Member    @relation(fields: [memberId], references: [id])
 }
 
 /// A staff account for the Admin Panel (SDD: AdminAccount). Authentication is
 /// stubbed (act-as switcher); authorisation is enforced via the group matrix.
 model AdminUser {
-  id        String     @id @default(cuid())
+  id        String              @id @default(cuid())
   name      String
-  email     String     @unique
-  status    String     @default("ACTIVE") // ACTIVE, SUSPENDED
-  createdAt DateTime   @default(now())
+  email     String              @unique
+  status    String              @default("ACTIVE") // ACTIVE, SUSPENDED
+  createdAt DateTime            @default(now())
   groupId   String
-  group     AdminGroup @relation(fields: [groupId], references: [id])
+  group     AdminGroup          @relation(fields: [groupId], references: [id])
   sessions  AdminSessionToken[]
 }
 
@@ -968,15 +987,15 @@ model UsageStat {
 /// Append-only audit trail of every admin mutation (IM8: accountability).
 /// Rows are only ever inserted; no update/delete path exists in the app.
 model AuditLog {
-  id       String   @id @default(cuid())
-  at       DateTime @default(now())
-  actor    String // admin display name, or "cron" for scheduled jobs
-  actorId  String? // AdminUser id when a session was present
-  action   String // dot notation, e.g. "catalogue.update", "ep.approve"
-  entity   String? // model touched, e.g. "Resource"
-  entityId String?
-  summary  String // human-readable one-liner
-  detail   Json? // before/after snapshot or payload extract
+  id        String   @id @default(cuid())
+  at        DateTime @default(now())
+  actor     String // admin display name, or "cron" for scheduled jobs
+  actorId   String? // AdminUser id when a session was present
+  action    String // dot notation, e.g. "catalogue.update", "ep.approve"
+  entity    String? // model touched, e.g. "Resource"
+  entityId  String?
+  summary   String // human-readable one-liner
+  detail    Json? // before/after snapshot or payload extract
   // Request metadata for forensic attribution (IM8: accountability). Nullable
   // because scripts and cron jobs have no request context.
   ip        String?

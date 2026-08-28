@@ -2,6 +2,7 @@ import { requireAdminView } from "@/lib/admin-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { HOLD_QUEUE_ORDER } from "@/lib/hold-queue";
 import { Card, Badge } from "@/components/ui";
 import { MemberForm } from "@/components/member-form";
 import { ActionButton } from "@/components/forms";
@@ -31,7 +32,7 @@ export default async function MemberDetailPage({
         reservations: {
           where: { status: { in: ["PENDING", "READY"] } },
           include: { resource: true },
-          orderBy: { reservedAt: "asc" },
+          orderBy: [...HOLD_QUEUE_ORDER],
         },
       },
     }),

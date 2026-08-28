@@ -9,6 +9,7 @@ import { formatDate, daysUntil } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { runSftpFetch } from "@/lib/ingest";
 import { audit } from "@/lib/audit";
+import { HOLD_QUEUE_ORDER } from "@/lib/hold-queue";
 import { runLinkCheckCore } from "@/lib/linkcheck";
 import { loadCalendar, nextOpenDay } from "@/lib/calendar";
 
@@ -105,7 +106,7 @@ export async function runEodProcess(
     if (hold.resource.copies.length === 0) {
       const next = await prisma.reservation.findFirst({
         where: { resourceId: hold.resourceId, status: "PENDING" },
-        orderBy: { reservedAt: "asc" },
+        orderBy: [...HOLD_QUEUE_ORDER],
         include: { member: true },
       });
       if (next) {
@@ -125,7 +126,7 @@ export async function runEodProcess(
     if (heldCopy) {
       const next = await prisma.reservation.findFirst({
         where: { resourceId: hold.resourceId, status: "PENDING" },
-        orderBy: { reservedAt: "asc" },
+        orderBy: [...HOLD_QUEUE_ORDER],
         include: { member: true },
       });
       if (next) {

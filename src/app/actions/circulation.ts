@@ -9,6 +9,11 @@ import { notify } from "@/lib/templates";
 import { formatDate } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit } from "@/lib/audit";
+import {
+  HOLD_QUEUE_ORDER,
+  PRIORITY_NORMAL,
+  priorityToReachFront,
+} from "@/lib/hold-queue";
 import { loadCalendar, dueDateFrom, nextOpenDay, dateKey } from "@/lib/calendar";
 import { assessFine, formatFine } from "@/lib/fines";
 
@@ -302,7 +307,7 @@ export async function checkin(
   if (!loan.copyId) {
     const nextHold = await prisma.reservation.findFirst({
       where: { resourceId: loan.resourceId, status: "PENDING" },
-      orderBy: { reservedAt: "asc" },
+      orderBy: [...HOLD_QUEUE_ORDER],
       include: { member: true },
     });
     if (nextHold) {
@@ -333,7 +338,7 @@ export async function checkin(
       // If someone is waiting, hold the copy for them; otherwise shelve it.
       const nextHold = await prisma.reservation.findFirst({
         where: { resourceId: loan.resourceId, status: "PENDING" },
-        orderBy: { reservedAt: "asc" },
+        orderBy: [...HOLD_QUEUE_ORDER],
         include: { member: true },
       });
       if (nextHold) {
@@ -519,7 +524,7 @@ export async function cancelReservation(
     if (heldCopy) {
       const nextHold = await prisma.reservation.findFirst({
         where: { resourceId: res.resourceId, status: "PENDING" },
-        orderBy: { reservedAt: "asc" },
+        orderBy: [...HOLD_QUEUE_ORDER],
       });
       if (nextHold) {
         await prisma.reservation.update({
@@ -655,4 +660,118 @@ export async function waiveFine(
   });
   revalidateAll();
   return { ok: true, message: "Fine waived." };
+}
+
+/* ---------- Hold queue priority ---------- */
+
+/**
+ * Move a pending hold to the front of its queue.
+ *
+ * The queue is normally first-come-first-served. This is the documented
+ * exception: a course reserve, a supervisor's request, an inter-library
+ * commitment. The reason is required and stored on the reservation rather than
+ * only in the audit log, so the next member of staff looking at the queue can
+ * see WHY someone is ahead of people who asked first. A queue that can be
+ * reordered invisibly is worse than one that cannot be reordered at all.
+ *
+ * Only PENDING holds can be reordered. A READY hold already has a copy waiting
+ * on the shelf for that member, so moving it in the queue would mean nothing,
+ * and moving someone above it would not take the copy away from them.
+ */
+export async function prioritiseReservation(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  if (!(await requireCirculation("CIRCULATION", "RESERVATIONS")))
+    return DENIED("reorder the hold queue");
+
+  const reservationId = String(formData.get("reservationId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 200);
+  if (!reason) {
+    return { ok: false, message: "Give a reason for moving this hold up the queue." };
+  }
+
+  const res = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    include: { resource: { select: { title: true } }, member: { select: { name: true } } },
+  });
+  if (!res) return { ok: false, message: "Reservation not found." };
+  if (res.status !== "PENDING") {
+    return {
+      ok: false,
+      message:
+        res.status === "READY"
+          ? "That hold is already ready for collection, so it is not waiting in the queue."
+          : `That hold is ${res.status.toLowerCase()} and is no longer in the queue.`,
+    };
+  }
+
+  const admin = await getCurrentAdmin();
+
+  // Beat whoever is currently at the front, including anyone already boosted:
+  // a fixed value would make a second prioritisation silently do nothing.
+  const top = await prisma.reservation.findFirst({
+    where: { resourceId: res.resourceId, status: "PENDING" },
+    orderBy: { priority: "desc" },
+    select: { priority: true },
+  });
+  const priority = priorityToReachFront(top?.priority ?? PRIORITY_NORMAL);
+
+  await prisma.reservation.update({
+    where: { id: res.id },
+    data: {
+      priority,
+      priorityReason: reason,
+      prioritisedBy: admin?.name ?? null,
+      prioritisedAt: new Date(),
+    },
+  });
+
+  await audit({
+    action: "circulation.prioritiseHold",
+    summary: `Moved ${res.member.name} to the front of the queue for "${res.resource.title}"`,
+    entity: "Reservation",
+    entityId: res.id,
+    detail: { reason, priority },
+  });
+  revalidateAll();
+  return { ok: true, message: `${res.member.name} is now first in line.` };
+}
+
+/** Return a prioritised hold to its first-come position. */
+export async function clearReservationPriority(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  if (!(await requireCirculation("CIRCULATION", "RESERVATIONS")))
+    return DENIED("reorder the hold queue");
+
+  const reservationId = String(formData.get("reservationId") ?? "");
+  const res = await prisma.reservation.findUnique({
+    where: { id: reservationId },
+    include: { resource: { select: { title: true } }, member: { select: { name: true } } },
+  });
+  if (!res) return { ok: false, message: "Reservation not found." };
+  if (res.priority === PRIORITY_NORMAL) {
+    return { ok: false, message: "That hold is already in its first-come position." };
+  }
+
+  await prisma.reservation.update({
+    where: { id: res.id },
+    data: {
+      priority: PRIORITY_NORMAL,
+      priorityReason: null,
+      prioritisedBy: null,
+      prioritisedAt: null,
+    },
+  });
+
+  await audit({
+    action: "circulation.clearHoldPriority",
+    summary: `Returned ${res.member.name} to first-come order for "${res.resource.title}"`,
+    entity: "Reservation",
+    entityId: res.id,
+  });
+  revalidateAll();
+  return { ok: true, message: `${res.member.name} is back in first-come order.` };
 }
