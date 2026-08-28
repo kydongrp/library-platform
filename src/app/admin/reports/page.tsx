@@ -4,6 +4,8 @@ import { Card, EmptyState } from "@/components/ui";
 import { REPORTS, runReport } from "@/lib/reports";
 import { MODULE_REPORTS, DATE_RANGED_MODULE_REPORTS } from "@/lib/reports-modules";
 import { MEMBER_TYPES, MEMBER_TYPE_LABELS } from "@/lib/constants";
+import { resolvePaging } from "@/lib/paging";
+import { TablePager } from "@/components/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,8 @@ type SearchParams = Promise<{
   from?: string;
   to?: string;
   memberType?: string;
+  page?: string;
+  pageSize?: string;
 }>;
 
 const inputCls =
@@ -19,7 +23,14 @@ const inputCls =
 
 export default async function ReportsPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdminView("REPORTS");
-  const { report = "", from = "", to = "", memberType = "" } = await searchParams;
+  const {
+    report = "",
+    from = "",
+    to = "",
+    memberType = "",
+    page: rawPage = "",
+    pageSize: rawPageSize = "",
+  } = await searchParams;
 
   // The five original standard reports plus the per-module reports, presented
   // as one list grouped by the module each report belongs to.
@@ -34,6 +45,15 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   // Member type only narrows the reports that are actually keyed to a member.
   const showsMemberType = !!active && ["loans", "overdue", "member-activity"].includes(active.key);
   const exportQs = new URLSearchParams({ report, from, to, memberType }).toString();
+
+  // Paging is applied to the rows the report already returned rather than
+  // pushed into each report's query. runReport caps at MODULE_ROW_CAP and the
+  // note it produces describes that cap, so slicing here keeps one honest
+  // total and leaves the CSV export whole: /admin/reports/export ignores page
+  // and pageSize on purpose, so "Export CSV" is still the entire report.
+  const paging = resolvePaging(result?.rows.length ?? 0, rawPage, rawPageSize);
+  const visibleRows = result ? result.rows.slice(paging.start, paging.end) : [];
+  const pagerQuery = { report, from, to, memberType };
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -57,7 +77,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
               {inGroup.map((r) => (
                 <Link
                   key={r.key}
-                  href={`/admin/reports?report=${r.key}`}
+                  // Keep the rows-per-page preference when switching reports;
+                  // drop the page number, since it means nothing in a
+                  // different result set.
+                  href={`/admin/reports?report=${r.key}${
+                    rawPageSize ? `&pageSize=${encodeURIComponent(rawPageSize)}` : ""
+                  }`}
                   className={`rounded-xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
                     report === r.key ? "border-primary bg-primary/5" : "border-border bg-card"
                   }`}
@@ -116,7 +141,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
             <div>
               <h2 className="font-display text-xl font-semibold">{active.name}</h2>
               <p className="text-sm text-muted-foreground">
-                {result!.rows.length} row{result!.rows.length === 1 ? "" : "s"}
+                {result!.rows.length.toLocaleString()} row{result!.rows.length === 1 ? "" : "s"}
+                {paging.totalPages > 1 && (
+                  <> · page {paging.page} of {paging.totalPages}</>
+                )}
               </p>
               {result!.note && (
                 <p className="mt-1 text-xs text-accent">{result!.note}</p>
@@ -126,6 +154,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
               {(showsDates || showsMemberType) && (
                 <form className="flex flex-wrap items-end gap-2">
                   <input type="hidden" name="report" value={active.key} />
+                  {/* Carry the rows-per-page choice through a filter change.
+                      Without this, picking 250 rows and then adjusting a date
+                      would silently snap back to the default. `page` is
+                      deliberately NOT carried: a new filter means a new result
+                      set, so page 8 of the old one is meaningless. */}
+                  <input type="hidden" name="pageSize" value={paging.pageSize} />
                   {showsDates && (
                     <>
                       <div>
@@ -176,8 +210,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {result!.rows.map((row, i) => (
-                    <tr key={i} className="hover:bg-muted/40">
+                  {visibleRows.map((row, i) => (
+                    // Keyed by absolute row number, not the index within the
+                    // page, so React does not reuse a row's DOM across pages.
+                    <tr key={paging.start + i} className="hover:bg-muted/40">
                       {row.map((cell, j) => (
                         <td key={j} className="max-w-64 truncate py-2 pr-4">{cell}</td>
                       ))}
@@ -186,6 +222,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
                 </tbody>
               </table>
             </div>
+          )}
+
+          {result!.rows.length > 0 && (
+            <TablePager
+              paging={paging}
+              query={pagerQuery}
+              basePath="/admin/reports"
+              unit="rows"
+              className="mt-4"
+            />
           )}
         </Card>
       )}

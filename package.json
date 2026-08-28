@@ -33,6 +33,8 @@
     "test:ssrf": "tsx scripts/test-ssrf.ts",
     "test:fetch:live": "tsx scripts/test-page-fetch-live.ts",
     "test:intake": "tsx scripts/test-intake.ts",
+    "test:metadata": "tsx scripts/test-metadata.ts",
+    "test:paging": "tsx scripts/test-paging.ts",
     "test:mail:db": "tsx --env-file=.env.development.local scripts/test-mail.ts",
     "db:harden": "tsx --env-file=.env scripts/db-harden.ts",
     "db:harden:test": "tsx --env-file=.env.test scripts/db-harden.ts"

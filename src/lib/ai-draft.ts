@@ -8,6 +8,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { CATEGORIES, RESOURCE_TYPES } from "@/lib/constants";
 import { isBlockedHost } from "@/lib/net";
+import { fetchGuardedPage } from "@/lib/page-fetch";
 
 export type ArticleDraft = {
   title: string;
@@ -29,7 +30,6 @@ export function aiConfigured(): boolean {
 
 const INPUT_MAX = 1_000;
 const PAGE_TEXT_MAX = 6_000;
-const PAGE_BYTES_MAX = 300 * 1024;
 const PAGE_TIMEOUT_MS = 12_000;
 
 /* ---------- Path 1: DOI via Crossref (no AI needed) ---------- */
@@ -53,7 +53,11 @@ function stripJats(s: string): string {
   return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 800);
 }
 
-async function draftFromDoi(doi: string): Promise<ArticleDraft | null> {
+/**
+ * Crossref resolution, exported so the resource intake can reuse it with no
+ * API key: registry data, no AI involved.
+ */
+export async function draftFromDoi(doi: string): Promise<ArticleDraft | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
   try {
@@ -106,49 +110,30 @@ async function draftFromDoi(doi: string): Promise<ArticleDraft | null> {
 /* ---------- Path 2: guarded page fetch ---------- */
 
 async function fetchPageText(url: string): Promise<string | null> {
-  if (isBlockedHost(url)) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: { "User-Agent": "AthenaeumCatalogueAssistant/1.0" },
-      cache: "no-store",
-    });
-    if (!res.ok || !res.body) return null;
+  // fetchGuardedPage rather than bare fetch: it validates the RESOLVED address
+  // inside a DNS hook and re-validates every redirect hop. This path used to
+  // pair a hostname-only check with redirect: "follow", so a public name whose
+  // A record pointed at 169.254.169.254 reached the cloud metadata endpoint.
+  // It also gates Content-Type, so a PDF is no longer decoded as utf8 and fed
+  // to the model.
+  const page = await fetchGuardedPage(url, {
+    userAgent: "AthenaeumCatalogueAssistant/1.0",
+  });
+  if (!page.ok) return null;
 
-    // Read at most PAGE_BYTES_MAX: never buffer an arbitrary-size body.
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    while (bytes < PAGE_BYTES_MAX) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      bytes += value.length;
-    }
-    await reader.cancel().catch(() => {});
-    const html = Buffer.concat(chunks).toString("utf8");
-
-    // Keep <meta> tags (citation_* metadata is gold on scholarly pages) as
-    // text, drop scripts/styles, then strip the remaining markup.
-    const text = html
-      .replace(/<meta\s+[^>]*name=["']([^"']+)["'][^>]*content=["']([^"']*)["'][^>]*>/gi, " $1: $2 \n")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (m) =>
-        ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " })[m] ?? " ",
-      )
-      .replace(/\s+/g, " ")
-      .trim();
-    return text ? text.slice(0, PAGE_TEXT_MAX) : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  // Keep <meta> tags (citation_* metadata is gold on scholarly pages) as
+  // text, drop scripts/styles, then strip the remaining markup.
+  const text = page.body
+    .replace(/<meta\s+[^>]*name=["']([^"']+)["'][^>]*content=["']([^"']*)["'][^>]*>/gi, " $1: $2 \n")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (m) =>
+      ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " })[m] ?? " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return text ? text.slice(0, PAGE_TEXT_MAX) : null;
 }
 
 /* ---------- Path 3: Claude drafts the record ---------- */
