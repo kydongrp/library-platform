@@ -404,7 +404,12 @@ export function specToQuery(spec: FlexiSpec): string {
   const q = new URLSearchParams();
   q.set("cube", spec.cube);
   q.set("rows", spec.row);
-  if (spec.col) q.set("cols", spec.col);
+  // ALWAYS emit cols, using "none" for no breakdown. Omitting it does not mean
+  // "no columns" to the page: it falls back to the cube's DEFAULT column
+  // dimension (memberType on circulation, format on collection). Leaving it out
+  // therefore rendered a breakdown the confirmation strip said was "None",
+  // which is the exact mismatch this feature exists to prevent.
+  q.set("cols", spec.col ?? "none");
   q.set("measure", spec.measure);
   q.set("view", spec.view);
   if (spec.from) q.set("from", spec.from);

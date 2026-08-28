@@ -229,7 +229,15 @@ console.log("\nA named period is resolved, not passed through:");
   if (r.ok) {
     check("dates come from the named period", r.spec.from === "2026-04-01" && r.spec.to === "2026-06-30", `${r.spec.from}..${r.spec.to}`);
     check("a missing reading is filled in", r.spec.reading.length > 0, r.spec.reading);
-    check("no column means no cols= parameter", !specToQuery(r.spec).includes("cols="));
+    // Omitting cols does NOT mean "no breakdown" to the flexi page: it falls
+    // back to the cube's default column dimension, so the page would render a
+    // Member type breakdown while the confirmation strip said "None". The
+    // parameter must be explicit.
+    check(
+      "no column emits cols=none explicitly",
+      specToQuery(r.spec).includes("cols=none"),
+      specToQuery(r.spec),
+    );
   }
 }
 
