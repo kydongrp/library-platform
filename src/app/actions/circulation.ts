@@ -9,6 +9,7 @@ import { notify } from "@/lib/templates";
 import { formatDate } from "@/lib/format";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit } from "@/lib/audit";
+import { memberMayBorrow } from "@/lib/member-status";
 import {
   HOLD_QUEUE_ORDER,
   PRIORITY_NORMAL,
@@ -74,10 +75,15 @@ export async function checkout(
   if (!member) return { ok: false, message: "Member not found." };
   // Custom statuses carry their own borrowing rule; a legacy status with no
   // row only borrows if it reads as active.
-  const statusRow = await prisma.memberStatus.findUnique({ where: { name: member.status } });
-  const canBorrow = statusRow?.canBorrow ?? /^active$/i.test(member.status);
-  if (!canBorrow)
-    return { ok: false, message: `${member.name}'s account status "${member.status}" does not allow borrowing.` };
+  // Suspension is the single rule: a suspended member cannot borrow and cannot
+  // sign in to the portal. A status string with no row behind it (bulk import,
+  // or a status later removed from the list) is treated as suspended unless it
+  // reads as active, so removing a status cannot silently become permissive.
+  if (!(await memberMayBorrow(member.status)))
+    return {
+      ok: false,
+      message: `${member.name}'s account is ${member.status.toLowerCase()}, so it cannot borrow.`,
+    };
 
   const policy = await policyFor(member.memberType);
   // Member-specific override wins when set higher/lower than the policy.

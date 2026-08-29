@@ -11,7 +11,7 @@ export default async function NewMemberPage() {
 
   const statuses = await prisma.memberStatus.findMany({
     orderBy: { createdAt: "asc" },
-    select: { name: true, canBorrow: true, isDefault: true },
+    select: { name: true, suspends: true, isDefault: true },
   });
   const [regLocations, regDepartments] = await Promise.all([
     prisma.memberLocation.findMany({ orderBy: { name: "asc" }, select: { name: true } }),

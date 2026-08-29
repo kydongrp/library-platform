@@ -218,13 +218,64 @@ model ItemWeedLog {
 /// A configurable member status (beyond the built-in Active/Suspended).
 /// canBorrow drives the circulation gate; exactly one status is the default
 /// for new and imported members.
+/// A membership state. One concept, not two: a status either suspends the
+/// member or it does not.
+///
+/// The old model carried a separate "can borrow" flag, which let a status be
+/// simultaneously not-suspended and unable to borrow, and staff had to
+/// remember to set it. Suspension is what actually happens to an account: the
+/// member cannot borrow AND cannot sign in to the learner portal.
+/// A phone number or email address beyond the primary one, as the source
+/// system's repeatable "+" rows. `label` is the type staff chose (Mobile,
+/// Office, Home); it is free text because every institution names these
+/// differently.
+model MemberContact {
+  id        String  @id @default(cuid())
+  memberId  String
+  member    Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  kind      String // PHONE | EMAIL
+  label     String?
+  value     String
+  sortOrder Int     @default(0)
+
+  @@index([memberId])
+}
+
+/// A postal address. Kept as separate lines rather than one blob because the
+/// source form collects them that way and a label printer needs the breaks.
+model MemberAddress {
+  id        String  @id @default(cuid())
+  memberId  String
+  member    Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  label     String?
+  line1     String?
+  line2     String?
+  line3     String?
+  postal    String?
+  country   String?
+  sortOrder Int     @default(0)
+
+  @@index([memberId])
+}
+
 model MemberStatus {
-  id        String   @id @default(cuid())
-  name      String   @unique // display name, e.g. "Active", "Alumni", "On exchange"
-  canBorrow Boolean  @default(true)
-  isDefault Boolean  @default(false)
-  note      String?
-  createdAt DateTime @default(now())
+  id                    String   @id @default(cuid())
+  name                  String   @unique // display name, e.g. "Active", "Suspended", "On Secondment"
+  /// Members on this status are suspended: no borrowing, no portal sign-in.
+  suspends              Boolean  @default(false)
+  /// Apply this status automatically once a member has been inactive for this
+  /// many days. Null means never. "Inactive" is measured from the member's last
+  /// loan or reservation, falling back to the date they joined.
+  autoAfterInactiveDays Int?
+  isDefault             Boolean  @default(false)
+  note                  String?
+  createdAt             DateTime @default(now())
+
+  /// @deprecated Superseded by `suspends`. The column is retained rather than
+  /// dropped because the build runs `prisma db push` WITHOUT
+  /// --accept-data-loss, so removing it would fail the deploy. Nothing reads
+  /// it; the seed copies it into `suspends` once.
+  canBorrow Boolean @default(true)
 }
 
 // Managed code lists for membership registration (SDD rows 42-43). Members
@@ -288,15 +339,71 @@ model MemberDepartment {
 
 /// A library patron who can borrow and reserve resources.
 model Member {
-  id            String              @id @default(cuid())
-  name          String
-  email         String              @unique
-  memberType    String              @default("STUDENT") // STAFF, STUDENT, EXTERNAL
-  status        String              @default("Active") // references MemberStatus.name
-  phone         String?
-  language      String              @default("English") // notice/preference language
-  location      String? // campus / site / branch
-  department    String?
+  id String @id @default(cuid())
+
+  /// The library's own membership number, as printed on a card and typed at the
+  /// desk. Distinct from `id`, which is an internal cuid nobody quotes.
+  ///
+  /// Optional at the database level ONLY so existing rows survive the column
+  /// being added; the form requires it.
+  ///
+  /// Indexed but NOT @unique, deliberately. Adding a unique constraint makes
+  /// `prisma db push` demand --accept-data-loss, and the build runs it without
+  /// that flag on purpose so a genuinely destructive change fails the deploy
+  /// instead of proceeding quietly (scripts/test-build-sync.ts asserts this).
+  /// Uniqueness is enforced in createMember/updateMember instead, which is a
+  /// weaker guarantee against a simultaneous double submit and a deliberate
+  /// trade for not being able to deploy at all.
+  memberNo String?
+
+  /// Secondary identifiers this institution carries alongside the member
+  /// number (staff number, project account, contract reference).
+  associateId  String?
+  associateId2 String?
+
+  /// Name is stored in parts because the register is filed by family name, and
+  /// derived into `name` on save. `name` stays the display field so every
+  /// existing screen, report and export keeps working unchanged.
+  firstName String?
+  lastName  String?
+  name      String
+
+  /// Courtesy title (Dr, Prof) and job title. Both free text: neither is a
+  /// controlled vocabulary anywhere this system can enforce.
+  title    String?
+  position String?
+
+  email      String  @unique
+  memberType String  @default("DSTA_STAFF") // references MemberTypeDef.name
+  status     String  @default("Active") // references MemberStatus.name
+  phone      String?
+  language   String  @default("English") // notice/preference language
+  location   String? // campus / site / branch
+  department String?
+
+  /// Membership term. Expiry is advisory: nothing revokes on it automatically,
+  /// because a lapsed card is a conversation at the desk, not a silent lockout.
+  membershipStartAt  DateTime?
+  membershipExpiryAt DateTime?
+
+  /// Free-text note for staff. Not shown to the member.
+  remark String?
+
+  /// Portrait for the member record. A URL only: there is no file store wired
+  /// up, and inventing one to hold photographs of people is not a decision to
+  /// make in passing.
+  photoUrl String?
+
+  /// Notice preferences, both off unless the member opts in.
+  receiveEmailNotices Boolean @default(false)
+  receiveSms          Boolean @default(false)
+
+  /// Learner-portal sign-in. Only ever a scrypt hash with a per-member salt;
+  /// the plaintext is never stored, logged or returned. Null means the member
+  /// has no portal sign-in set.
+  passwordHash  String?
+  passwordSetAt DateTime?
+
   maxLoans      Int                 @default(5)
   joinedAt      DateTime            @default(now())
   tcAcceptedAt  DateTime? // digital-resource terms & conditions acceptance (contract FR 8.1)
@@ -310,8 +417,12 @@ model Member {
   requests      ResourceRequest[]
   reviews       Review[]
   folders       FavouriteFolder[]
+  contacts      MemberContact[]
+  addresses     MemberAddress[]
   browsing      BrowsingHistory[]
   searches      SearchHistory[]
+
+  @@index([memberNo])
 }
 
 /// A member-named collection of favourite titles (live system: bookmark

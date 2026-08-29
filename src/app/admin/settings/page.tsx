@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
-import { GroupMatrix, NewGroupForm, AdminUsersSection } from "./sections";
+import { GroupMatrix, NewGroupForm } from "./sections";
 import { SearchConfigSection } from "./search-config";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,6 @@ type SearchParams = Promise<{ tab?: string }>;
  * matrix in order to render a name in a dropdown.
  */
 const TABS = [
-  { key: "staff", label: "Staff accounts" },
   { key: "access", label: "Groups & access" },
   { key: "search", label: "Search vocabulary" },
 ] as const;
@@ -29,8 +28,6 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 const BLURB: Record<TabKey, string> = {
-  staff:
-    "Who can sign in, and which group they belong to. A staff member inherits their group's rights; suspending an account takes effect on their next page load.",
   access:
     "What each group can see and change, per module. Ticking edit implies view, so a module can never be editable but invisible.",
   search:
@@ -42,19 +39,17 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
   const editable = canEdit(admin, "ADMIN");
 
   const requested = (await searchParams).tab;
-  const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : "staff";
+  const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : "access";
 
-  // Counts for the pills are three cheap aggregates; the heavy reads below are
+  // Counts for the pills are cheap aggregates; the heavy reads below are
   // conditional on which tab is open.
-  const [staffCount, groupCount, vocabCount] = await Promise.all([
-    prisma.adminUser.count(),
+  const [groupCount, vocabCount] = await Promise.all([
     prisma.adminGroup.count(),
     Promise.all([prisma.stopWord.count(), prisma.variantSpelling.count()]).then(
       ([a, b]) => a + b,
     ),
   ]);
   const counts: Record<TabKey, number> = {
-    staff: staffCount,
     access: groupCount,
     search: vocabCount,
   };
@@ -83,40 +78,9 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
         ))}
       </div>
 
-      {tab === "staff" && <StaffTab currentAdminId={admin.id} readOnly={!editable} />}
       {tab === "access" && <AccessTab readOnly={!editable} />}
       {tab === "search" && <SearchTab readOnly={!editable} />}
     </div>
-  );
-}
-
-async function StaffTab({
-  currentAdminId,
-  readOnly,
-}: {
-  currentAdminId: string;
-  readOnly: boolean;
-}) {
-  const [users, groups] = await Promise.all([
-    prisma.adminUser.findMany({ include: { group: true }, orderBy: { name: "asc" } }),
-    // Only the id and name: this feeds the group dropdown, not the matrix.
-    prisma.adminGroup.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-  ]);
-
-  return (
-    <AdminUsersSection
-      users={users.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        status: u.status,
-        groupId: u.groupId,
-        groupName: u.group.name,
-      }))}
-      groups={groups}
-      currentAdminId={currentAdminId}
-      readOnly={readOnly}
-    />
   );
 }
 

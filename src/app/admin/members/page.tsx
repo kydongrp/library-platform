@@ -3,9 +3,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { canEdit } from "@/lib/admin-session";
 import { Card, Badge, ButtonLink, EmptyState } from "@/components/ui";
-import { ActionButton } from "@/components/forms";
+import { ActionButton, StatefulForm, SubmitButton } from "@/components/forms";
 import {
-  toggleStatusBorrow,
+  setStatusLapseRule,
   makeDefaultStatus,
   deleteMemberStatus,
   deleteMemberLocation,
@@ -50,7 +50,7 @@ export default async function MembersPage({
     prisma.memberDepartment.findMany({ orderBy: { name: "asc" } }),
   ]);
 
-  const canBorrowByName = new Map(statuses.map((s) => [s.name, s.canBorrow]));
+  const suspendsByName = new Map(statuses.map((s) => [s.name, s.suspends]));
   const countByStatus = new Map(statusCounts.map((c) => [c.status, c._count._all]));
 
   const inputCls =
@@ -114,7 +114,7 @@ export default async function MembersPage({
               </div>
               <Badge tone="neutral">{MEMBER_TYPE_LABELS[m.memberType]}</Badge>
               {m.status !== "Active" && (
-                <Badge tone={canBorrowByName.get(m.status) === false ? "danger" : "accent"}>{m.status}</Badge>
+                <Badge tone={suspendsByName.get(m.status) === true ? "danger" : "accent"}>{m.status}</Badge>
               )}
               <Badge tone="primary">{m._count.loans} on loan</Badge>
             </Link>
@@ -128,8 +128,10 @@ export default async function MembersPage({
           <Card className="p-5">
             <h2 className="mb-1 font-display text-lg font-semibold">Member statuses</h2>
             <p className="mb-3 text-xs text-muted-foreground">
-              Statuses that block borrowing stop circulation immediately; the
-              default is applied to new and imported members.
+              A suspended member cannot borrow and cannot sign in to the learner portal. The
+              default status is applied to new and imported members. A suspending status can
+              also be applied automatically once a member has gone unused for a set number of
+              days.
             </p>
             <ul className="divide-y divide-border">
               {statuses.map((s) => (
@@ -137,16 +139,42 @@ export default async function MembersPage({
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium">{s.name}</span>
                     {s.isDefault && <Badge tone="primary">default</Badge>}
-                    {s.canBorrow ? <Badge tone="success">✓ can borrow</Badge> : <Badge tone="danger">✕ no borrowing</Badge>}
+                    {s.suspends && <Badge tone="danger">suspended</Badge>}
+                    {s.autoAfterInactiveDays && (
+                      <Badge tone="muted">after {s.autoAfterInactiveDays}d inactive</Badge>
+                    )}
                     <span className="text-xs text-muted-foreground" style={{ fontVariantNumeric: "tabular-nums" }}>
                       {countByStatus.get(s.name) ?? 0} member{(countByStatus.get(s.name) ?? 0) === 1 ? "" : "s"}
                     </span>
                   </div>
                   <span className="flex items-center gap-1.5">
-                    <ActionButton action={toggleStatusBorrow} fields={{ id: s.id }} variant="ghost"
-                      className="!px-2 !py-1 text-xs" pendingLabel="…">
-                      {s.canBorrow ? "Block borrowing" : "Allow borrowing"}
-                    </ActionButton>
+                    {s.suspends && (
+                      /* A disclosure rather than an always-visible field: the
+                         rule is set once and then left alone, and a number box
+                         on every row invites an accidental edit. */
+                      <details className="text-xs">
+                        <summary className="cursor-pointer rounded-lg px-2 py-1 hover:bg-muted">
+                          {s.autoAfterInactiveDays ? "Change lapse rule" : "Set lapse rule"}
+                        </summary>
+                        <StatefulForm action={setStatusLapseRule} className="mt-1 flex items-center gap-1.5">
+                          <input type="hidden" name="id" value={s.id} />
+                          <input
+                            name="days"
+                            type="number"
+                            min="0"
+                            max="3650"
+                            defaultValue={s.autoAfterInactiveDays ?? ""}
+                            placeholder="days"
+                            aria-label={`Days of inactivity before a member becomes ${s.name}`}
+                            className="w-20 rounded-lg border border-border bg-card px-2 py-1 text-xs"
+                          />
+                          <SubmitButton variant="outline" className="!px-2 !py-1 text-xs" pendingLabel="…">
+                            Save
+                          </SubmitButton>
+                          <span className="text-[11px] text-muted-foreground">0 or blank = off</span>
+                        </StatefulForm>
+                      </details>
+                    )}
                     {!s.isDefault && (
                       <>
                         <ActionButton action={makeDefaultStatus} fields={{ id: s.id }} variant="ghost"

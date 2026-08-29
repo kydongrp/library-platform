@@ -21,12 +21,12 @@ export function StatusForm() {
             <div>
               <label htmlFor="ms-name" className={labelCls}>New status name</label>
               <input id="ms-name" name="name" required maxLength={40}
-                placeholder="e.g. Alumni, Graduated, On exchange" className={fieldCls} />
+                placeholder="e.g. On Secondment, Long leave" className={fieldCls} />
             </div>
             <label className="flex items-center gap-2 pb-2 text-sm">
-              <input type="checkbox" name="canBorrow" defaultChecked
+              <input type="checkbox" name="suspends"
                 className="h-4 w-4 rounded border-border accent-primary" />
-              Can borrow
+              Suspends
             </label>
             <label className="flex items-center gap-2 pb-2 text-sm">
               <input type="checkbox" name="isDefault"

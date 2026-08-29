@@ -153,7 +153,7 @@ export async function runEodProcess(
   // 3. Welcome new members (joined in the last day). Nudges only go to
   // members whose status allows borrowing (custom statuses may not).
   const borrowableStatuses = (
-    await prisma.memberStatus.findMany({ where: { canBorrow: true }, select: { name: true } })
+    await prisma.memberStatus.findMany({ where: { suspends: false }, select: { name: true } })
   ).map((s) => s.name);
   const newMembers = await prisma.member.findMany({
     where: { joinedAt: { gte: since }, status: { in: borrowableStatuses } },

@@ -36,11 +36,13 @@ export default async function MemberDetailPage({
           include: { resource: true },
           orderBy: [...HOLD_QUEUE_ORDER],
         },
+        contacts: { orderBy: { sortOrder: "asc" } },
+        addresses: { orderBy: { sortOrder: "asc" } },
       },
     }),
     prisma.memberStatus.findMany({
       orderBy: { createdAt: "asc" },
-      select: { name: true, canBorrow: true, isDefault: true },
+      select: { name: true, suspends: true, isDefault: true },
     }),
     prisma.memberLocation.findMany({ orderBy: { name: "asc" }, select: { name: true } }),
     prisma.memberDepartment.findMany({ orderBy: { name: "asc" }, select: { name: true } }),
@@ -78,7 +80,7 @@ export default async function MemberDetailPage({
         </div>
         <div className="ml-auto flex flex-col items-end gap-1.5">
           <Badge tone="neutral">{MEMBER_TYPE_LABELS[member.memberType]}</Badge>
-          {statusRow?.canBorrow === false ? (
+          {statusRow?.suspends === true ? (
             <Badge tone="danger">✕ {member.status}</Badge>
           ) : (
             <Badge tone="success">✓ {member.status}</Badge>
@@ -215,7 +217,14 @@ export default async function MemberDetailPage({
           departments={regDepartments.map((d) => d.name)}
           defaults={{
             id: member.id,
+            memberNo: member.memberNo,
+            associateId: member.associateId,
+            associateId2: member.associateId2,
+            firstName: member.firstName,
+            lastName: member.lastName,
             name: member.name,
+            title: member.title,
+            position: member.position,
             email: member.email,
             memberType: member.memberType,
             status: member.status,
@@ -223,7 +232,22 @@ export default async function MemberDetailPage({
             language: member.language,
             location: member.location ?? "",
             department: member.department ?? "",
+            // <input type="date"> wants YYYY-MM-DD. The stored instant is noon
+            // in the library's zone, so the UTC date part is the right day.
+            membershipStartAt: member.membershipStartAt?.toISOString().slice(0, 10) ?? "",
+            membershipExpiryAt: member.membershipExpiryAt?.toISOString().slice(0, 10) ?? "",
+            remark: member.remark,
+            photoUrl: member.photoUrl,
+            receiveEmailNotices: member.receiveEmailNotices,
+            receiveSms: member.receiveSms,
+            // Only whether one exists; the hash never reaches the browser.
+            hasPassword: member.passwordHash !== null,
             maxLoans: member.maxLoans,
+            contacts: member.contacts.map((c) => ({ kind: c.kind, label: c.label, value: c.value })),
+            addresses: member.addresses.map((a) => ({
+              label: a.label, line1: a.line1, line2: a.line2,
+              line3: a.line3, postal: a.postal, country: a.country,
+            })),
           }}
           submitLabel="Save changes"
         />

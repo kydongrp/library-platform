@@ -13,6 +13,7 @@ import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { SEED_CATEGORIES, UNCATEGORISED, SEED_MEMBER_TYPES } from "../src/lib/constants";
+import { SEED_MEMBER_STATUSES, RETIRED_MEMBER_STATUSES } from "../src/lib/member-status";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -52,6 +53,58 @@ async function main(): Promise<void> {
       labelsFixed++;
     }
   }
+
+  // Member statuses. `suspends` replaced the old canBorrow flag; carry the old
+  // value across ONCE for rows that predate the change, so a status that
+  // blocked borrowing keeps blocking it.
+  let statusesAdded = 0;
+  let carried = 0;
+  for (const [i, st] of SEED_MEMBER_STATUSES.entries()) {
+    const existing = await prisma.memberStatus.findUnique({ where: { name: st.name } });
+    if (!existing) {
+      await prisma.memberStatus.create({
+        data: {
+          name: st.name,
+          suspends: st.suspends,
+          autoAfterInactiveDays: st.autoAfterInactiveDays,
+          isDefault: st.isDefault,
+          canBorrow: !st.suspends,
+        },
+      });
+      statusesAdded++;
+    }
+    void i;
+  }
+
+  // Rows created before `suspends` existed default to false, which would make a
+  // previously blocking status permissive. Reconcile them from canBorrow once.
+  const stale = await prisma.memberStatus.findMany({ where: { suspends: false, canBorrow: false } });
+  for (const row of stale) {
+    await prisma.memberStatus.update({ where: { id: row.id }, data: { suspends: true } });
+    carried++;
+  }
+
+  // Retired statuses are removed from the list. Members already on one keep the
+  // value, exactly as the other code lists behave; statusAllowsBorrowing treats
+  // an unknown status as suspended, which matches what Alumni already did.
+  let retired = 0;
+  for (const name of RETIRED_MEMBER_STATUSES) {
+    const row = await prisma.memberStatus.findUnique({ where: { name } });
+    if (!row) continue;
+    const inUse = await prisma.member.count({ where: { status: name } });
+    await prisma.memberStatus.delete({ where: { id: row.id } });
+    retired++;
+    if (inUse > 0) {
+      console.log(
+        `Code lists: removed status "${name}"; ${inUse} member(s) keep it on their record and count as suspended.`,
+      );
+    }
+  }
+
+  console.log(
+    `Code lists: ${statusesAdded} status(es) added, ${carried} carried from the old borrowing flag, ${retired} retired.`,
+  );
+
   const typeTotal = await prisma.memberTypeDef.count();
   console.log(
     `Code lists: ${typesAdded} member type(s) added, ${labelsFixed} label(s) updated, ${typeTotal} in total.`,
