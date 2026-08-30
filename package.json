@@ -21,6 +21,7 @@
     "neon:retention": "tsx --env-file=.env scripts/neon-retention.ts",
     "db:compare": "tsx --env-file=.env scripts/db-compare.ts",
     "test:compare": "tsx --env-file=.env scripts/test-db-compare.ts",
+    "test:compare:dev": "tsx --env-file=.env.development.local scripts/test-db-compare.ts",
     "neon:move": "tsx --env-file=.env scripts/neon-move.ts",
     "test:fidelity": "tsx --env-file=.env scripts/test-dump-fidelity.ts",
     "test:tz": "tsx scripts/test-tz.ts",

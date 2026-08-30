@@ -17,7 +17,25 @@
  *   - a widened column type
  *
  * Read-only against the live database; every write lands on the throwaway.
+ *
+ * Two things will stop this test before it starts, neither of which is a bug in
+ * the comparison it exists to check:
+ *
+ *   BACKUP_KEY. The dump holds member names and emails, so backup() refuses to
+ *   write one in plaintext. This test supplies its own random key when none is
+ *   set, because its dump lives in a temp directory that the finally block
+ *   deletes and is never an artefact anyone keeps. scripts/backup.ts still
+ *   refuses, which is where that rule earns its keep.
+ *
+ *   Prisma's AI-agent guard. `db push --accept-data-loss` is refused outright
+ *   when Prisma detects an agent invoked it, and it is right to: the flag
+ *   destroys everything in whatever database it names. Here that is always a
+ *   database created seconds earlier and dropped in the finally block, but the
+ *   guard cannot see the difference. Running this test yourself is unaffected;
+ *   an agent needs PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION set to the text
+ *   of the consent you gave it.
  */
+import { randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -33,6 +51,58 @@ function withDatabase(url: string, dbName: string): string {
   return u.toString();
 }
 
+/**
+ * Put the schema on the throwaway copy.
+ *
+ * The output is decoded because execFileSync throws an error whose stdout and
+ * stderr are Buffers, and Node renders a Buffer as a list of byte values: a
+ * failure here used to print two hundred numbers and no message, which made the
+ * one step most likely to fail the one hardest to diagnose.
+ */
+function pushSchema(copyUrl: string): void {
+  try {
+    execFileSync(
+      process.execPath,
+      [resolve("node_modules/prisma/build/index.js"), "db", "push", "--accept-data-loss"],
+      {
+        env: {
+          ...process.env,
+          DATABASE_URL: copyUrl,
+          POSTGRES_URL_NON_POOLING: copyUrl,
+          DATABASE_URL_UNPOOLED: copyUrl,
+        },
+        stdio: "pipe",
+      },
+    );
+  } catch (e) {
+    const err = e as { stdout?: Buffer; stderr?: Buffer; status?: number };
+    const output = `${err.stdout?.toString() ?? ""}\n${err.stderr?.toString() ?? ""}`.trim();
+
+    // Prisma refuses destructive commands when it detects an AI agent driving
+    // them. It is right to: the flag really does destroy data, and the guard
+    // cannot see that this particular target is a database created seconds ago
+    // for this test. Say so in one sentence rather than leaving the next reader
+    // to decode a stack trace.
+    if (/PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION/.test(output)) {
+      throw new Error(
+        [
+          "prisma db push refused to run: it detected that an AI agent invoked it.",
+          "",
+          `This test pushes the schema onto ${new URL(copyUrl).pathname.slice(1)}, a throwaway database`,
+          "it created moments ago and drops in its finally block. It never targets the live",
+          "database, which it only ever reads. The guard cannot know that.",
+          "",
+          "Running this test yourself is unaffected. To let an agent run it, set",
+          "PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION to the exact text of your consent.",
+          "",
+          output,
+        ].join("\n"),
+      );
+    }
+    throw new Error(`prisma db push failed (exit ${err.status}):\n${output}`);
+  }
+}
+
 let failures = 0;
 function check(ok: boolean, label: string, detail = "") {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}${detail ? `: ${detail}` : ""}`);
@@ -40,6 +110,15 @@ function check(ok: boolean, label: string, detail = "") {
 }
 
 void (async () => {
+  // A throwaway key for a throwaway dump, so the test does not need an
+  // operator's secret to run. The invariant backup() protects is that member
+  // data never lands on disk in plaintext, and a random key keeps it: the dump
+  // is still encrypted, and the key dies with the process.
+  if (!process.env.BACKUP_KEY) {
+    process.env.BACKUP_KEY = randomBytes(24).toString("hex");
+    console.log("BACKUP_KEY was not set; using a random one for this run's temporary dump.");
+  }
+
   const live = connectionString();
   const stamp = Date.now().toString(36);
   const copyDb = `dls_cmp_${stamp}`;
@@ -57,19 +136,7 @@ void (async () => {
     const { manifest } = await backup(dumpPath, live);
     await admin.query(`CREATE DATABASE "${copyDb}"`);
     const copyUrl = withDatabase(live, copyDb);
-    execFileSync(
-      process.execPath,
-      [resolve("node_modules/prisma/build/index.js"), "db", "push", "--accept-data-loss"],
-      {
-        env: {
-          ...process.env,
-          DATABASE_URL: copyUrl,
-          POSTGRES_URL_NON_POOLING: copyUrl,
-          DATABASE_URL_UNPOOLED: copyUrl,
-        },
-        stdio: "pipe",
-      },
-    );
+    pushSchema(copyUrl);
     {
       // Match production's hardening or the very first comparison fails on
       // the trigger diff.
@@ -176,19 +243,7 @@ void (async () => {
       // first, and pushing the schema can itself wipe rows, so restore again.
       await restore(dumpPath, copyUrl);
       if (c.kind === "rules" || c.kind === "shape") {
-        execFileSync(
-          process.execPath,
-          [resolve("node_modules/prisma/build/index.js"), "db", "push", "--accept-data-loss"],
-          {
-            env: {
-              ...process.env,
-              DATABASE_URL: copyUrl,
-              POSTGRES_URL_NON_POOLING: copyUrl,
-              DATABASE_URL_UNPOOLED: copyUrl,
-            },
-            stdio: "pipe",
-          },
-        );
+        pushSchema(copyUrl);
         await restore(dumpPath, copyUrl);
       }
     }
