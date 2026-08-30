@@ -7,16 +7,24 @@ import { ActionButton } from "@/components/forms";
 import { deleteCodeRow } from "@/app/actions/items";
 import { COPY_STATUSES, COPY_STATUS_LABELS } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
+import { resolvePaging } from "@/lib/paging";
+import { TablePager } from "@/components/pagination";
 import {
   ItemsTable, CollectionForm, LocationForm, ItemTypeForm,
 } from "./widgets";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 200;
+/**
+ * A shelf list is scanned rather than read, so this defaults denser than a
+ * report. It must be one of PAGE_SIZES, or the dropdown could not show it as
+ * selected.
+ */
+const ITEMS_PER_PAGE = 100;
 
 type SearchParams = Promise<{
   q?: string; status?: string; collection?: string; location?: string; itemType?: string;
+  page?: string; pageSize?: string;
 }>;
 
 export default async function ItemsPage({ searchParams }: { searchParams: SearchParams }) {
@@ -37,31 +45,44 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
   if (sp.location) where.locationId = sp.location;
   if (sp.itemType) where.itemTypeId = sp.itemType;
 
-  const [copies, total, collections, locations, itemTypes, weedLog, statusCounts] =
-    await Promise.all([
-      prisma.copy.findMany({
-        where,
-        include: {
-          resource: { select: { id: true, title: true } },
-          collection: { select: { code: true, name: true } },
-          itemLocation: { select: { code: true, name: true } },
-          itemType: { select: { code: true, name: true } },
-          loans: {
-            where: { status: "ACTIVE" },
-            select: { member: { select: { name: true } } },
-            take: 1,
-          },
-        },
-        orderBy: { barcode: "asc" },
-        take: PAGE_SIZE,
-      }),
-      prisma.copy.count({ where }),
-      prisma.itemCollection.findMany({ orderBy: { code: "asc" }, include: { _count: { select: { copies: true } } } }),
-      prisma.itemLocation.findMany({ orderBy: { code: "asc" }, include: { _count: { select: { copies: true } } } }),
-      prisma.itemType.findMany({ orderBy: { code: "asc" }, include: { _count: { select: { copies: true } } } }),
-      prisma.itemWeedLog.findMany({ orderBy: { weededAt: "desc" }, take: 15 }),
-      prisma.copy.groupBy({ by: ["status"], _count: { _all: true } }),
-    ]);
+  // The count has to come first: `skip` cannot be computed until the total is
+  // known, because a page past the end must clamp to the last page rather than
+  // return nothing. Everything that does not depend on paging runs alongside
+  // it, so this is two round trips rather than one, not seven.
+  const [total, collections, locations, itemTypes, weedLog, statusCounts] = await Promise.all([
+    prisma.copy.count({ where }),
+    prisma.itemCollection.findMany({ orderBy: { code: "asc" }, include: { _count: { select: { copies: true } } } }),
+    prisma.itemLocation.findMany({ orderBy: { code: "asc" }, include: { _count: { select: { copies: true } } } }),
+    prisma.itemType.findMany({ orderBy: { code: "asc" }, include: { _count: { select: { copies: true } } } }),
+    prisma.itemWeedLog.findMany({ orderBy: { weededAt: "desc" }, take: 15 }),
+    prisma.copy.groupBy({ by: ["status"], _count: { _all: true } }),
+  ]);
+
+  const paging = resolvePaging(total, sp.page, sp.pageSize, ITEMS_PER_PAGE);
+
+  // Paged at the database, not in memory. This page used to take the first 200
+  // and say so, which meant item 201 could not be reached from the interface at
+  // all: the rows existed and there was no way to ask for them.
+  //
+  // The order must be total, or two pages could show the same row and skip
+  // another. Barcode is unique, so it is a complete ordering on its own.
+  const copies = await prisma.copy.findMany({
+    where,
+    include: {
+      resource: { select: { id: true, title: true } },
+      collection: { select: { code: true, name: true } },
+      itemLocation: { select: { code: true, name: true } },
+      itemType: { select: { code: true, name: true } },
+      loans: {
+        where: { status: "ACTIVE" },
+        select: { member: { select: { name: true } } },
+        take: 1,
+      },
+    },
+    orderBy: { barcode: "asc" },
+    skip: paging.start,
+    take: paging.pageSize,
+  });
 
   const countBy = new Map(statusCounts.map((s) => [s.status, s._count._all]));
   const inputCls =
@@ -126,6 +147,12 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
 
       {/* Filters */}
       <form className="mb-4 flex flex-wrap items-center gap-2">
+        {/* Carry the rows-per-page choice through a filter change; `page` is
+            deliberately not carried, because a new filter is a new result set
+            and page 8 of the old one means nothing. */}
+        {paging.pageSize !== ITEMS_PER_PAGE && (
+          <input type="hidden" name="pageSize" value={paging.pageSize} />
+        )}
         <input name="q" defaultValue={q} placeholder="Barcode or title…"
           className={`min-w-52 flex-1 ${inputCls}`} />
         <select name="status" defaultValue={sp.status ?? ""} className={inputCls} aria-label="Status">
@@ -153,21 +180,37 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
       </form>
 
       <p className="mb-2 text-xs text-muted-foreground">
-        {total.toLocaleString()} item{total === 1 ? "" : "s"} match
-        {total > PAGE_SIZE && `, showing the first ${PAGE_SIZE}`}.
+        {total.toLocaleString()} item{total === 1 ? "" : "s"} match.
         {editable && " Tick rows to change properties or weed them."}
+        {editable && paging.totalPages > 1 && " A selection applies to this page only."}
       </p>
 
       {items.length === 0 ? (
         <EmptyState title="No items match" description="Adjust the filters, or add copies from a catalogue record." />
       ) : (
-        <ItemsTable
-          items={items}
-          collections={opts(collections)}
-          locations={opts(locations)}
-          itemTypes={opts(itemTypes)}
-          editable={editable}
-        />
+        <>
+          <ItemsTable
+            items={items}
+            collections={opts(collections)}
+            locations={opts(locations)}
+            itemTypes={opts(itemTypes)}
+            editable={editable}
+          />
+          <TablePager
+            paging={paging}
+            query={{
+              q,
+              status: sp.status,
+              collection: sp.collection,
+              location: sp.location,
+              itemType: sp.itemType,
+            }}
+            basePath="/admin/items"
+            unit="items"
+            defaultPageSize={ITEMS_PER_PAGE}
+            className="mt-4"
+          />
+        </>
       )}
 
       {/* Code lists */}

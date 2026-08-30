@@ -23,9 +23,16 @@ export const DEFAULT_PAGE_SIZE = 50;
  * exactly the render-everything problem this exists to solve, and it is a
  * trivially guessable way for anyone to make the server build a huge page.
  */
-export function normalisePageSize(raw: string | number | null | undefined): number {
+export function normalisePageSize(
+  raw: string | number | null | undefined,
+  fallback: number = DEFAULT_PAGE_SIZE,
+): number {
   const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
-  return (PAGE_SIZES as readonly number[]).includes(n) ? n : DEFAULT_PAGE_SIZE;
+  if ((PAGE_SIZES as readonly number[]).includes(n)) return n;
+  // A screen may prefer a denser default (a shelf list is scanned, a report is
+  // read), but only from the offered sizes: a fallback outside them would put a
+  // value in the dropdown that the dropdown cannot show as selected.
+  return (PAGE_SIZES as readonly number[]).includes(fallback) ? fallback : DEFAULT_PAGE_SIZE;
 }
 
 export type Paging = {
@@ -55,8 +62,9 @@ export function resolvePaging(
   total: number,
   rawPage: string | number | null | undefined,
   rawPageSize: string | number | null | undefined,
+  fallbackPageSize: number = DEFAULT_PAGE_SIZE,
 ): Paging {
-  const pageSize = normalisePageSize(rawPageSize);
+  const pageSize = normalisePageSize(rawPageSize, fallbackPageSize);
   const safeTotal = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0;
   const totalPages = Math.max(1, Math.ceil(safeTotal / pageSize));
 
@@ -129,12 +137,13 @@ export function pagedQuery(
   base: Record<string, string | undefined>,
   page: number,
   pageSize: number,
+  defaultPageSize: number = DEFAULT_PAGE_SIZE,
 ): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(base)) {
     if (v) q.set(k, v);
   }
   if (page > 1) q.set("page", String(page));
-  if (pageSize !== DEFAULT_PAGE_SIZE) q.set("pageSize", String(pageSize));
+  if (pageSize !== defaultPageSize) q.set("pageSize", String(pageSize));
   return q.toString();
 }

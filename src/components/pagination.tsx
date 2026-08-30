@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { PAGE_SIZES, GAP, pageWindow, pagedQuery, type Paging } from "@/lib/paging";
+import {
+  PAGE_SIZES,
+  GAP,
+  DEFAULT_PAGE_SIZE,
+  pageWindow,
+  pagedQuery,
+  type Paging,
+} from "@/lib/paging";
 
 /**
  * Table pager: a rows-per-page dropdown and page controls.
@@ -22,6 +29,7 @@ export function TablePager({
   query,
   basePath,
   unit = "rows",
+  defaultPageSize = DEFAULT_PAGE_SIZE,
   className = "",
 }: {
   paging: Paging;
@@ -30,13 +38,19 @@ export function TablePager({
   basePath: string;
   /** Plural noun for the count, e.g. "rows", "items", "loans". */
   unit?: string;
+  /**
+   * This screen's preferred size, so the links leave pageSize out of the URL
+   * while it is unchanged. Must match what the page passed to resolvePaging, or
+   * a link would silently switch the size.
+   */
+  defaultPageSize?: number;
   className?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   const href = (page: number, pageSize = paging.pageSize) => {
-    const qs = pagedQuery(query, page, pageSize);
+    const qs = pagedQuery(query, page, pageSize, defaultPageSize);
     return qs ? `${basePath}?${qs}` : basePath;
   };
 

@@ -164,6 +164,39 @@ console.log("\nLinks keep the current filters:");
   check("values are encoded", encoded.includes("memberType=A+B%26C"), encoded);
 }
 
+console.log("\nA screen may prefer a denser default:");
+{
+  // Items is scanned rather than read, so it defaults to 100 while reports
+  // default to 50. The risk is a fallback that is not one of the offered
+  // sizes: the dropdown could not show it as selected, so the control would
+  // display a size the page is not using.
+  check("an offered fallback is honoured", normalisePageSize(undefined, 100) === 100);
+  check("and for 250", normalisePageSize(undefined, 250) === 250);
+  check("an explicit choice still wins over the fallback", normalisePageSize(25, 100) === 25);
+  check("a junk choice falls back to the screen's size", normalisePageSize("abc", 100) === 100);
+  check(
+    "an unoffered fallback is refused, not shown",
+    normalisePageSize(undefined, 200) === DEFAULT_PAGE_SIZE,
+    String(normalisePageSize(undefined, 200)),
+  );
+  check("a zero fallback is refused", normalisePageSize(undefined, 0) === DEFAULT_PAGE_SIZE);
+
+  const p = resolvePaging(1000, undefined, undefined, 100);
+  check("resolvePaging uses the screen default", p.pageSize === 100, String(p.pageSize));
+  check("and pages by it", p.totalPages === 10, String(p.totalPages));
+  check("first page covers 1-100", p.from === 1 && p.to === 100);
+
+  // The URL stays clean while the size is the screen's own.
+  const atDefault = pagedQuery({ q: "x" }, 1, 100, 100);
+  check("the screen default is omitted from the url", !atDefault.includes("pageSize"), atDefault);
+  check("filters survive", atDefault.includes("q=x"));
+  const changed = pagedQuery({ q: "x" }, 1, 25, 100);
+  check("a different size IS in the url", changed.includes("pageSize=25"), changed);
+  // Without the fourth argument the old behaviour is unchanged.
+  const legacy = pagedQuery({}, 1, DEFAULT_PAGE_SIZE);
+  check("the default caller is unaffected", !legacy.includes("pageSize"), legacy);
+}
+
 console.log(
   failures === 0
     ? "\nCLEAN: every row appears on exactly one page, out-of-range input clamps instead of showing an empty table, and pageSize cannot be widened past the offered sizes."
