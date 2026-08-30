@@ -31,7 +31,7 @@ function StatusPill({ status }: { status: ProviderHealth["status"] }) {
   );
 }
 
-/** Thin health meter: reachable share of the provider's links. */
+/** Thin health meter: the share whose page the scan actually retrieved. */
 function HealthMeter({ p }: { p: ProviderHealth }) {
   const pct = Math.round(p.okRatio * 100);
   return (
@@ -39,7 +39,7 @@ function HealthMeter({ p }: { p: ProviderHealth }) {
       <div
         className="h-2 w-full max-w-44 overflow-hidden rounded-full bg-stone-200"
         role="img"
-        aria-label={`${pct}% of ${p.provider} links reachable`}
+        aria-label={`${pct}% of ${p.provider} links retrieved${p.unverified ? `, ${p.unverified} not verified` : ""}`}
       >
         <div
           className="h-full rounded-full"
@@ -66,11 +66,17 @@ export default async function AccessHealthPage() {
     }),
   ]);
 
+  // "Confirmed", not "Reachable". The old tile counted everything that was not
+  // broken, which folded every subscription wall and bot gate into a number
+  // that read as proof the links work. Three states, three columns.
   const tiles = [
     { label: "Links monitored", value: health.totalChecked },
-    { label: "Reachable", value: health.totalChecked - health.totalBroken },
+    {
+      label: "Page retrieved",
+      value: health.totalChecked - health.totalBroken - health.totalUnverified,
+    },
+    { label: "Not verified", value: health.totalUnverified },
     { label: "Broken", value: health.totalBroken },
-    { label: "Providers", value: health.providers.length },
   ];
 
   return (
@@ -162,9 +168,16 @@ export default async function AccessHealthPage() {
           <Card className="mt-6 p-5">
             <h2 className="mb-1 font-display text-lg font-semibold">Broken links</h2>
             {health.broken.length === 0 ? (
-              <p className="py-3 text-sm text-green-700">
-                ✓ Every digital access link resolved on the last scan.
-              </p>
+              <div className="py-3 text-sm">
+                <p className="text-green-700">✓ No dead links in the last scan.</p>
+                {health.totalUnverified > 0 && (
+                  <p className="mt-1.5 text-muted-foreground">
+                    {health.totalUnverified} of {health.totalChecked} answered without serving the
+                    page to the scanner, which is what a subscription wall or a bot gate looks like
+                    from outside. Those are not confirmed working, only confirmed present.
+                  </p>
+                )}
+              </div>
             ) : (
               <ul className="mt-2 divide-y divide-border">
                 {health.broken.map((b) => (

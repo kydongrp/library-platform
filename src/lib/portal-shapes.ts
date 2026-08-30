@@ -3,6 +3,7 @@
 // leak by accident: only the fields named here leave the system.
 
 import { proxiedUrl } from "@/lib/proxy-link";
+import { type LinkState } from "@/lib/link-state";
 
 type ResourceWithCopies = {
   id: string;
@@ -31,7 +32,23 @@ type ResourceWithCopies = {
 
 export type PublicResource = ReturnType<typeof toPublicResource>;
 
-export function toPublicResource(r: ResourceWithCopies) {
+/**
+ * Serialise one resource for the portal.
+ *
+ * `access` is the nightly scan's verdict, from src/lib/link-state.ts, and is
+ * null when the link has never been scanned. It is a parameter rather than
+ * something read here because this module is a pure mapper and each route
+ * fetches its own page of checks in one query.
+ */
+export function toPublicResource(r: ResourceWithCopies, access: LinkState | null = null) {
+  // A link the last scan found dead is not offered. The library already knows
+  // a learner clicking it gets a 404, and handing it over anyway spends their
+  // time to tell them something it could have said itself. curation.ts has
+  // taken the same line for Editor's Pick since it was written.
+  //
+  // accessStatus is sent alongside so the portal can say WHY there is no link,
+  // rather than rendering a title that silently looks like it has no full text.
+  const withheld = access === "BROKEN";
   return {
     id: r.id,
     title: r.title,
@@ -50,7 +67,16 @@ export function toPublicResource(r: ResourceWithCopies) {
     // Wrapped in the library's authenticating proxy when one is configured,
     // so a learner reaches licensed full text instead of the paywall. The
     // stored URL stays canonical; see src/lib/proxy-link.ts.
-    accessUrl: proxiedUrl(r.digitalUrl, r.provider),
+    accessUrl: withheld ? null : proxiedUrl(r.digitalUrl, r.provider),
+    /**
+     * OK          the scan retrieved the page
+     * UNVERIFIED  the provider answered without serving it (subscription wall,
+     *             bot gate); the link is still offered, it usually works in a
+     *             browser
+     * BROKEN      dead at the last scan; accessUrl is withheld
+     * null        this title has no access URL, or it has never been scanned
+     */
+    accessStatus: r.digitalUrl ? access : null,
     provider: r.provider,
     editorsPick: r.editorsPick,
     editorsPickBlurb: r.editorsPick ? r.epBlurb : null,

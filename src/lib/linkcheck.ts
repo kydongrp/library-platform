@@ -4,6 +4,7 @@
 // own authorisation (admin action or CRON_SECRET route) and auditing.
 import { prisma } from "@/lib/db";
 import { isBlockedHost } from "@/lib/net";
+import { linkState, type LinkState } from "@/lib/link-state";
 
 const LINK_TIMEOUT_MS = 5_000;
 const SCAN_CONCURRENCY = 6;
@@ -17,7 +18,13 @@ export type ProviderHealth = {
   provider: string; // display name; "Local collection" when unset
   checked: number;
   broken: number;
-  okRatio: number; // 0..1
+  /**
+   * Answered, but did not serve the page: a subscription wall or a bot gate.
+   * Counted apart from broken because it is not a fault, and apart from the
+   * healthy remainder because the scan did not actually see the document.
+   */
+  unverified: number;
+  okRatio: number; // 0..1, confirmed retrievals only
   status: "HEALTHY" | "DEGRADED" | "DOWN";
   sampleError: string | null; // most common error among the broken links
 };
@@ -27,6 +34,8 @@ export type AccessHealth = {
   lastScanBy: string | null;
   totalChecked: number;
   totalBroken: number;
+  /** Answered without handing over the page. Neither a pass nor a failure. */
+  totalUnverified: number;
   providers: ProviderHealth[];
   broken: {
     resourceId: string;
@@ -67,6 +76,26 @@ async function checkUrl(
 }
 
 export type LinkScanSummary = { checked: number; broken: number; summary: string };
+
+/**
+ * The last scan's verdict for a page of resources, keyed by resource id.
+ *
+ * One query per page rather than per row. Ids with no entry have never been
+ * scanned, which callers must treat as "unknown" and not as a pass.
+ */
+export async function linkStatesFor(ids: string[]): Promise<Map<string, LinkState>> {
+  if (ids.length === 0) return new Map();
+  const checks = await prisma.linkCheck.findMany({
+    where: { resourceId: { in: ids } },
+    select: { resourceId: true, ok: true, statusCode: true },
+  });
+  const out = new Map<string, LinkState>();
+  for (const c of checks) {
+    const state = linkState(c);
+    if (state) out.set(c.resourceId, state);
+  }
+  return out;
+}
 
 /**
  * Scan every digital access URL and record per-resource results. Prunes
@@ -143,15 +172,24 @@ export async function getAccessHealth(): Promise<AccessHealth> {
     : [];
   const byId = new Map(resources.map((r) => [r.id, r]));
 
-  const groups = new Map<string, { checked: number; broken: number; errors: string[] }>();
+  const groups = new Map<
+    string,
+    { checked: number; broken: number; unverified: number; errors: string[] }
+  >();
   const brokenList: AccessHealth["broken"] = [];
+  let totalUnverified = 0;
 
   for (const c of checks) {
     const resource = byId.get(c.resourceId);
     if (!resource) continue; // resource deleted since the scan
     const provider = resource.provider ?? "Local collection";
-    const g = groups.get(provider) ?? { checked: 0, broken: 0, errors: [] };
+    const g = groups.get(provider) ?? { checked: 0, broken: 0, unverified: 0, errors: [] };
     g.checked++;
+    const state: LinkState | null = linkState(c);
+    if (state === "UNVERIFIED") {
+      g.unverified++;
+      totalUnverified++;
+    }
     if (!c.ok) {
       g.broken++;
       const err = c.error ?? (c.statusCode ? `HTTP ${c.statusCode}` : "Failed");
@@ -184,12 +222,25 @@ export async function getAccessHealth(): Promise<AccessHealth> {
         provider,
         checked: g.checked,
         broken: g.broken,
-        okRatio: g.checked ? (g.checked - g.broken) / g.checked : 1,
+        unverified: g.unverified,
+        // Confirmed retrievals only. An unverified link is not evidence of
+        // health, so it must not pad this ratio: IEEE answering 202 to all 33
+        // of its links would otherwise have read as a perfect score.
+        okRatio: g.checked ? (g.checked - g.broken - g.unverified) / g.checked : 1,
         status,
         sampleError,
       };
     })
-    .sort((a, b) => a.okRatio - b.okRatio || b.checked - a.checked); // worst first
+    // Broken first, because that is what needs a librarian today. Unverified
+    // breaks the tie: it is worth a look, but a provider answering 202 to
+    // everything is not "worse" than one with a dead link, and sorting on the
+    // confirmed ratio alone would have put it at the top labelled HEALTHY.
+    .sort(
+      (a, b) =>
+        b.broken / b.checked - a.broken / a.checked ||
+        b.unverified / b.checked - a.unverified / a.checked ||
+        b.checked - a.checked,
+    );
 
   brokenList.sort((a, b) => a.provider.localeCompare(b.provider) || a.title.localeCompare(b.title));
 
@@ -198,6 +249,7 @@ export async function getAccessHealth(): Promise<AccessHealth> {
     lastScanBy: lastRun?.ranBy ?? null,
     totalChecked: checks.length,
     totalBroken: brokenList.length,
+    totalUnverified,
     providers,
     broken: brokenList,
   };

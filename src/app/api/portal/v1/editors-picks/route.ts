@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticatePortalRequest } from "@/lib/portal-auth";
 import { toPublicResource, publicResourceSelect } from "@/lib/portal-shapes";
+import { linkStatesFor } from "@/lib/linkcheck";
 
 // GET /api/portal/v1/editors-picks: the staff-curated shelf, newest pick first.
 export const dynamic = "force-dynamic";
@@ -16,8 +17,10 @@ export async function GET(request: Request) {
     orderBy: { epPickedAt: { sort: "desc", nulls: "last" } },
   });
 
+  const states = await linkStatesFor(picks.map((r) => r.id));
+
   return NextResponse.json({
-    data: picks.map(toPublicResource),
+    data: picks.map((r) => toPublicResource(r, states.get(r.id) ?? null)),
     meta: { total: picks.length },
   });
 }

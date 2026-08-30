@@ -4,6 +4,7 @@ import { listCategories } from "@/lib/categories";
 import { bibSearchWhere } from "@/lib/search-config";
 import { authenticatePortalRequest, apiError } from "@/lib/portal-auth";
 import { toPublicResource, publicResourceSelect } from "@/lib/portal-shapes";
+import { linkStatesFor } from "@/lib/linkcheck";
 import { RESOURCE_TYPES } from "@/lib/constants";
 
 // GET /api/portal/v1/resources: catalogue search for the Learner Portal.
@@ -75,8 +76,14 @@ export async function GET(request: Request) {
     prisma.resource.count({ where }),
   ]);
 
+  // One query for this page's scan verdicts, after the rows are known.
+  const states = await linkStatesFor(rows.map((r) => r.id));
+
   return NextResponse.json({
-    data: rows.map(toPublicResource),
+    // Not rows.map(toPublicResource): that passes the array index as the
+    // second argument, which typechecks as nothing and silently mislabels
+    // every row. The compiler caught it; it is worth naming here.
+    data: rows.map((r) => toPublicResource(r, states.get(r.id) ?? null)),
     meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
   });
 }

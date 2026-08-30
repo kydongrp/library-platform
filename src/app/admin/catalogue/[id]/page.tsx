@@ -14,6 +14,7 @@ import {
 import { COPY_STATUS_LABELS } from "@/lib/constants";
 import { isDigital } from "@/lib/availability";
 import { NO_VALUE, formatDate } from "@/lib/format";
+import { linkState, LINK_STATE_NOTE } from "@/lib/link-state";
 
 const STATUS_TONE: Record<string, "success" | "primary" | "accent" | "danger" | "muted"> = {
   AVAILABLE: "success",
@@ -51,6 +52,8 @@ export default async function ResourceDetailPage({
     prisma.linkCheck.findUnique({ where: { resourceId: id } }),
   ]);
 
+  const access = linkState(linkCheck);
+
   if (!resource) notFound();
 
   const tagDefs = await prisma.marcTagDef.findMany({ orderBy: { sortOrder: "asc" } });
@@ -84,20 +87,31 @@ export default async function ResourceDetailPage({
             <Badge tone="muted">{resource._count.loans} lifetime loans</Badge>
             {resource._count.reservations > 0 && <Badge tone="accent">{resource._count.reservations} active holds</Badge>}
             {resource.digitalUrl && (
-              // Still a link when the last scan failed. A cataloguer fixing a
-              // dead URL needs to see what it does now, and the scan may be
-              // days old. What changes is that it stops looking healthy.
+              // Still a link in every state. A cataloguer fixing a dead URL
+              // needs to see what it does now, and the scan may be days old.
+              // What changes is that a dead one stops looking healthy.
               <a href={resource.digitalUrl} target="_blank" rel="noopener noreferrer"
                 className={`text-sm font-medium hover:underline ${
-                  linkCheck && !linkCheck.ok ? "text-red-700" : "text-primary"
+                  access === "BROKEN" ? "text-red-700" : "text-primary"
                 }`}>
-                {linkCheck && !linkCheck.ok ? "Open access link (broken) ↗" : "Open access link ↗"}
+                {access === "BROKEN" ? "Open access link (broken) ↗" : "Open access link ↗"}
               </a>
             )}
-            {linkCheck && !linkCheck.ok && (
+            {access === "BROKEN" && linkCheck && (
               <Badge tone="danger">
                 {linkCheck.error ?? "Did not resolve"} · checked {formatDate(linkCheck.checkedAt)}
               </Badge>
+            )}
+            {access === "UNVERIFIED" && linkCheck && (
+              // Not an alarm. The provider answered and declined to serve the
+              // page to a crawler, which is what a subscription wall looks
+              // like from outside; it says the scan is not evidence either way.
+              <span title={LINK_STATE_NOTE.UNVERIFIED}>
+                <Badge tone="muted">
+                  Not verified{linkCheck.statusCode ? ` (HTTP ${linkCheck.statusCode})` : ""} ·
+                  checked {formatDate(linkCheck.checkedAt)}
+                </Badge>
+              </span>
             )}
           </div>
           {resource.description && <p className="mt-4 max-w-2xl text-sm text-foreground/80">{resource.description}</p>}
