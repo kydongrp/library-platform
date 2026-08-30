@@ -50,6 +50,12 @@ model Resource {
   epSuggestionDismissal EpSuggestionDismissal?
   serial                Serial?
   marcFields            MarcField[]
+
+  /// The public feed and the catalogue both read newest-first; without this
+  /// every request is a sequential scan plus a top-N sort, on a table sized
+  /// for the Vibrant migration rather than for the 62 rows here today.
+  @@index([createdAt])
+
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.

@@ -22,7 +22,7 @@
 export type LcshHeading = {
   /** The authorised form. Use this verbatim in 650 $a. */
   label: string;
-  /** e.g. http://id.loc.gov/authorities/subjects/sh2024001385 — goes in $0. */
+  /** e.g. http://id.loc.gov/authorities/subjects/sh2024001385; goes in $0. */
   uri: string;
   /** The sh number. */
   token: string;

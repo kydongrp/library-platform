@@ -32,6 +32,7 @@
     "test:mail": "tsx scripts/test-mail.ts",
     "test:proxy": "tsx scripts/test-proxy.ts",
     "test:linkstate": "tsx scripts/test-link-state.ts",
+    "test:feed": "tsx scripts/test-feed.ts",
     "test:ssrf": "tsx scripts/test-ssrf.ts",
     "test:fetch:live": "tsx scripts/test-page-fetch-live.ts",
     "test:intake": "tsx scripts/test-intake.ts",

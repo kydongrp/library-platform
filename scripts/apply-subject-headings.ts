@@ -195,7 +195,7 @@ void (async () => {
   );
   if (refusedHeadings.size) {
     console.log(`\nRefused, and NOT written (${refusedHeadings.size}):`);
-    for (const [label, why] of refusedHeadings) console.log(`  ${label} — ${why}`);
+    for (const [label, why] of refusedHeadings) console.log(`  ${label}: ${why}`);
   }
   if (!APPLY) console.log("\nDry run. Re-run with --apply to write.");
   await c.end();
