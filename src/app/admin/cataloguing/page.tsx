@@ -1,4 +1,7 @@
+import Link from "next/link";
 import { NO_VALUE } from "@/lib/format";
+import { resolvePaging } from "@/lib/paging";
+import { TablePager } from "@/components/pagination";
 import { requireAdminView } from "@/lib/admin-guard";
 import { canEdit } from "@/lib/admin-session";
 import { prisma } from "@/lib/db";
@@ -13,6 +16,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Authority headings default denser than a report: this is a lookup list that
+ * gets scanned for a name, not prose.
+ */
+const HEADINGS_PER_PAGE = 100;
+
+type SearchParams = Promise<{ q?: string; page?: string; pageSize?: string }>;
+
 function subfieldSummary(raw: unknown): string {
   if (!Array.isArray(raw) || raw.length === 0) return NO_VALUE;
   return raw
@@ -21,24 +32,53 @@ function subfieldSummary(raw: unknown): string {
     .join(" ");
 }
 
-export default async function CataloguingPage() {
+export default async function CataloguingPage({ searchParams }: { searchParams: SearchParams }) {
   const admin = await requireAdminView("CATALOGUE");
   const editable = canEdit(admin, "CATALOGUE");
+  const sp = await searchParams;
 
-  const [tagDefs, usage, authTypes, authorities, domains] = await Promise.all([
+  const q = (sp.q ?? "").trim();
+  // Heading and see-also both, because a cataloguer looking for "Hawking"
+  // should find a record filed under a variant that refers to it.
+  const authWhere = q
+    ? {
+        OR: [
+          { heading: { contains: q, mode: "insensitive" as const } },
+          { seeAlso: { contains: q, mode: "insensitive" as const } },
+        ],
+      }
+    : {};
+
+  // The count comes first for the same reason as the items list: `skip` cannot
+  // be computed until the total is known, because a page past the end has to
+  // clamp rather than return nothing. Everything independent of paging runs
+  // alongside it.
+  const [tagDefs, usage, authTypes, authorityTotal, domains] = await Promise.all([
     prisma.marcTagDef.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.marcField.groupBy({ by: ["tag"], _count: { _all: true } }),
     prisma.authorityType.findMany({
       orderBy: { code: "asc" },
       include: { _count: { select: { authorities: true } } },
     }),
-    prisma.authority.findMany({
-      orderBy: { heading: "asc" },
-      take: 100,
-      include: { type: { select: { code: true } } },
-    }),
+    prisma.authority.count({ where: authWhere }),
     prisma.domainCode.findMany({ orderBy: { code: "asc" }, include: { topics: { orderBy: { name: "asc" } } } }),
   ]);
+
+  const authPaging = resolvePaging(authorityTotal, sp.page, sp.pageSize, HEADINGS_PER_PAGE);
+
+  // Paged at the database. This list used to take the first 100 and label
+  // itself "(first 100)", which meant heading 101 could not be reached at all.
+  //
+  // Ordered by heading then id: heading alone is not unique (two authorities
+  // can share a string across types), and a partial order lets rows shuffle
+  // between pages so one appears twice while another never appears.
+  const authorities = await prisma.authority.findMany({
+    where: authWhere,
+    orderBy: [{ heading: "asc" }, { id: "asc" }],
+    skip: authPaging.start,
+    take: authPaging.pageSize,
+    include: { type: { select: { code: true } } },
+  });
 
   const useCount = new Map(usage.map((u) => [u.tag, u._count._all]));
   const catalogued = usage.reduce((n, u) => n + u._count._all, 0);
@@ -153,11 +193,37 @@ export default async function CataloguingPage() {
           )}
           {editable && <div className="mb-4"><AuthorityTypeForm /></div>}
 
-          <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-            Headings {authorities.length >= 100 && "(first 100)"}
-          </p>
+          <div id="headings" className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              Headings <span className="font-normal">({authorityTotal.toLocaleString()})</span>
+            </p>
+            {/* Paging alone makes heading 4,000 reachable in forty clicks,
+                which is reachable but not findable. */}
+            <form className="flex items-center gap-1.5">
+              <input
+                name="q"
+                defaultValue={q}
+                placeholder="Find a heading…"
+                aria-label="Find a heading"
+                className="w-48 rounded-lg border border-border bg-card px-2.5 py-1 text-xs focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              {authPaging.pageSize !== HEADINGS_PER_PAGE && (
+                <input type="hidden" name="pageSize" value={authPaging.pageSize} />
+              )}
+              <button type="submit" className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">
+                Find
+              </button>
+              {q && (
+                <Link href="/admin/cataloguing#headings" className="px-1 text-xs text-muted-foreground hover:text-foreground">
+                  Clear
+                </Link>
+              )}
+            </form>
+          </div>
           {authorities.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No headings yet.</p>
+            <p className="text-sm text-muted-foreground">
+              {q ? `No heading matches "${q}".` : "No headings yet."}
+            </p>
           ) : (
             <ul className="divide-y divide-border">
               {authorities.map((a) => (
@@ -189,6 +255,17 @@ export default async function CataloguingPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {authorityTotal > 0 && (
+            <TablePager
+              paging={authPaging}
+              query={{ q }}
+              basePath="/admin/cataloguing"
+              unit="headings"
+              defaultPageSize={HEADINGS_PER_PAGE}
+              hash="headings"
+              className="mt-3"
+            />
           )}
           {editable && (
             <div className="mt-4 border-t border-border pt-4">

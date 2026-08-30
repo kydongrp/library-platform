@@ -30,6 +30,7 @@ export function TablePager({
   basePath,
   unit = "rows",
   defaultPageSize = DEFAULT_PAGE_SIZE,
+  hash,
   className = "",
 }: {
   paging: Paging;
@@ -44,6 +45,12 @@ export function TablePager({
    * a link would silently switch the size.
    */
   defaultPageSize?: number;
+  /**
+   * Element id to return to, without the "#". Needed when the table is one
+   * panel among several: otherwise every page change lands the reader at the
+   * top of the page and they have to scroll back to where they were.
+   */
+  hash?: string;
   className?: string;
 }) {
   const router = useRouter();
@@ -51,7 +58,8 @@ export function TablePager({
 
   const href = (page: number, pageSize = paging.pageSize) => {
     const qs = pagedQuery(query, page, pageSize, defaultPageSize);
-    return qs ? `${basePath}?${qs}` : basePath;
+    const suffix = hash ? `#${hash}` : "";
+    return (qs ? `${basePath}?${qs}` : basePath) + suffix;
   };
 
   const stepCls =
