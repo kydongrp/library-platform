@@ -16,6 +16,8 @@ import {
   isUsableHttpUrl,
   canonicaliseUrl,
 } from "../src/lib/submission-core";
+import { portalResourceUrl, portalLinksConfigured } from "../src/lib/portal-links";
+import { FETCH_FAILURE_TEXT, REFUSAL_TEXT } from "../src/lib/resource-intake";
 
 let failures = 0;
 
@@ -156,6 +158,108 @@ console.log("\nCanonicalisation decides what counts as already in the library:")
   check("a non-default port is kept", c("https://x.com:8443/a") !== c("https://x.com/a"));
   check("garbage does not throw", c("not a url") === "not a url");
   check("empty does not throw", c("") === "");
+}
+
+console.log("\nThe learner-portal link is only offered when its shape is known:");
+{
+  const withTemplate = (t: string | undefined, fn: () => void) => {
+    const before = process.env.PORTAL_RESOURCE_URL;
+    if (t === undefined) delete process.env.PORTAL_RESOURCE_URL;
+    else process.env.PORTAL_RESOURCE_URL = t;
+    try { fn(); } finally {
+      if (before === undefined) delete process.env.PORTAL_RESOURCE_URL;
+      else process.env.PORTAL_RESOURCE_URL = before;
+    }
+  };
+
+  withTemplate(undefined, () => {
+    check("unset means no link", portalResourceUrl("abc123") === null);
+    check("and reports itself as unconfigured", !portalLinksConfigured());
+  });
+
+  withTemplate("https://portal.example/resources/{id}", () => {
+    check("a path template is filled", portalResourceUrl("abc123") === "https://portal.example/resources/abc123");
+    check("and reports itself as configured", portalLinksConfigured());
+    check("an empty id yields nothing", portalResourceUrl("") === null);
+    check("a whitespace id yields nothing", portalResourceUrl("   ") === null);
+  });
+
+  withTemplate("https://portal.example/item?id={id}", () => {
+    check(
+      "a query template works too",
+      portalResourceUrl("abc123") === "https://portal.example/item?id=abc123",
+      portalResourceUrl("abc123") ?? "null",
+    );
+  });
+
+  // A template with no placeholder would give every record the same URL.
+  withTemplate("https://portal.example/resources", () => {
+    check("a template without {id} is refused", portalResourceUrl("abc") === null);
+  });
+  // Anything not http(s) would be handed to a browser as a link.
+  withTemplate("javascript:alert({id})", () => {
+    check("a javascript: template is refused", portalResourceUrl("abc") === null);
+  });
+  withTemplate("portal.example/{id}", () => {
+    check("a schemeless template is refused", portalResourceUrl("abc") === null);
+  });
+
+  withTemplate("https://portal.example/r/{id}", () => {
+    // An id is a cuid in practice, but encoding means a template is safe even
+    // if that ever changes.
+    check(
+      "an id is percent-encoded",
+      portalResourceUrl("a/b c")?.includes("a%2Fb%20c") === true,
+      portalResourceUrl("a/b c") ?? "null",
+    );
+  });
+}
+
+console.log("\nEvery fetch failure has wording a librarian can act on:");
+{
+  const reasons = [
+    "blocked", "scheme", "port", "timeout", "too-many-hops",
+    "network", "status", "content-type", "no-location",
+  ] as const;
+  for (const r of reasons) {
+    const text = FETCH_FAILURE_TEXT[r];
+    check(`${r} has wording`, typeof text === "string" && text.length > 10, text);
+    check(`${r} avoids jargon`, !text.includes("_") && !/[A-Z]{4,}/.test(text), text);
+  }
+}
+
+console.log("\nRefused outright vs saved-but-flagged:");
+{
+  // The distinction decides whether a catalogue record is created at all. A
+  // site being down is a temporary fact about the world and still deserves a
+  // record to fix later; a link resolving to a private address is a permanent
+  // fact about the link, and cataloguing it would put the cloud metadata
+  // endpoint in the library and hand that link to a reader.
+  const refused = Object.keys(REFUSAL_TEXT).sort();
+  check(
+    "exactly blocked, port and scheme are refused",
+    refused.join(",") === "blocked,port,scheme",
+    refused.join(","),
+  );
+
+  const saved = ["timeout", "too-many-hops", "network", "status", "content-type", "no-location"];
+  for (const r of saved) {
+    check(`${r} is NOT a refusal, so a record is still created`, !(r in REFUSAL_TEXT));
+  }
+  for (const r of refused) {
+    check(
+      `${r} explains why it is permanent`,
+      REFUSAL_TEXT[r as keyof typeof REFUSAL_TEXT].length > 20,
+    );
+  }
+  // Every reason is covered by one map or the other, so a new FetchFailure
+  // cannot fall through with no wording at all.
+  const all = ["blocked", "scheme", "port", "timeout", "too-many-hops",
+               "network", "status", "content-type", "no-location"];
+  check(
+    "every failure has wording somewhere",
+    all.every((r) => r in REFUSAL_TEXT || r in FETCH_FAILURE_TEXT),
+  );
 }
 
 console.log(
