@@ -35,14 +35,21 @@ export default async function ResourceDetailPage({
   const { id } = await params;
   const { error } = await searchParams;
 
-  const resource = await prisma.resource.findUnique({
-    where: { id },
-    include: {
-      copies: { orderBy: { barcode: "asc" }, include: { loans: { where: { status: "ACTIVE" }, include: { member: true } } } },
-      marcFields: { orderBy: { seq: "asc" } },
-      _count: { select: { loans: true, reservations: { where: { status: { in: ["PENDING", "READY"] } } } } },
-    },
-  });
+  // The nightly access scan already knows whether this link resolves. It was
+  // recording 404s that this page then offered as a working link, so the
+  // verdict is read here and shown beside the link rather than living only on
+  // the access-health screen that nobody opens on their way to a record.
+  const [resource, linkCheck] = await Promise.all([
+    prisma.resource.findUnique({
+      where: { id },
+      include: {
+        copies: { orderBy: { barcode: "asc" }, include: { loans: { where: { status: "ACTIVE" }, include: { member: true } } } },
+        marcFields: { orderBy: { seq: "asc" } },
+        _count: { select: { loans: true, reservations: { where: { status: { in: ["PENDING", "READY"] } } } } },
+      },
+    }),
+    prisma.linkCheck.findUnique({ where: { resourceId: id } }),
+  ]);
 
   if (!resource) notFound();
 
@@ -77,10 +84,20 @@ export default async function ResourceDetailPage({
             <Badge tone="muted">{resource._count.loans} lifetime loans</Badge>
             {resource._count.reservations > 0 && <Badge tone="accent">{resource._count.reservations} active holds</Badge>}
             {resource.digitalUrl && (
+              // Still a link when the last scan failed. A cataloguer fixing a
+              // dead URL needs to see what it does now, and the scan may be
+              // days old. What changes is that it stops looking healthy.
               <a href={resource.digitalUrl} target="_blank" rel="noopener noreferrer"
-                className="text-sm font-medium text-primary hover:underline">
-                Open access link ↗
+                className={`text-sm font-medium hover:underline ${
+                  linkCheck && !linkCheck.ok ? "text-red-700" : "text-primary"
+                }`}>
+                {linkCheck && !linkCheck.ok ? "Open access link (broken) ↗" : "Open access link ↗"}
               </a>
+            )}
+            {linkCheck && !linkCheck.ok && (
+              <Badge tone="danger">
+                {linkCheck.error ?? "Did not resolve"} · checked {formatDate(linkCheck.checkedAt)}
+              </Badge>
             )}
           </div>
           {resource.description && <p className="mt-4 max-w-2xl text-sm text-foreground/80">{resource.description}</p>}
