@@ -11,6 +11,7 @@ import { updateMember } from "@/app/actions/members";
 import { checkin, renewLoan, cancelReservation } from "@/app/actions/circulation";
 import { MEMBER_TYPE_LABELS } from "@/lib/constants";
 import { initials, formatDate, dueLabel, isOverdue } from "@/lib/format";
+import { zonedDayKey } from "@/lib/tz";
 import { formatFine } from "@/lib/fines";
 
 export default async function MemberDetailPage({
@@ -232,10 +233,18 @@ export default async function MemberDetailPage({
             language: member.language,
             location: member.location ?? "",
             department: member.department ?? "",
-            // <input type="date"> wants YYYY-MM-DD. The stored instant is noon
-            // in the library's zone, so the UTC date part is the right day.
-            membershipStartAt: member.membershipStartAt?.toISOString().slice(0, 10) ?? "",
-            membershipExpiryAt: member.membershipExpiryAt?.toISOString().slice(0, 10) ?? "",
+            // <input type="date"> wants YYYY-MM-DD, and it has to be the same
+            // day the rest of the app shows for that instant, so it goes
+            // through the zone layer rather than taking the UTC date part.
+            //
+            // Today's only writer is parseDateField, which stores noon UTC
+            // (20:00 Singapore, same day), where both readings agree. A record
+            // imported at midnight Singapore is 16:00 UTC the day BEFORE, and
+            // the UTC part would put the wrong day in the field with nothing on
+            // screen to say so. The membership migration off Vibrant will bring
+            // exactly those dates in.
+            membershipStartAt: member.membershipStartAt ? zonedDayKey(member.membershipStartAt) : "",
+            membershipExpiryAt: member.membershipExpiryAt ? zonedDayKey(member.membershipExpiryAt) : "",
             remark: member.remark,
             photoUrl: member.photoUrl,
             receiveEmailNotices: member.receiveEmailNotices,

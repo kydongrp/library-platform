@@ -86,9 +86,26 @@ function dayKey(y: number, m: number, d: number): string {
   return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-/** Last calendar day of a month, 1-indexed month. */
-function lastDayOfMonth(y: number, m: number): number {
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+const MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
+
+/** Proleptic Gregorian: every 4th year, except centuries, except every 400th. */
+export function isLeapYear(y: number): boolean {
+  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+/**
+ * Last calendar day of a month, 1-indexed month.
+ *
+ * Arithmetic rather than `new Date(Date.UTC(y, m, 0)).getUTCDate()`. That idiom
+ * was correct, and zone-independent, because it only ever asked the calendar
+ * how long a month is and never looked at an instant. But it read like one more
+ * place handling a date in UTC, which is the pattern the zone guard exists to
+ * catch, and a reader had to reconstruct the Date.UTC day-zero trick to satisfy
+ * themselves it was safe. Saying it directly costs nothing and leaves the guard
+ * with no false positive to explain away.
+ */
+export function lastDayOfMonth(y: number, m: number): number {
+  return m === 2 && isLeapYear(y) ? 29 : MONTH_LENGTHS[m - 1];
 }
 
 /**

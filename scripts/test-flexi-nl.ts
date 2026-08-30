@@ -25,6 +25,8 @@ import {
   specJsonSchema,
   allDimensionKeys,
   allMeasureKeys,
+  lastDayOfMonth,
+  isLeapYear,
   NAMED_PERIODS,
   PERIOD_LABELS,
   type NamedPeriod,
@@ -355,6 +357,57 @@ console.log("\nThe vocabulary is generated from the live cubes, never hand-copie
   check("no phantom dimension is offered", rowEnum.every((k) => k === null || realDims.has(k as string)));
   const realMeasures = new Set(allMeasureKeys());
   check("no phantom measure is offered", measureEnum.every((k) => k === null || realMeasures.has(k as string)));
+}
+
+console.log("\nMonth lengths are calendar arithmetic, not an instant:");
+{
+  // lastDayOfMonth was `new Date(Date.UTC(y, m, 0)).getUTCDate()`. That was
+  // correct, so its replacement has to be provably identical rather than
+  // merely plausible: any disagreement silently moves the end of "last month"
+  // and "last quarter", which are the bounds of a report someone acts on.
+  let mismatches: string[] = [];
+  for (const y of [1900, 1999, 2000, 2001, 2004, 2023, 2024, 2025, 2026, 2100, 2200, 2300, 2400]) {
+    for (let m = 1; m <= 12; m++) {
+      const viaDate = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      if (lastDayOfMonth(y, m) !== viaDate) mismatches.push(`${y}-${m}: ${lastDayOfMonth(y, m)} vs ${viaDate}`);
+    }
+  }
+  check("agrees with the Date-based original for every month tested", mismatches.length === 0, mismatches.join(", "));
+
+  // Every year in a long unbroken run, so a boundary cannot hide between the
+  // sampled years above.
+  mismatches = [];
+  for (let y = 1890; y <= 2410; y++) {
+    for (let m = 1; m <= 12; m++) {
+      if (lastDayOfMonth(y, m) !== new Date(Date.UTC(y, m, 0)).getUTCDate()) mismatches.push(`${y}-${m}`);
+    }
+  }
+  check("agrees across every month of 521 unbroken years", mismatches.length === 0, mismatches.slice(0, 5).join(", "));
+
+  check("February is 28 in a common year", lastDayOfMonth(2026, 2) === 28);
+  check("February is 29 in a leap year", lastDayOfMonth(2024, 2) === 29);
+  check("1900 was not a leap year, being a century", lastDayOfMonth(1900, 2) === 28 && !isLeapYear(1900));
+  check("2000 was, being divisible by 400", lastDayOfMonth(2000, 2) === 29 && isLeapYear(2000));
+  check("2100 will not be", !isLeapYear(2100));
+  check("December is 31", lastDayOfMonth(2026, 12) === 31);
+  check("April is 30", lastDayOfMonth(2026, 4) === 30);
+
+  // The result is read in Singapore, so it must not move with the runtime zone.
+  const before = lastDayOfMonth(2024, 2);
+  const priorTz = process.env.TZ;
+  for (const tz of ["UTC", "Asia/Singapore", "America/New_York", "Pacific/Kiritimati"]) {
+    process.env.TZ = tz;
+    check(`unchanged under TZ=${tz}`, lastDayOfMonth(2024, 2) === before);
+  }
+  process.env.TZ = priorTz;
+
+  // isDayKey rejects a day past the end of its month, which is the one place a
+  // wrong month length would let a bad range through to a report.
+  check("31 February is refused", !isDayKey("2026-02-31"));
+  check("29 February 2026 is refused", !isDayKey("2026-02-29"));
+  check("29 February 2024 is accepted", isDayKey("2024-02-29"));
+  check("31 April is refused", !isDayKey("2026-04-31"));
+  check("31 March is accepted", isDayKey("2026-03-31"));
 }
 
 console.log(

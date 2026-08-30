@@ -124,7 +124,56 @@ function run() {
   const beforeChange = new Date("1981-06-15T16:45:00Z"); // 00:15 on the 16th at +7:30
   eq(zonedDayKey(beforeChange), "1981-06-16", "the 1981 +07:30 offset is honoured, not assumed");
 
-  console.log("\n7. Every answer is independent of the runtime's own zone");
+  console.log("\n7. A date-only column read back into <input type=\"date\">");
+  // The member edit form used member.membershipStartAt.toISOString().slice(0, 10),
+  // which is the UTC calendar day, not the library's. It now goes through
+  // zonedDayKey. What has to hold is that the field shows back exactly the day
+  // that was picked, whatever time of day the column happens to hold, because
+  // more than one writer will eventually put dates in it.
+  {
+    // Convention today: parseDateField in src/app/actions/members.ts stores
+    // `${v}T12:00:00.000Z`, which is 20:00 Singapore on the same day.
+    const storedNoonUtc = (day: string) => new Date(`${day}T12:00:00.000Z`);
+    // A plausible second writer, e.g. an import that builds the library's own
+    // midnight. 16:00Z the day BEFORE: the UTC date part reads a day early.
+    const storedMidnightSgt = (day: string) => {
+      const [y, m, d] = day.split("-").map(Number);
+      return zonedWallClockToInstant(y, m, d);
+    };
+
+    const roundTripFailures: string[] = [];
+    let wouldHaveBeenWrong = 0;
+    // Every day of a leap year, so month ends, the year rollover and 29 Feb are
+    // all covered rather than sampled.
+    for (let i = 0; i < 366; i++) {
+      const day = zonedDayKey(new Date(Date.UTC(2024, 0, 1) + i * 86_400_000));
+      for (const store of [storedNoonUtc, storedMidnightSgt]) {
+        const instant = store(day);
+        if (zonedDayKey(instant) !== day) roundTripFailures.push(`${day} -> ${zonedDayKey(instant)}`);
+        if (instant.toISOString().slice(0, 10) !== day) wouldHaveBeenWrong++;
+      }
+    }
+    check(
+      roundTripFailures.length === 0,
+      "every day of 2024 survives the round trip under both storage conventions",
+      roundTripFailures.slice(0, 3).join(", "),
+    );
+    // Not an incidental number: it is the whole reason the line changed.
+    eq(wouldHaveBeenWrong, 366, "the old UTC-slice reading was a day out for every library-midnight value");
+
+    // The specific instant that made this worth fixing.
+    const midnightSgt = new Date("2026-08-23T16:00:00.000Z");
+    eq(zonedDayKey(midnightSgt), "2026-08-24", "a value stored at library midnight reads as that day");
+    eq(midnightSgt.toISOString().slice(0, 10), "2026-08-23", "and the old reading showed the day before");
+
+    // The end of a year is where an off-by-one day is most visible: a
+    // membership expiring on 1 Jan must not display as 31 Dec of last year.
+    eq(zonedDayKey(storedMidnightSgt("2027-01-01")), "2027-01-01", "new year holds");
+    eq(zonedDayKey(storedNoonUtc("2027-01-01")), "2027-01-01", "and under the noon-UTC convention too");
+    eq(zonedDayKey(storedMidnightSgt("2024-02-29")), "2024-02-29", "29 February holds");
+  }
+
+  console.log("\n8. Every answer is independent of the runtime's own zone");
   const sample = new Date("2026-08-23T17:30:00Z");
   eq(zonedDayKey(sample), "2026-08-24", "day key does not move with process.env.TZ");
   eq(
