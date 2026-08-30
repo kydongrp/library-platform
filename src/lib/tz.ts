@@ -266,6 +266,30 @@ export function formatZonedDateTime(instant: Date): string {
   return `${formatZonedDate(instant)}, ${formatZonedTime(instant)}`;
 }
 
+/**
+ * "YYYY-MM-DD HH:MM:SS+08:00" for an instant, in the library's zone.
+ *
+ * For exports rather than screens. It is zero-padded so a spreadsheet sorts the
+ * column lexicographically, which "5 Aug 2026" does not, and it carries an
+ * explicit offset so the cell names one instant instead of a wall clock with no
+ * zone. Built from zonedParts, which normalises the hour-24 rendering some
+ * engines produce at midnight, so a row logged at exactly 00:00 cannot come out
+ * as 24:00 on the day before.
+ */
+export function zonedStamp(instant: Date): string {
+  const p = zonedParts(instant);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const offset = offsetMsAt(instant);
+  const abs = Math.abs(offset);
+  const sign = offset < 0 ? "-" : "+";
+  const oh = pad(Math.floor(abs / 3_600_000));
+  const om = pad(Math.floor((abs % 3_600_000) / 60_000));
+  return (
+    `${p.year}-${pad(p.month)}-${pad(p.day)} ` +
+    `${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}${sign}${oh}:${om}`
+  );
+}
+
 /** "YYYY-MM" for the calendar month an instant falls in. */
 export function zonedMonthKey(instant: Date): string {
   return zonedDayKey(instant).slice(0, 7);

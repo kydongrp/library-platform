@@ -32,6 +32,7 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Client } from "pg";
 import { backup, restore, connectionString, describeTarget, clientFor } from "./lib/dump";
+import { zonedDayKey } from "../src/lib/tz";
 import { neonIdentity } from "./lib/neon-identity";
 import { compareDatabases, reportComparison } from "./lib/db-compare";
 
@@ -497,7 +498,7 @@ async function cmdBranch(): Promise<void> {
   const key = requireKey();
   const { direct } = readCreds();
   const target = await neonIdentity(direct);
-  const name = arg("branch-name") ?? `verified-restore-${new Date().toISOString().slice(0, 10)}`;
+  const name = arg("branch-name") ?? `verified-restore-${zonedDayKey(new Date())}`;
   console.log(`Creating branch "${name}" on ${target.projectId}`);
   await api(`/projects/${target.projectId}/branches`, key, {
     method: "POST",

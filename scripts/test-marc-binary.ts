@@ -14,7 +14,8 @@
  * well-formed document. The rule under test is that one bad record loses one
  * record, not the rest of the file.
  */
-import { toMarc2709, type MarcRecord } from "../src/lib/marc";
+import { toMarc2709, toMarcRecord, type MarcRecord, type MarcInput } from "../src/lib/marc";
+import { zonedDayKey } from "../src/lib/tz";
 import {
   parseMarcBinary,
   sliceRecords,
@@ -302,6 +303,57 @@ console.log("\nA text file offered as .mrc is refused with a useful message:");
     notMarc.errors.some((e) => e.includes(".xml") || e.includes("MARCXML")),
     notMarc.errors.join(" | "),
   );
+}
+
+console.log("\n008/00-05 date entered on file is one calendar day, not two:");
+{
+  // The field was built from two clocks: year and month from the Singapore
+  // day key, day-of-month from getUTCDate(). For anything catalogued in the
+  // eight hours after Singapore midnight those disagree, so the record went
+  // out stamped with halves of different days.
+  const base: Omit<MarcInput, "createdAt"> = {
+    id: "r1", title: "T", subtitle: null, author: "A", isbn: null, type: "BOOK",
+    materialDesignation: "MONOGRAPH", category: "General", publisher: null,
+    publishedYear: 2026, language: "English", description: null, digital: false,
+    digitalUrl: null, provider: null, updatedAt: new Date("2026-01-01T00:00:00Z"),
+  };
+  const entered = (iso: string): string => {
+    const rec = toMarcRecord({ ...base, createdAt: new Date(iso) });
+    return (rec.controls.find(([t]) => t === "008")?.[1] ?? "").slice(0, 6);
+  };
+  const expected = (iso: string): string => {
+    const k = zonedDayKey(new Date(iso));
+    return k.slice(2, 4) + k.slice(5, 7) + k.slice(8, 10);
+  };
+
+  // Every one of these is inside the window where UTC and Singapore differ.
+  const cases: [string, string, string][] = [
+    ["2026-02-28T20:00:00Z", "260301", "04:00 on 1 March; used to emit 260328"],
+    ["2026-08-31T19:00:00Z", "260901", "03:00 on 1 September; used to emit 260931, a date that does not exist"],
+    ["2026-12-31T17:00:00Z", "270101", "01:00 on 1 January; used to emit 270131, valid and a month in the future"],
+    ["2026-08-14T19:00:00Z", "260815", "03:00 mid-month; used to emit 260814"],
+    ["2026-08-15T04:00:00Z", "260815", "noon, where the two zones already agreed"],
+  ];
+  for (const [iso, want, why] of cases) {
+    check(`${iso} -> ${want} (${why})`, entered(iso) === want, `got ${entered(iso)}`);
+  }
+
+  // The property behind the cases: across a full year of hourly instants the
+  // emitted stamp is always the library day key, never anything else.
+  let wrong = 0;
+  const start = Date.UTC(2026, 0, 1);
+  for (let h = 0; h < 366 * 24; h++) {
+    const iso = new Date(start + h * 3_600_000).toISOString();
+    if (entered(iso) !== expected(iso)) wrong++;
+  }
+  check("every hour of a year emits the library day", wrong === 0, `${wrong} of ${366 * 24} wrong`);
+
+  // 008 is fixed-width; a wrong day must never also be a wrong length.
+  const rec = toMarcRecord({ ...base, createdAt: new Date("2026-08-31T19:00:00Z") });
+  const f008 = rec.controls.find(([t]) => t === "008")?.[1] ?? "";
+  check("008 is still 40 characters", f008.length === 40, `got ${f008.length}`);
+  check("the month is a real month", Number(f008.slice(2, 4)) >= 1 && Number(f008.slice(2, 4)) <= 12);
+  check("the day is a real day", Number(f008.slice(4, 6)) >= 1 && Number(f008.slice(4, 6)) <= 31);
 }
 
 console.log(

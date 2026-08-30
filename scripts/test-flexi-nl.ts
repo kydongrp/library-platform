@@ -368,6 +368,7 @@ console.log("\nMonth lengths are calendar arithmetic, not an instant:");
   let mismatches: string[] = [];
   for (const y of [1900, 1999, 2000, 2001, 2004, 2023, 2024, 2025, 2026, 2100, 2200, 2300, 2400]) {
     for (let m = 1; m <= 12; m++) {
+      // tz-guard-allow: the original implementation, kept as the oracle the replacement is checked against
       const viaDate = new Date(Date.UTC(y, m, 0)).getUTCDate();
       if (lastDayOfMonth(y, m) !== viaDate) mismatches.push(`${y}-${m}: ${lastDayOfMonth(y, m)} vs ${viaDate}`);
     }
@@ -379,6 +380,7 @@ console.log("\nMonth lengths are calendar arithmetic, not an instant:");
   mismatches = [];
   for (let y = 1890; y <= 2410; y++) {
     for (let m = 1; m <= 12; m++) {
+      // tz-guard-allow: same oracle, swept across every month of 521 years
       if (lastDayOfMonth(y, m) !== new Date(Date.UTC(y, m, 0)).getUTCDate()) mismatches.push(`${y}-${m}`);
     }
   }

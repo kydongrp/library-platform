@@ -45,9 +45,12 @@ export function nextExpected(freq: Frequency, from: Date): Date {
       const months = { MONTHLY: 1, BIMONTHLY: 2, QUARTERLY: 3, SEMIANNUAL: 6, ANNUAL: 12 }[freq];
       // Anchor to the day-of-month of the original date; UTC keeps it stable.
       const d = new Date(from);
+      // tz-guard-allow: expectedAt is a date-only value stored at noon UTC, and stepping it in UTC keeps that anchor
       const day = d.getUTCDate();
       d.setUTCDate(1);
+      // tz-guard-allow: same noon-UTC anchor; the month step must not drift into a zone conversion
       d.setUTCMonth(d.getUTCMonth() + months);
+      // tz-guard-allow: month length is calendar arithmetic on the anchored value, not a reading of an instant
       const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
       d.setUTCDate(Math.min(day, lastDay));
       return d;
@@ -56,6 +59,7 @@ export function nextExpected(freq: Frequency, from: Date): Date {
 }
 
 export function issueLabel(seq: number, expectedAt: Date): string {
+  // tz-guard-allow: expectedAt is noon UTC, which is 20:00 Singapore the same day, so the month and year agree in both
   return `No. ${seq} (${MONTHS[expectedAt.getUTCMonth()]} ${expectedAt.getUTCFullYear()})`;
 }
 

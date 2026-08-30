@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { HOLD_QUEUE_ORDER } from "@/lib/hold-queue";
-import { zonedDayRange } from "@/lib/tz";
+import { zonedDayRange, daysBetweenInstants } from "@/lib/tz";
 import { NO_VALUE, formatDate } from "@/lib/format";
 import { RESOURCE_TYPE_LABELS, MEMBER_TYPE_LABELS } from "@/lib/constants";
 import { runModuleReport } from "@/lib/reports-modules";
@@ -64,7 +64,6 @@ export async function runReport(key: string, c: ReportCriteria): Promise<ReportR
         include: { member: true, resource: true, copy: true },
         orderBy: { dueAt: "asc" },
       });
-      const now = Date.now();
       return {
         columns: ["Title", "Member", "Email", "Copy", "Due", "Days overdue"],
         rows: loans.map((l) => [
@@ -73,7 +72,12 @@ export async function runReport(key: string, c: ReportCriteria): Promise<ReportR
           l.member.email,
           l.copy?.barcode ?? "digital",
           formatDate(l.dueAt),
-          String(Math.floor((now - l.dueAt.getTime()) / 86400000)),
+          // Calendar days in the library's zone, not elapsed milliseconds
+          // over 86400000. The module report, the loans list and the fine
+          // engine all count days the same way; this one did not, so a loan
+          // due at 23:00 last night read "0 days overdue" on the chase list
+          // while the loans page called it overdue by one.
+          String(Math.max(0, daysBetweenInstants(l.dueAt, new Date()))),
         ]),
       };
     }

@@ -71,10 +71,16 @@ function leaderFor(r: MarcInput): string {
 
 function fixed008(r: MarcInput): string {
   const d = r.createdAt;
-  const entered =
-    zonedDayKey(d).slice(2, 4) +
-    zonedDayKey(d).slice(5, 7) +
-    String(d.getUTCDate()).padStart(2, "0");
+  // 008/00-05, date entered on file, yymmdd. All three parts come from one
+  // day key, because they used to come from two clocks: the year and month
+  // from Singapore and the day-of-month from getUTCDate(). For a record
+  // catalogued in the eight hours after Singapore midnight the two disagree,
+  // and the field was built from halves of different days. On 1 Sep 2026 at
+  // 03:00 it emitted 260931, a date that does not exist; on 1 Jan 2027 at
+  // 01:00 it emitted 270131, which is merely a month in the future and so
+  // passes every validator that would have caught the first.
+  const k = zonedDayKey(d);
+  const entered = k.slice(2, 4) + k.slice(5, 7) + k.slice(8, 10);
   const year = r.publishedYear ? String(r.publishedYear).padStart(4, " ").slice(0, 4) : "    ";
   const lang = LANG_CODES[r.language.toLowerCase()] ?? "und";
   const form = r.digital ? "o" : " "; // pos 23: online
@@ -92,6 +98,7 @@ function marc005(d: Date): string {
   // is a human calendar fact a cataloguer compares against the screen, so that
   // one follows the library's zone.
   const p = (n: number) => String(n).padStart(2, "0");
+  // tz-guard-allow: 005 is a machine version stamp, ordered not read; zoning it would rewrite cached bytes for nothing
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}.0`;
 }
 

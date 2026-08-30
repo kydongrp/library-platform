@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { zonedYearKey } from "../src/lib/tz";
 
 // Prefer the direct (non-pooled) connection for DDL/bulk writes; the pooled
 // connection (via pgBouncer) can choke on prepared statements. Falls back to
@@ -452,7 +453,15 @@ async function ensureServiceCalendar() {
     update: {},
   });
 
-  const year = new Date().getUTCFullYear();
+  // The library's year, not the server's. getUTCFullYear() still returns the
+  // old year for the first eight hours of every Singapore day, so a seed run
+  // at 03:00 on 1 January wrote the closures for the year that had just ended
+  // and left the year after this one missing entirely.
+  //
+  // Number(), because zonedYearKey returns a string and `year + 1` on a string
+  // concatenates: "2026" + 1 is "20261", and new Date("20261-01-01T12:00:00Z")
+  // is an Invalid Date going into a DateTime column.
+  const year = Number(zonedYearKey(new Date()));
   const fixed = [
     { md: "01-01", name: "New Year's Day" },
     { md: "05-01", name: "Labour Day" },

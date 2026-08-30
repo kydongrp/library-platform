@@ -75,6 +75,7 @@ function run() {
     "2026-08-23T16:00:00.000Z",
     "midnight Singapore",
   );
+  // tz-guard-allow: asserting the exact instant a wall clock resolves to is the point of this test
   eq(parseZonedDateTimeLocal("2026-08-24T14:00:30")?.getUTCSeconds(), 30, "seconds are kept");
   eq(parseZonedDateTimeLocal("garbage"), null, "malformed input is rejected, not an Invalid Date");
   eq(parseZonedDateTimeLocal("2026-08-24"), null, "a date with no time is rejected");
@@ -150,6 +151,7 @@ function run() {
       for (const store of [storedNoonUtc, storedMidnightSgt]) {
         const instant = store(day);
         if (zonedDayKey(instant) !== day) roundTripFailures.push(`${day} -> ${zonedDayKey(instant)}`);
+        // tz-guard-allow: this IS the old reading, counted to show how often it was wrong
         if (instant.toISOString().slice(0, 10) !== day) wouldHaveBeenWrong++;
       }
     }
@@ -164,6 +166,7 @@ function run() {
     // The specific instant that made this worth fixing.
     const midnightSgt = new Date("2026-08-23T16:00:00.000Z");
     eq(zonedDayKey(midnightSgt), "2026-08-24", "a value stored at library midnight reads as that day");
+    // tz-guard-allow: demonstrating the defect the fix removed
     eq(midnightSgt.toISOString().slice(0, 10), "2026-08-23", "and the old reading showed the day before");
 
     // The end of a year is where an off-by-one day is most visible: a
