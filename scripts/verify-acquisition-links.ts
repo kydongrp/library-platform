@@ -48,6 +48,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const CONCURRENCY = 6;
 const READ_CAP = 1024 * 1024;
@@ -322,7 +323,16 @@ export async function checkUrl(item: Incoming, n = 1): Promise<Result> {
   }
 }
 
+/**
+ * Only run the CLI when this file IS the entry point. Without the guard,
+ * importing checkUrl from another script executes the CLI, which then exits(1)
+ * on the importing script's arguments.
+ */
+const isMain =
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+
 void (async () => {
+  if (!isMain) return;
   const argv = process.argv.slice(2);
   let items: Incoming[];
   let out: string | undefined;
