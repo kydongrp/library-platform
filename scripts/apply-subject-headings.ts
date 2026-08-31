@@ -55,15 +55,31 @@ void (async () => {
   for (const label of proposed) {
     const hit = await resolveSubject(label);
     if (!hit) {
-      refusedHeadings.set(label, "no authorised LCSH heading found");
-      console.log(`  REFUSED  ${label}\n             no authorised LCSH heading found`);
-    } else if (hit.label !== label) {
+      // Deliberately not "LCSH has no such heading". resolveSubject returns
+      // null both for a heading that does not exist and for a lookup it could
+      // not complete, and it retries before giving up, so by here the honest
+      // statement is that nothing was established either way. Saying more than
+      // that once dropped a real heading, Sea-power--China, on one failed
+      // request.
+      const why = "could not establish an authorised LCSH heading (absent, or the lookup failed)";
+      refusedHeadings.set(label, why);
+      console.log(`  REFUSED  ${label}\n             ${why}`);
+    } else if (!hit.exact || hit.label !== label) {
       // The proposed string is not the authorised form. This is the
       // Neurobiology/Computer science trap: cataloguing under the wrong sense
       // puts the record in front of the wrong reader and hides it from the
       // right one, so it is refused rather than silently corrected.
-      refusedHeadings.set(label, `LCSH authorises "${hit.label}", not this`);
-      console.log(`  REFUSED  ${label}\n             LCSH authorises "${hit.label}"`);
+      //
+      // The two cases are said differently on purpose. A non-exact hit is the
+      // nearest thing the index offered and may be an unrelated concept, so
+      // reporting it as what "LCSH authorises" for this term would be a
+      // misstatement: "Cryptography in art" is the nearest offer for
+      // "Cryptography" and is not a rewording of it.
+      const why = hit.exact
+        ? `LCSH authorises "${hit.label}", not this`
+        : `no authorised heading with this exact label; nearest offer was "${hit.label}", which may be a different concept`;
+      refusedHeadings.set(label, why);
+      console.log(`  REFUSED  ${label}\n             ${why}`);
     } else {
       verified.set(label, hit);
       console.log(`  ok       ${label}  [${hit.token}]`);

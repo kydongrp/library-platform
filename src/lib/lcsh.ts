@@ -28,6 +28,15 @@ export type LcshHeading = {
   token: string;
   /** "Use for" forms, which is what the Authority record's seeAlso holds. */
   variants: string[];
+  /**
+   * Whether label is the term that was asked for.
+   *
+   * False means "this is the nearest authorised heading the index offered",
+   * which is a lead for a human and NOT a heading to catalogue under. It exists
+   * because the alternative, returning null, throws away the only clue about
+   * what went wrong. Callers that write to a record must require exact.
+   */
+  exact: boolean;
 };
 
 type SuggestHit = {
@@ -63,18 +72,13 @@ function isAuthorised(hit: SuggestHit): boolean {
   );
 }
 
-/**
- * Resolve one concept to its authorised heading, or null.
- *
- * Null is a real answer and must not be smoothed over: a concept LCSH does not
- * carry is a concept this catalogue should not claim. The caller reports it
- * rather than falling back to the raw string.
- */
-export async function resolveSubject(term: string): Promise<LcshHeading | null> {
-  const q = term.trim();
-  if (!q) return null;
+const ATTEMPTS = 3;
 
-  const url = `${ENDPOINT}?q=${encodeURIComponent(q)}&count=8`;
+/** One call to the suggest index, authorised hits only. Null on any failure. */
+async function suggestOnce(q: string, searchtype?: string): Promise<SuggestHit[] | null> {
+  const url =
+    `${ENDPOINT}?q=${encodeURIComponent(q)}&count=25` +
+    (searchtype ? `&searchtype=${searchtype}` : "");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -84,39 +88,99 @@ export async function resolveSubject(term: string): Promise<LcshHeading | null> 
     });
     if (!res.ok) return null;
     const body = (await res.json()) as { hits?: SuggestHit[] };
-    const hits = (body.hits ?? []).filter(isAuthorised);
-    if (hits.length === 0) return null;
-
-    // The suggest index is left-anchored, so an exact match on the authorised
-    // label is the concept asked for; anything else is a longer heading that
-    // merely starts the same way ("Machine learning" vs "Machine learning
-    // Machine Learning Repository"). Prefer the exact match, then the shortest,
-    // which is the broadest heading rather than an arbitrary subdivision.
-    const lower = q.toLowerCase();
-    const exact = hits.find((h) => (h.aLabel ?? h.suggestLabel ?? "").toLowerCase() === lower);
-    const chosen =
-      exact ??
-      [...hits].sort(
-        (a, b) => (a.aLabel ?? "").length - (b.aLabel ?? "").length,
-      )[0];
-
-    const label = chosen.aLabel ?? chosen.suggestLabel ?? "";
-    if (!label || !chosen.uri) return null;
-
-    return {
-      label,
-      uri: chosen.uri,
-      token: chosen.token ?? chosen.uri.split("/").pop() ?? "",
-      variants: chosen.more?.variantLabels ?? [],
-    };
+    return (body.hits ?? []).filter(isAuthorised);
   } catch {
-    // A network failure is not evidence the heading is absent. The caller must
-    // treat null as "not established" and try again rather than as "no such
-    // heading", which is why nothing here writes to the catalogue.
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The same call, retried, because a null here is indistinguishable downstream
+ * from "LCSH has no such heading" and the two must not be confused.
+ *
+ * This is not a hypothetical. Resolving 40-odd headings in a loop on 31 August
+ * 2026, one request to id.loc.gov failed transiently and "Sea-power--China" was
+ * reported as having no authorised heading. It has one, sh2010112358, and three
+ * consecutive retries returned it immediately. Without retries a caller drops a
+ * perfectly good heading from a record and prints a sentence about LCSH that is
+ * not true.
+ */
+async function suggest(q: string, searchtype?: string): Promise<SuggestHit[] | null> {
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    const hits = await suggestOnce(q, searchtype);
+    if (hits !== null) return hits;
+    if (attempt < ATTEMPTS) await new Promise((r) => setTimeout(r, 400 * attempt));
+  }
+  return null;
+}
+
+function labelOf(h: SuggestHit): string {
+  return h.aLabel ?? h.suggestLabel ?? "";
+}
+
+/**
+ * Resolve one concept to its authorised heading, or null.
+ *
+ * Null is a real answer and must not be smoothed over: a concept LCSH does not
+ * carry is a concept this catalogue should not claim. The caller reports it
+ * rather than falling back to the raw string.
+ *
+ * TWO LOOKUPS, and the second one is not optional.
+ *
+ * The suggest index defaults to a LEFT-ANCHORED search, and that search does
+ * not return every authorised heading whose label it matches. Measured against
+ * "Cryptography" on 31 August 2026: the default search returns ten hits, and
+ * the only one carrying that exact label is sh99005451, which is a topical
+ * SUBDIVISION record and so is correctly filtered out here. The authorised
+ * heading, sh85034453 (collection_LCSHAuthorizedHeadings), is absent from that
+ * response entirely. Adding searchtype=keyword returns it as the first hit.
+ *
+ * That mattered because of what this function used to do next. Finding no exact
+ * match, it returned the SHORTEST authorised hit, "on the grounds that the
+ * shortest is the broadest heading". For "Cryptography" the shortest hit is
+ * "Cryptography in art", which is not broader, not related, and would have
+ * filed a post-quantum cryptography standard under art history. So the fallback
+ * is gone: a non-exact result is now labelled exact:false and is a diagnostic,
+ * never an answer.
+ */
+export async function resolveSubject(term: string): Promise<LcshHeading | null> {
+  const q = term.trim();
+  if (!q) return null;
+  const lower = q.toLowerCase();
+  const isExact = (h: SuggestHit) => labelOf(h).toLowerCase() === lower;
+
+  const anchored = await suggest(q);
+  // A null here is a network or service failure, not an absence, so it must not
+  // be reported as "no such heading". Distinguishing the two is the caller's
+  // job and all it can do is retry, which is why nothing here writes anything.
+  if (anchored === null) return null;
+
+  let chosen = anchored.find(isExact);
+  if (!chosen) {
+    const keyword = await suggest(q, "keyword");
+    chosen = (keyword ?? []).find(isExact);
+  }
+
+  const exact = Boolean(chosen);
+  // Nearest offer, purely so the caller can say what it saw. Shortest is used
+  // only to make that message stable, and carries no claim of being broader.
+  if (!chosen) {
+    chosen = [...anchored].sort((a, b) => labelOf(a).length - labelOf(b).length)[0];
+  }
+  if (!chosen) return null;
+
+  const label = labelOf(chosen);
+  if (!label || !chosen.uri) return null;
+
+  return {
+    label,
+    uri: chosen.uri,
+    token: chosen.token ?? chosen.uri.split("/").pop() ?? "",
+    variants: chosen.more?.variantLabels ?? [],
+    exact,
+  };
 }
 
 /** Resolve many concepts, politely: LoC is a public service, not a batch API. */
