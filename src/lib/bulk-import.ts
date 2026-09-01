@@ -47,19 +47,101 @@ export type BulkParseResult = {
 type MappedColumn = Exclude<keyof BulkRow, "marc">;
 
 const FIELD_ALIASES: Record<MappedColumn, string[]> = {
-  title: ["title", "name", "headline"],
-  authors: ["authors", "author", "creator", "creators", "byline", "contributor"],
-  url: ["url", "link", "accessurl", "access_url", "proxiedlink", "href", "uri", "weblink"],
-  year: ["year", "pubyear", "publicationyear", "published", "date", "pubdate"],
-  venue: ["venue", "publication", "publicationtitle", "journal", "source", "container", "series", "subtitle"],
-  publisher: ["publisher", "imprint", "publishinghouse"],
-  isbn: ["isbn", "isbn13", "isbn10", "eisbn"],
-  type: ["type", "resourcetype", "contenttype", "doctype", "documenttype"],
-  abstract: ["abstract", "description", "summary", "synopsis", "notes"],
+  title: ["title", "name", "headline", "doctitle", "documenttitle", "articletitle",
+          "itemtitle", "recordtitle", "maintitle", "titletext", "fulltitle",
+          "dc:title", "reporttitle", "producttitle"],
+  authors: ["authors", "author", "creator", "creators", "byline", "contributor",
+            "authorname", "authornames", "dc:creator", "personalname", "writtenby"],
+  url: ["url", "link", "accessurl", "access_url", "proxiedlink", "href", "uri", "weblink",
+        "documenturl", "articleurl", "fulltexturl", "htmlurl", "pdfurl", "landingpage",
+        "permalink", "dc:identifier", "doclink", "downloadurl"],
+  year: ["year", "pubyear", "publicationyear", "published", "date", "pubdate",
+         "publicationdate", "issuedate", "dc:date", "datepublished", "copyrightyear"],
+  venue: ["venue", "publication", "publicationtitle", "journal", "source", "container",
+          "series", "subtitle", "journaltitle", "seriestitle", "collection", "parenttitle"],
+  publisher: ["publisher", "imprint", "publishinghouse", "dc:publisher", "publishername",
+              "issuingbody", "producer"],
+  isbn: ["isbn", "isbn13", "isbn10", "eisbn", "isbnnumber"],
+  type: ["type", "resourcetype", "contenttype", "doctype", "documenttype", "dc:type",
+         "materialtype", "recordtype", "contentclass"],
+  abstract: ["abstract", "description", "summary", "synopsis", "notes", "dc:description",
+             "shortdescription", "teaser"],
 };
 
 function normaliseKey(k: string): string {
   return k.toLowerCase().replace(/[\s_\-.]/g, "");
+}
+
+/** How deep into a record we will look for a field. */
+const FLATTEN_DEPTH = 4;
+
+/**
+ * Every leaf value in a record, keyed by its element or attribute name.
+ *
+ * Vendor XML almost never puts the descriptive fields at the top of a record.
+ * It wraps them: <record><metadata><title>, <document><header><docTitle>,
+ * <article><bibliographic><articleTitle>. Reading only the top level, which is
+ * what this did, sees one key called "metadata" whose value is an object, finds
+ * no title, and reports "missing title" for a file that plainly has one. Two
+ * different suppliers' files failed that way before this existed.
+ *
+ * Breadth first, and an existing key is never overwritten, so the shallowest
+ * occurrence of a name wins. That matters when a record carries both its own
+ * <title> and a nested <series><title>: the record's own is the one meant.
+ *
+ * Repeated elements (three <author> siblings) arrive from the parser as an
+ * array and are joined, because the columns downstream are display strings.
+ */
+function flattenRecord(obj: Record<string, unknown>): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  let level: { key: string | null; value: unknown }[] = [{ key: null, value: obj }];
+
+  for (let depth = 0; depth < FLATTEN_DEPTH && level.length; depth++) {
+    const next: { key: string | null; value: unknown }[] = [];
+    for (const { key, value } of level) {
+      if (value == null) continue;
+
+      if (Array.isArray(value)) {
+        const scalars = value.filter((v) => v != null && typeof v !== "object");
+        if (key && scalars.length) {
+          const joined = scalars.map(String).map((v) => v.trim()).filter(Boolean).join("; ");
+          if (joined && !out.has(key)) out.set(key, joined);
+        }
+        // Objects inside the array are still worth descending into: a repeated
+        // <author><name> is the commonest shape there is.
+        for (const v of value) if (v && typeof v === "object") next.push({ key, value: v });
+        continue;
+      }
+
+      if (typeof value === "object") {
+        const rec = value as Record<string, unknown>;
+        // fast-xml-parser gives an element with attributes a "#text" member for
+        // its own content. That content belongs to the element's own name.
+        const text = rec["#text"];
+        if (key && text != null && typeof text !== "object" && !out.has(key)) {
+          const t = String(text).trim();
+          if (t) out.set(key, t);
+        }
+        for (const [k, v] of Object.entries(rec)) {
+          if (k === "#text") continue;
+          next.push({ key: normaliseKey(k), value: v });
+        }
+        continue;
+      }
+
+      if (key && !out.has(key)) {
+        const t = String(value).trim();
+        if (t) out.set(key, t);
+      }
+    }
+    level = next;
+  }
+  return out;
+}
+
+/** The field names a record actually carries, for a diagnostic message. */
+export function recordFieldNames(obj: Record<string, unknown>): string[] {
+  return Array.from(flattenRecord(obj).keys());
 }
 
 /**
@@ -111,8 +193,8 @@ export function chunkRows(
 
 /** Map an arbitrary record object to a BulkRow using the alias table. */
 function mapObject(obj: Record<string, unknown>): BulkRow {
-  const byNorm = new Map<string, unknown>();
-  for (const [k, v] of Object.entries(obj)) byNorm.set(normaliseKey(k), v);
+  // Flattened, not just the top level: see flattenRecord for why.
+  const byNorm = flattenRecord(obj);
 
   const pick = (field: MappedColumn): string | null => {
     for (const alias of FIELD_ALIASES[field]) {
@@ -205,32 +287,59 @@ function parseXml(text: string): Record<string, unknown>[] {
   return found;
 }
 
-function findRecordArray(node: unknown, depth = 0): Record<string, unknown>[] {
-  if (depth > 6 || node == null || typeof node !== "object") return [];
-  if (Array.isArray(node)) {
-    return node.filter((x) => x && typeof x === "object") as Record<string, unknown>[];
-  }
-  const obj = node as Record<string, unknown>;
-  // Prefer a child whose value is an array of objects.
-  for (const v of Object.values(obj)) {
-    if (Array.isArray(v) && v.some((x) => x && typeof x === "object")) {
-      return v.filter((x) => x && typeof x === "object") as Record<string, unknown>[];
+/**
+ * The list of records in a parsed XML document.
+ *
+ * Every array of objects anywhere in the tree is a candidate, and the one whose
+ * members look like bibliographic records wins. Walking depth first and taking
+ * the first array found picks up whatever the file happens to repeat first,
+ * which on a feed that lists its subject vocabulary before its records is the
+ * subject terms: three rows, no titles, and a report that the records have no
+ * titles when the records were never read at all.
+ *
+ * With nothing record-shaped anywhere, the largest candidate is used, on the
+ * reasoning that the longest repeated list in a batch file is more likely to be
+ * the batch than a header block.
+ */
+function findRecordArray(node: unknown): Record<string, unknown>[] {
+  const candidates: Record<string, unknown>[][] = [];
+
+  const walk = (n: unknown, depth: number): void => {
+    if (depth > 6 || n == null || typeof n !== "object") return;
+    if (Array.isArray(n)) {
+      const objs = n.filter((x) => x && typeof x === "object") as Record<string, unknown>[];
+      if (objs.length) candidates.push(objs);
+      for (const v of n) walk(v, depth + 1);
+      return;
     }
+    for (const v of Object.values(n as Record<string, unknown>)) walk(v, depth + 1);
+  };
+  walk(node, 0);
+
+  const recordish = candidates.find((a) => a.some(looksLikeRecord));
+  if (recordish) return recordish;
+  if (candidates.length) {
+    return candidates.reduce((best, a) => (a.length > best.length ? a : best));
   }
-  // A single wrapped record (e.g. <records><record>…</record></records>).
-  for (const v of Object.values(obj)) {
-    const nested = findRecordArray(v, depth + 1);
-    if (nested.length) return nested;
-    if (v && typeof v === "object" && !Array.isArray(v) && looksLikeRecord(v as Record<string, unknown>)) {
-      return [v as Record<string, unknown>];
+
+  // A single unwrapped record, e.g. <records><record>...</record></records>.
+  const single: Record<string, unknown>[] = [];
+  const walkOne = (n: unknown, depth: number): void => {
+    if (depth > 6 || single.length || n == null || typeof n !== "object" || Array.isArray(n)) return;
+    const obj = n as Record<string, unknown>;
+    if (looksLikeRecord(obj)) {
+      single.push(obj);
+      return;
     }
-  }
-  return [];
+    for (const v of Object.values(obj)) walkOne(v, depth + 1);
+  };
+  walkOne(node, 0);
+  return single;
 }
 
 function looksLikeRecord(obj: Record<string, unknown>): boolean {
-  const keys = Object.keys(obj).map(normaliseKey);
-  return FIELD_ALIASES.title.some((a) => keys.includes(normaliseKey(a)));
+  const keys = new Set(flattenRecord(obj).keys());
+  return FIELD_ALIASES.title.some((a) => keys.has(normaliseKey(a)));
 }
 
 /* ---------- MARCXML (MARC 21 slim, e.g. Knovel eBook batches) ---------- */
@@ -506,7 +615,51 @@ export function parseBulk(content: string, filename?: string): BulkParseResult {
     mapped = mapped.slice(0, MAX_ROWS);
   }
 
+  // A file whose records were found but whose fields were not is the one
+  // failure a librarian cannot act on. "row 1: missing title" says the record
+  // has no title, when what happened is that the title is under a name this
+  // importer has never heard of. Naming the fields the file DOES carry turns a
+  // dead end into something the next person can fix, or send on to someone who
+  // can add the alias.
+  if (mapped.length > 0 && mapped.every((r) => !r.title) && !isMarc) {
+    const seen = firstRecordFields(content, detected);
+    if (seen.length) {
+      errors.push(
+        `No record had a title. The fields in this file are: ${seen.slice(0, 24).join(", ")}` +
+          `${seen.length > 24 ? ", …" : ""}. A title is read from any of: ` +
+          `${FIELD_ALIASES.title.slice(0, 8).join(", ")}.`,
+      );
+    }
+  }
+
   return { format, rows: mapped, errors };
+}
+
+/** The field names of the first record, for the diagnostic above. */
+function firstRecordFields(content: string, detected: string): string[] {
+  try {
+    if (detected === "xml") {
+      const recs = parseXml(content);
+      return recs[0] ? recordFieldNames(recs[0]) : [];
+    }
+    if (detected === "csv") {
+      const rows = parseCsv(content);
+      return rows[0] ? Object.keys(rows[0]) : [];
+    }
+    if (detected === "json") {
+      const parsed = JSON.parse(content) as unknown;
+      const arr = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as Record<string, unknown>)?.records)
+          ? (parsed as { records: unknown[] }).records
+          : [parsed];
+      const first = arr.find((x) => x && typeof x === "object");
+      return first ? recordFieldNames(first as Record<string, unknown>) : [];
+    }
+  } catch {
+    /* the diagnostic must never be the thing that fails the import */
+  }
+  return [];
 }
 
 /* ---------- Binary MARC21 (.mrc, ISO 2709) ---------- */
