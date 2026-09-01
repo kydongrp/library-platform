@@ -10,6 +10,10 @@ import {
   loadCoverPool, assignFromPool, emptyTally, countAssignment, describeTally,
   type CoverTally,
 } from "@/lib/cover-images";
+import {
+  attachSourceMarc, emptyMarcTally, addMarcTally, describeMarcTally, type MarcTally,
+} from "@/lib/marc-store";
+import type { SourceField } from "@/lib/marc-source";
 import { sftpConfigured, sftpSourceInfo, fetchNewSftpFiles } from "@/lib/sftp";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -42,6 +46,11 @@ export type ImportRowsResult = {
    * where a formatted string would not.
    */
   coverTally: CoverTally;
+  /**
+   * Source MARC kept on the records. Counts rather than a sentence, for the
+   * same chunking reason as the covers above.
+   */
+  marcTally: MarcTally;
 };
 
 const DEDUP_BATCH = 1000; // URLs per existence query
@@ -80,7 +89,18 @@ export async function importResourceRowsCore(
   });
 
   if (valid.length === 0) {
-    return { imported: 0, duplicates: 0, skipped, skipReasons, coverTally: emptyTally() };
+    return { imported: 0, duplicates: 0, skipped, skipReasons, coverTally: emptyTally(), marcTally: emptyMarcTally() };
+  }
+
+  // Source MARC, keyed by access URL, collected from EVERY valid row rather
+  // than only the ones about to be created. A row the dedup below rejects as
+  // already present is the case that matters most: it is how a record imported
+  // before this pipeline kept MARC gets its MARC, by re-uploading the file it
+  // came from. Later rows win a key clash, matching the createMany behaviour
+  // where the last write of a repeated URL is the one that stands.
+  const marcByUrl = new Map<string, SourceField[]>();
+  for (const row of valid) {
+    if (Array.isArray(row.marc) && row.marc.length > 0) marcByUrl.set(row.url, row.marc);
   }
 
   // Dedup on access URL, using batched existence queries.
@@ -202,7 +222,21 @@ export async function importResourceRowsCore(
     }
   }
 
-  return { imported, duplicates, skipped, skipReasons, coverTally };
+  // After the resources exist, and deliberately not inside a transaction with
+  // them. This file's standing position is that a decorative or secondary
+  // failure must never cost a batch of catalogue records (see the P2003 retry
+  // above); the same holds here. If attaching MARC fails, the records are
+  // already safely in the catalogue with their flat columns, and re-running the
+  // import attaches the fields, because attachSourceMarc only ever fills a
+  // record that has none.
+  let marcTally = emptyMarcTally();
+  try {
+    marcTally = await attachSourceMarc(marcByUrl);
+  } catch {
+    /* records stand; re-importing the file attaches their MARC */
+  }
+
+  return { imported, duplicates, skipped, skipReasons, coverTally, marcTally };
 }
 
 /* ---------- Scheduled SFTP re-fetch ---------- */
@@ -288,6 +322,7 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
 
     let resourcesImported = 0;
     const sftpCovers = emptyTally();
+    const sftpMarc = emptyMarcTally();
     let duplicates = 0;
     let skipped = 0;
     let filesImported = 0;
@@ -303,6 +338,7 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
         sftpCovers.collection += res.coverTally.collection;
         sftpCovers.publisher += res.coverTally.publisher;
         sftpCovers.general += res.coverTally.general;
+        addMarcTally(sftpMarc, res.marcTally);
         duplicates += res.duplicates;
         skipped += res.skipped;
         filesImported++;
@@ -334,10 +370,14 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
     // rather than staff noticing covers appear and wondering why.
     const coversDescribed = describeTally(sftpCovers);
     const covers = coversDescribed ? ` · ${coversDescribed}` : "";
+    // Same reasoning as the covers line: an unattended nightly run should say
+    // what it did to the records, not leave staff to notice MARC appear.
+    const marcDescribed = describeMarcTally(sftpMarc);
+    const marc = marcDescribed ? ` · ${marcDescribed}` : "";
     const message =
       files.length === 0 && oversize.length === 0
         ? `No new files in ${source.host}:${source.remoteDir}.`
-        : `${filesImported}/${files.length} file(s) from ${source.host} · ${resourcesImported} imported · ${duplicates} dup · ${skipped} skipped${over}${capped}${covers}`;
+        : `${filesImported}/${files.length} file(s) from ${source.host} · ${resourcesImported} imported · ${duplicates} dup · ${skipped} skipped${over}${capped}${covers}${marc}`;
 
     await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: message, ranBy } });
     // The manual trigger audits with the admin's session; cron has no session.

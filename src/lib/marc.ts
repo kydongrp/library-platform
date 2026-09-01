@@ -18,6 +18,7 @@
 // exercised directly with tsx.
 
 import { zonedDayKey } from "@/lib/tz";
+import { cleanControlValue } from "@/lib/marc-source";
 
 export type MarcInput = {
   id: string;
@@ -59,6 +60,23 @@ const LANG_CODES: Record<string, string> = {
 // Strip ISO 2709 structural bytes (record/field terminators, subfield
 // delimiter) from data so user text can never corrupt the framing.
 const clean = (v: string) => v.replace(/[\x1d\x1e\x1f]/g, " ").trim().slice(0, SUB_MAX);
+
+/**
+ * The same, for CONTROL fields, minus the trim.
+ *
+ * A control field is not prose. 008 is a fixed 40-character string addressed
+ * by offset, and its last positions (language, modified record, cataloguing
+ * source) are frequently spaces; 007 has the same shape. Trimming one shortens
+ * the field, every offset past the cut becomes a lie, and a record that
+ * arrived valid leaves here invalid. The framing bytes are still stripped,
+ * because those would re-frame the ISO 2709 output.
+ *
+ * This mattered the moment the importer began keeping the source record own
+ * control fields (src/lib/marc-source.ts). Before that the only 008 in the
+ * system was one we had just synthesised to exactly 40 characters, so the trim
+ * had nothing to cut and the bug was invisible.
+ */
+const cleanControl = (v: string) => cleanControlValue(v, SUB_MAX);
 
 function leaderFor(r: MarcInput): string {
   // 06 type of record / 07 bibliographic level. The bibliographic level comes
@@ -131,7 +149,7 @@ function applyStoredFields(rec: MarcRecord, stored: StoredField[]): MarcRecord {
     .concat(
       sorted
         .filter((f) => /^00\d$/.test(f.tag))
-        .map((f) => [f.tag, clean(String(f.value ?? ""))] as [string, string]),
+        .map((f) => [f.tag, cleanControl(String(f.value ?? ""))] as [string, string]),
     )
     .sort((a, b) => a[0].localeCompare(b[0]));
 

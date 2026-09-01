@@ -12,7 +12,7 @@ import {
   PROVIDERS,
   PROVIDER_GROUPS,
 } from "@/lib/constants";
-import { parseBulk, parseBulkBinary, type BulkRow } from "@/lib/bulk-import";
+import { parseBulk, parseBulkBinary, chunkRows, type BulkRow } from "@/lib/bulk-import";
 import type { ScholarlyRecord } from "@/lib/scholarly";
 
 /** Provider name the forms start on. See PROVIDER_GROUPS for why it is first. */
@@ -302,7 +302,9 @@ export function BulkImportForm() {
 
   // Rows are streamed to the server in small chunks so the batch file itself
   // (parsed in the browser) never has to fit under any upload size limit.
-  const CHUNK = 100;
+  // chunkRows bounds each call by bytes as well as by row count, because a row
+  // now carries the source record's MARC and a hundred fat records overrun the
+  // Server Action body limit.
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -370,15 +372,31 @@ export function BulkImportForm() {
     let imported = 0;
     let duplicates = 0;
     let skipped = 0;
+    let marcRecords = 0;
+    let marcFields = 0;
     const skipReasons: string[] = [];
     let hardError: string | null = null;
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
-      setProgress(`Importing ${Math.min(i + chunk.length, rows.length)} / ${rows.length}…`);
-      const r = await importResourceRows(chunk, {
-        provider: chosenProvider,
-        defaultType,
-      });
+    let done = 0;
+    for (const chunk of chunkRows(rows)) {
+      done += chunk.length;
+      setProgress(`Importing ${done} / ${rows.length}…`);
+      let r: Awaited<ReturnType<typeof importResourceRows>>;
+      try {
+        r = await importResourceRows(chunk, {
+          provider: chosenProvider,
+          defaultType,
+        });
+      } catch (e) {
+        // Without this the rejection escapes handleSubmit, so setBusy(false)
+        // below never runs: the button stays disabled, the progress text
+        // freezes mid-count, and nothing says that the chunks already sent did
+        // land. Say what got in before reporting the failure.
+        hardError =
+          `The import stopped after ${imported} record${imported === 1 ? "" : "s"}. ` +
+          `${e instanceof Error ? e.message : "The server rejected the batch."} ` +
+          "Those records are in the catalogue; re-running the same file will add the rest and skip them.";
+        break;
+      }
       if (r.error) {
         hardError = r.error;
         break;
@@ -386,6 +404,8 @@ export function BulkImportForm() {
       imported += r.imported;
       duplicates += r.duplicates;
       skipped += r.skipped;
+      marcRecords += r.marcRecords;
+      marcFields += r.marcFields;
       for (const s of r.skipReasons) if (skipReasons.length < 6) skipReasons.push(s);
     }
 
@@ -401,6 +421,12 @@ export function BulkImportForm() {
     const parts = [`${imported} imported`];
     if (duplicates > 0) parts.push(`${duplicates} already in catalogue`);
     if (skipped > 0) parts.push(`${skipped} skipped`);
+    // Reported separately from the import count because the two do not have to
+    // move together. Re-uploading a file whose records are all already here
+    // imports nothing and still catalogues every one of them, which is exactly
+    // how a batch loaded before the importer kept MARC gets its MARC.
+    if (marcRecords > 0)
+      parts.push(`${marcRecords} catalogued from the file's MARC (${marcFields} fields)`);
     let message = `${chosenProvider} batch (${format.toUpperCase()}): ${parts.join(" · ")}.`;
     const notes = [...errors, ...skipReasons];
     if (notes.length) message += ` Notes: ${notes.slice(0, 6).join("; ")}`;

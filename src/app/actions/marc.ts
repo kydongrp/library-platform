@@ -7,6 +7,7 @@ import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
 import { DEFAULT_TAG_DEFS, parseSubfields, type Subfield } from "@/lib/marc-tags";
+import { cleanControlValue } from "@/lib/marc-source";
 
 // Cataloguing is CATALOGUE-edit work, like every other bib operation.
 async function requireCataloguer(): Promise<{ name: string } | null> {
@@ -21,6 +22,19 @@ const NO_PERMISSION = {
 };
 
 const clip = (v: FormDataEntryValue | null, n: number) => String(v ?? "").trim().slice(0, n);
+
+/**
+ * The same, for a CONTROL field's value: the shared rule, which does not trim.
+ *
+ * This is the WRITE half. It mattered the moment imported records started
+ * arriving with the vendor's own 008 (src/lib/marc-source.ts): opening such a
+ * record in the editor and pressing Save with no changes at all round-tripped
+ * a valid 40-character 008 down to 38 and stored the corruption. Before that
+ * the only control fields in the system were ones a person had typed, where a
+ * stray trailing space was noise rather than data.
+ */
+const clipControl = (v: FormDataEntryValue | null, n: number) =>
+  cleanControlValue(String(v ?? ""), n);
 const VALUE_MAX = 8000;
 
 function isUniqueViolation(e: unknown): boolean {
@@ -75,9 +89,11 @@ export async function saveMarcField(
   const def = await prisma.marcTagDef.findUnique({ where: { tag } });
   const isControl = def?.isControl ?? /^00\d$/.test(tag);
 
-  const value = isControl ? clip(formData.get("value"), VALUE_MAX) : null;
+  const value = isControl ? clipControl(formData.get("value"), VALUE_MAX) : null;
   const subfields = isControl ? [] : subfieldsFromForm(formData);
-  if (isControl && !value) return { ok: false, message: `Field ${tag} needs a value.` };
+  // Tested on the trimmed form, so a field of nothing but spaces is still
+  // rejected as empty even though the value itself is stored untrimmed.
+  if (isControl && !value?.trim()) return { ok: false, message: `Field ${tag} needs a value.` };
   if (!isControl && subfields.length === 0)
     return { ok: false, message: `Field ${tag} needs at least one subfield with a value.` };
 

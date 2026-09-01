@@ -40,6 +40,8 @@
     "test:holds": "tsx scripts/test-hold-queue.ts",
     "test:member": "tsx scripts/test-member-status.ts",
     "test:marc:bin": "tsx scripts/test-marc-binary.ts",
+    "test:marc:source": "tsx scripts/test-marc-source.ts",
+    "test:marc:import": "tsx --env-file=.env.test scripts/test-marc-import-db.ts",
     "test:mail:db": "tsx --env-file=.env.development.local scripts/test-mail.ts",
     "db:harden": "tsx --env-file=.env scripts/db-harden.ts",
     "db:harden:test": "tsx --env-file=.env.test scripts/db-harden.ts",

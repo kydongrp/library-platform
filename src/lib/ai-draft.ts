@@ -28,6 +28,69 @@ export function aiConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
+/**
+ * Build the client, honouring ANTHROPIC_WORKSPACE_ID when one is set.
+ *
+ * There are two kinds of Anthropic API key and they do not authenticate the
+ * same way. A workspace-scoped key already names the workspace it bills and
+ * runs in. An IDENTITY-LINKED key (one created against a person rather than a
+ * workspace) does not, so the API rejects every request from one that does not
+ * carry an anthropic-workspace-id header telling it which workspace to act in.
+ *
+ * The deployed key is identity-linked, which is why this screen answered every
+ * request with a 400 and no draft was ever produced. Setting
+ * ANTHROPIC_WORKSPACE_ID fixes it without swapping the key; swapping in a
+ * workspace-scoped key fixes it without setting the variable. Either works, and
+ * setting the variable when it is not needed is harmless, so the header is sent
+ * whenever the value is present.
+ */
+export function anthropicClient(): Anthropic {
+  const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID?.trim();
+  return new Anthropic(
+    workspaceId ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } } : {},
+  );
+}
+
+/**
+ * Turn an SDK error into something a librarian can act on.
+ *
+ * The unmodified message is the transport's, not a person's: staff on this
+ * screen were shown
+ *
+ *   400 {"type":"error","error":{"type":"invalid_request_error","message":
+ *   "anthropic-workspace-id is required when authenticating with an
+ *   identity-linked API key; ..."},"request_id":null}
+ *
+ * which tells a cataloguer nothing they can do and does not even tell an
+ * engineer which environment variable to set. The raw text is still appended
+ * for whoever has to fix it, but the sentence in front of it says who fixes it
+ * and how.
+ */
+export function explainAiError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e ?? "");
+  const status = (e as { status?: number } | null)?.status;
+
+  if (/anthropic-workspace-id/i.test(raw))
+    return "The AI assistant's API key is identity-linked, so it needs a workspace. Set ANTHROPIC_WORKSPACE_ID in the environment (or replace the key with a workspace-scoped one) and redeploy. DOIs still work without it: paste a DOI and this resolves through Crossref instead.";
+  if (status === 401 || /authentication|invalid x-api-key/i.test(raw))
+    return "The AI assistant's API key was rejected. Check ANTHROPIC_API_KEY in the environment. DOIs still work without it.";
+  if (status === 403 || /permission/i.test(raw))
+    return "The AI assistant's API key is not permitted to make this request. Check the key's workspace and permissions. DOIs still work without it.";
+  if (status === 429 || /rate.?limit/i.test(raw))
+    return "The AI assistant is rate limited right now. Wait a moment and try again, or fill the form in by hand.";
+  if (status === 529 || (typeof status === "number" && status >= 500))
+    return "The AI assistant is temporarily unavailable. Try again shortly, or fill the form in by hand.";
+  if (/abort|timeout|ETIMEDOUT|ECONNRESET|fetch failed/i.test(raw))
+    return "The AI assistant did not respond in time. Try again, or fill the form in by hand.";
+
+  // Our own messages (the refusal and max-tokens cases below) are already
+  // written for a librarian and pass through untouched. Only something that
+  // carries an HTTP status came from the transport and needs a sentence in
+  // front of it.
+  if (typeof status !== "number") return raw || "The AI assistant could not draft this record.";
+  return `The AI assistant could not draft this record. ${raw}`.trim();
+}
+
 const INPUT_MAX = 1_000;
 const PAGE_TEXT_MAX = 6_000;
 const PAGE_TIMEOUT_MS = 12_000;
@@ -179,7 +242,7 @@ Rules:
 - The note field is your provenance statement to the librarian: say what you drew on and flag anything they should double-check.`;
 
 async function draftWithClaude(input: string, pageText: string | null): Promise<ArticleDraft> {
-  const client = new Anthropic();
+  const client = anthropicClient();
 
   const userContent = pageText
     ? `Staff input:\n${input}\n\nExtracted text from the page at that URL:\n"""\n${pageText}\n"""`
@@ -242,7 +305,12 @@ export async function draftRecord(rawInput: string): Promise<ArticleDraft> {
   // URL → fetch the page (guarded) so the model extracts rather than recalls.
   const urlMatch = input.match(/https?:\/\/[^\s"'<>]+/i)?.[0] ?? null;
   const pageText = urlMatch ? await fetchPageText(urlMatch) : null;
-  const draft = await draftWithClaude(input, pageText);
+  let draft: ArticleDraft;
+  try {
+    draft = await draftWithClaude(input, pageText);
+  } catch (e) {
+    throw new Error(explainAiError(e));
+  }
 
   // If the input itself contained the URL, prefer it over a model guess.
   if (urlMatch && !isBlockedHost(urlMatch)) draft.url = draft.url ?? urlMatch;

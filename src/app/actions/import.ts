@@ -276,6 +276,14 @@ export type BulkImportChunkResult = {
    * display it; the figure is in the audit row either way.
    */
   coversAssigned: number;
+  /**
+   * Records in this chunk that were catalogued from the MARC in the file, and
+   * the fields written. Summed across chunks and shown to staff, because
+   * "cataloguing arrived with the batch" is the difference between a record
+   * they still have to work on and one they do not.
+   */
+  marcRecords: number;
+  marcFields: number;
   error?: string; // set only on a hard failure (permission, bad payload)
 };
 
@@ -295,7 +303,10 @@ export async function importResourceRows(
   rows: BulkRow[],
   opts: BulkImportOptions,
 ): Promise<BulkImportChunkResult> {
-  const zero = { ok: false, imported: 0, duplicates: 0, skipped: 0, skipReasons: [] as string[], coversAssigned: 0 };
+  const zero = {
+    ok: false, imported: 0, duplicates: 0, skipped: 0, skipReasons: [] as string[],
+    coversAssigned: 0, marcRecords: 0, marcFields: 0,
+  };
 
   const admin = await getCurrentAdmin();
   if (!canEdit(admin, "CATALOGUE"))
@@ -311,11 +322,22 @@ export async function importResourceRows(
     provider,
     defaultType: opts.defaultType,
   });
-  if (r.imported > 0) {
-    await audit({ action: "import.bulk", summary: `Bulk import chunk: ${r.imported} added (${provider})`, entity: "Resource", detail: { imported: r.imported, duplicates: r.duplicates, skipped: r.skipped, covers: r.coverTally } });
-    emitEventAfter("resources.imported", { count: r.imported, source: "bulk", provider });
+  // Audited when MARC was attached even if nothing was imported: attaching
+  // cataloguing to records that already existed is a real change to the
+  // catalogue, and a re-upload that repairs a past import consists of nothing
+  // but that case.
+  if (r.imported > 0 || r.marcTally.records > 0) {
+    await audit({ action: "import.bulk", summary: `Bulk import chunk: ${r.imported} added, ${r.marcTally.records} catalogued from MARC (${provider})`, entity: "Resource", detail: { imported: r.imported, duplicates: r.duplicates, skipped: r.skipped, covers: r.coverTally, marc: r.marcTally } });
     revalidatePath("/admin/catalogue");
   }
-  const { coverTally, ...rest } = r;
-  return { ok: true, ...rest, coversAssigned: coverTally.assigned };
+  if (r.imported > 0) {
+    emitEventAfter("resources.imported", { count: r.imported, source: "bulk", provider });
+  }
+  const { coverTally, marcTally, ...rest } = r;
+  return {
+    ok: true, ...rest,
+    coversAssigned: coverTally.assigned,
+    marcRecords: marcTally.records,
+    marcFields: marcTally.fields,
+  };
 }

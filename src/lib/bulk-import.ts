@@ -8,6 +8,7 @@ import {
   type BinaryRecord,
 } from "@/lib/marc-binary";
 import { RESOURCE_TYPES } from "@/lib/constants";
+import { storableMarcFields, type SourceField } from "@/lib/marc-source";
 
 export type BulkRow = {
   title: string;
@@ -19,6 +20,16 @@ export type BulkRow = {
   isbn: string | null;
   type: string | null; // normalised RESOURCE_TYPE or null (caller applies default)
   abstract: string | null;
+  /**
+   * The source record's own MARC fields, when the file was MARC.
+   *
+   * The columns above are a lossy reading of a record that arrived fully
+   * catalogued; this carries the rest of it (subjects, notes, series,
+   * classification, added entries) through to the bib. Null for CSV/JSON/XML
+   * batches, which have no MARC to keep. Already trimmed by
+   * storableMarcFields, and trimmed again on the server.
+   */
+  marc: SourceField[] | null;
 };
 
 export type BulkParseResult = {
@@ -27,7 +38,15 @@ export type BulkParseResult = {
   errors: string[]; // row-level problems (missing title/url), capped
 };
 
-const FIELD_ALIASES: Record<keyof BulkRow, string[]> = {
+/**
+ * The columns a CSV/JSON/XML header can name, and the header spellings that
+ * mean each one. Keyed over BulkRow MINUS `marc`, which is not a column any
+ * header could supply: it comes only from a MARC file, whole, and there is no
+ * spelling of it to look for.
+ */
+type MappedColumn = Exclude<keyof BulkRow, "marc">;
+
+const FIELD_ALIASES: Record<MappedColumn, string[]> = {
   title: ["title", "name", "headline"],
   authors: ["authors", "author", "creator", "creators", "byline", "contributor"],
   url: ["url", "link", "accessurl", "access_url", "proxiedlink", "href", "uri", "weblink"],
@@ -43,12 +62,59 @@ function normaliseKey(k: string): string {
   return k.toLowerCase().replace(/[\s_\-.]/g, "");
 }
 
+/**
+ * Rows for one Server Action call, bounded by BYTES as well as by count.
+ *
+ * A row used to be nine short columns, so a hundred of them were a few tens of
+ * kilobytes and a fixed row count was a perfectly good bound. Then rows started
+ * carrying the source record's MARC, and the same hundred rows can be nearly
+ * seven megabytes against the four-megabyte Server Action limit in
+ * next.config.ts. Measured, not estimated: a hundred records of enhanced 505
+ * contents notes come to 6.9 MB.
+ *
+ * The failure that bound prevents is not a clean error. A rejected Server
+ * Action escapes the import loop as an unhandled rejection, so the progress
+ * text freezes mid-count, the button stays disabled, no toast appears, and the
+ * chunks already sent are already committed. The importer looks hung and the
+ * catalogue is half-loaded.
+ *
+ * The budget is half the configured limit because the row array is not the
+ * whole request: the Server Action protocol adds its own framing, and the
+ * transport counts bytes where JSON.stringify counts UTF-16 code units. Half
+ * is slack, not arithmetic. A single row can never exceed it on its own, since
+ * marc-source.ts caps one record's MARC at 60 KB.
+ */
+export const CHUNK_MAX_ROWS = 100;
+export const CHUNK_MAX_BYTES = 2_000_000;
+
+export function chunkRows(
+  rows: BulkRow[],
+  maxRows = CHUNK_MAX_ROWS,
+  maxBytes = CHUNK_MAX_BYTES,
+): BulkRow[][] {
+  const out: BulkRow[][] = [];
+  let current: BulkRow[] = [];
+  let bytes = 0;
+  for (const row of rows) {
+    const size = JSON.stringify(row).length;
+    if (current.length > 0 && (current.length >= maxRows || bytes + size > maxBytes)) {
+      out.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(row);
+    bytes += size;
+  }
+  if (current.length > 0) out.push(current);
+  return out;
+}
+
 /** Map an arbitrary record object to a BulkRow using the alias table. */
 function mapObject(obj: Record<string, unknown>): BulkRow {
   const byNorm = new Map<string, unknown>();
   for (const [k, v] of Object.entries(obj)) byNorm.set(normaliseKey(k), v);
 
-  const pick = (field: keyof BulkRow): string | null => {
+  const pick = (field: MappedColumn): string | null => {
     for (const alias of FIELD_ALIASES[field]) {
       const v = byNorm.get(normaliseKey(alias));
       if (v != null && String(v).trim() !== "") return String(v).trim();
@@ -69,6 +135,7 @@ function mapObject(obj: Record<string, unknown>): BulkRow {
     isbn: pick("isbn"),
     type: normaliseType(pick("type")),
     abstract: pick("abstract"),
+    marc: null, // a CSV/JSON/XML batch has no source MARC to keep
   };
 }
 
@@ -223,6 +290,15 @@ function parseMarcXml(text: string): BulkRow[] {
     parseTagValue: false, // keep control fields / leader as strings (leading zeros, etc.)
     parseAttributeValue: false,
     trimValues: true,
+    // Control fields are exempted from that trim, and the exemption matters.
+    // An 008 is exactly 40 characters addressed by offset, and its last
+    // positions (language, modified record, cataloguing source) are routinely
+    // spaces. Parsed with the default trim, a 40-character 008 came back as 38
+    // and the record we stored was invalid MARC. stopNodes is the only hook
+    // that runs before the trim rather than after it, so tagValueProcessor
+    // cannot recover what has already been cut. Verified against this parser
+    // build, not assumed: see scripts/test-marc-source.ts.
+    stopNodes: ["*.controlfield"],
     textNodeName: "#text",
     isArray: (name) => ["record", "datafield", "subfield", "controlfield"].includes(name),
   });
@@ -318,7 +394,47 @@ function marcRecordToRow(rec: MarcRecord): BulkRow {
     isbn,
     type: marcType(leader),
     abstract,
+    // Everything above is a lossy reading of the record for the flat columns.
+    // This keeps the record.
+    marc: storableMarcFields(sourceFieldsOf(rec)).fields,
   };
+}
+
+/**
+ * The incoming record's fields, in the shape marc-source.ts works in.
+ *
+ * Control fields first, then data fields, which is how a MARC record is
+ * conventionally ordered anyway; the two readers hand us the halves separately
+ * so the original interleaving is not available to preserve.
+ *
+ * Control values are taken RAW. Everywhere else in this file text goes through
+ * cleanMarc, which collapses whitespace and strips ISBD punctuation, and doing
+ * that to an 008 would destroy it: the field is a fixed 40-character string
+ * addressed by offset, and roughly a third of those offsets are legitimately
+ * spaces.
+ */
+function sourceFieldsOf(rec: MarcRecord): SourceField[] {
+  const out: SourceField[] = [];
+  for (const cf of rec.controlfield ?? []) {
+    const tag = String(cf?.tag ?? "").trim();
+    if (!tag) continue;
+    out.push({ tag, ind1: " ", ind2: " ", value: String(cf["#text"] ?? ""), subfields: [] });
+  }
+  for (const df of rec.datafield ?? []) {
+    const tag = String(df?.tag ?? "").trim();
+    if (!tag) continue;
+    out.push({
+      tag,
+      ind1: String(df.ind1 ?? " "),
+      ind2: String(df.ind2 ?? " "),
+      value: null,
+      subfields: (df.subfield ?? []).map((s) => ({
+        code: String(s?.code ?? ""),
+        value: String(s?.["#text"] ?? ""),
+      })),
+    });
+  }
+  return out;
 }
 
 // Leader/06 (type of record) + /07 (bibliographic level) → our resource type.

@@ -16,8 +16,7 @@
  * Everything it returns is validated by validateNlSpec against the same CUBES
  * array before it can become a report.
  */
-import Anthropic from "@anthropic-ai/sdk";
-import { aiConfigured } from "@/lib/ai-draft";
+import { aiConfigured, anthropicClient, explainAiError } from "@/lib/ai-draft";
 import { zonedDayKey, LIBRARY_TZ } from "@/lib/tz";
 import {
   catalogueForPrompt,
@@ -82,7 +81,11 @@ export async function interpretReportRequest(
   if (!aiConfigured()) return { kind: "unconfigured" };
 
   try {
-    const client = new Anthropic();
+    // Shared factory, so the workspace header an identity-linked key needs is
+    // sent here too. This call site had the same 400 as the cataloguing
+    // assistant, and reported it as "could not be reached", which reads as a
+    // network problem rather than one line of configuration.
+    const client = anthropicClient();
     const response = await client.messages.create({
       model: "claude-opus-5",
       max_tokens: MAX_TOKENS,
@@ -124,7 +127,7 @@ export async function interpretReportRequest(
     console.error("[flexi-nl] interpretation failed:", detail);
     return {
       kind: "error",
-      message: "The assistant could not be reached. Build the report with the dropdowns below.",
+      message: `${explainAiError(e)} Build the report with the dropdowns below.`,
     };
   }
 }
