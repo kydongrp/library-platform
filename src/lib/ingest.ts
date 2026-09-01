@@ -157,7 +157,24 @@ export async function importResourceRowsCore(
     // skipDuplicates + the unique index on digitalUrl make this safe against a
     // concurrent run inserting the same link-out between our dedup query above
     // and here; count only what was actually inserted.
-    const res = await prisma.resource.createMany({ data: batch, skipDuplicates: true });
+    let res;
+    try {
+      res = await prisma.resource.createMany({ data: batch, skipDuplicates: true });
+    } catch (e) {
+      // P2003 is a foreign-key violation, and the only foreign key here is the
+      // cover image: staff deleted one between loadCoverPool above and this
+      // insert. A decorative cover must never cost a batch of catalogue
+      // records, so retry once with the covers stripped. The records land; the
+      // backfill on the covers screen can dress them later.
+      if (typeof e === "object" && e !== null && (e as { code?: string }).code === "P2003") {
+        const bare = batch.map((row) => ({ ...row, coverImageId: null }));
+        res = await prisma.resource.createMany({ data: bare, skipDuplicates: true });
+        // Those rows have no cover, so nothing in this batch may be claimed.
+        coverTally.assigned = Math.max(0, coverTally.assigned - batch.length);
+      } else {
+        throw e;
+      }
+    }
     imported += res.count;
   }
   // Anything the DB skipped (a race inserted it first) is a duplicate, not new.
@@ -168,7 +185,22 @@ export async function importResourceRowsCore(
   // written, so the unclamped figure could claim more covers than there are
   // new records. Clamping can only understate, which is the safe direction for
   // a number staff read as a result.
-  if (coverTally.assigned > imported) coverTally.assigned = imported;
+  //
+  // The TIER counts come down with it. describeTally renders them as a
+  // breakdown of the total ("9 covers assigned (4 by collection, 5 general)"),
+  // so lowering only the total produced a sentence whose parts exceeded its
+  // whole. The overflow comes off the least specific tier first, because a
+  // general cover is the one whose loss says least.
+  if (coverTally.assigned > imported) {
+    let excess = coverTally.assigned - imported;
+    coverTally.assigned = imported;
+    for (const tier of ["general", "publisher", "collection"] as const) {
+      const take = Math.min(excess, coverTally[tier]);
+      coverTally[tier] -= take;
+      excess -= take;
+      if (excess === 0) break;
+    }
+  }
 
   return { imported, duplicates, skipped, skipReasons, coverTally };
 }

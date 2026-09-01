@@ -9,6 +9,7 @@
  * Server-side only: it touches prisma.
  */
 import { prisma } from "@/lib/db";
+import { listCategories } from "@/lib/categories";
 import {
   chooseCover, tokenFromFileName, randomIndex,
   type CoverCandidate, type CoverTarget, type CoverMatchTier, type IndexPicker,
@@ -66,25 +67,56 @@ export function describeTally(tally: CoverTally): string | null {
   return `${tally.assigned} cover${tally.assigned === 1 ? "" : "s"} assigned (${parts.join(", ")})`;
 }
 
+/** How many distinct publishers to load before giving up on completeness. */
+const PUBLISHER_SCAN_LIMIT = 2000;
+
 /**
- * The collections and publishers a file name could usefully be named after,
- * for the admin screen. Publishers come from the catalogue itself rather than a
- * managed list, because that is the only place they exist.
+ * The collections and publishers a file name could usefully be named after.
+ *
+ * TWO THINGS THIS HAS TO GET RIGHT, and the first version got both wrong.
+ *
+ * Collections come from listCategories(), not the managed table alone. A
+ * category can be removed from the managed list while records are still filed
+ * under it, and assignment matches on Resource.category, so reading only the
+ * table would call a cover for a de-listed collection "never assignable" while
+ * it kept being assigned.
+ *
+ * Publishers are capped, because a catalogue sized for the Vibrant migration
+ * has more distinct publishers than a page should load. The cap is REPORTED,
+ * because the screen uses this list to tell staff an image can never be
+ * assigned, and that verdict is only sound over a complete list. Capped at 200
+ * and silent, the screen branded a working publisher cover "never used" and
+ * advised renaming it to general, which would have turned a correctly targeted
+ * cover into a whole-pool fallback: exactly the mismatched-cover outcome the
+ * matching rule exists to prevent.
  */
-export async function knownMatchTargets(): Promise<{ collections: string[]; publishers: string[] }> {
-  const [categories, publishers] = await Promise.all([
-    prisma.resourceCategory.findMany({ select: { name: true }, orderBy: { name: "asc" } }),
+export type MatchTargets = {
+  collections: string[];
+  publishers: string[];
+  /** True when publishers is a page of the set, so "unused" cannot be claimed. */
+  publishersTruncated: boolean;
+};
+
+export async function knownMatchTargets(): Promise<MatchTargets> {
+  const [collections, publisherRows] = await Promise.all([
+    listCategories(),
     prisma.resource.findMany({
       where: { publisher: { not: null } },
       select: { publisher: true },
       distinct: ["publisher"],
       orderBy: { publisher: "asc" },
-      take: 200,
+      // One more than the limit, purely to detect that there are more.
+      take: PUBLISHER_SCAN_LIMIT + 1,
     }),
   ]);
+  const publishersTruncated = publisherRows.length > PUBLISHER_SCAN_LIMIT;
   return {
-    collections: categories.map((c) => c.name),
-    publishers: publishers.map((p) => p.publisher!).filter(Boolean),
+    collections,
+    publishers: publisherRows
+      .slice(0, PUBLISHER_SCAN_LIMIT)
+      .map((p) => p.publisher!)
+      .filter(Boolean),
+    publishersTruncated,
   };
 }
 

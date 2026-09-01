@@ -43,6 +43,7 @@ export default async function CoverImagesPage() {
   // An image whose token names nothing live can never be assigned. Silence here
   // would leave staff believing an upload took effect when it cannot.
   const unused = enabled.filter((i) => describeToken(i.token, targets).scope === "unused");
+  const unverifiable = enabled.filter((i) => describeToken(i.token, targets).scope === "unknown");
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -102,6 +103,19 @@ export default async function CoverImagesPage() {
         </div>
       )}
 
+      {unverifiable.length > 0 && (
+        <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">
+            {unverifiable.length} image{unverifiable.length === 1 ? "" : "s"} could not be checked.
+          </p>
+          <p className="mt-1">
+            The catalogue holds more distinct publishers than this screen loads, so whether{" "}
+            {unverifiable.map((i) => i.fileName).join(", ")} matches one cannot be confirmed here.
+            They are not broken: if the publisher exists, the cover is still assigned at import.
+          </p>
+        </div>
+      )}
+
       {editable && (
         <Card className="mb-6">
           <SectionHeading title="Upload images" />
@@ -156,6 +170,14 @@ export default async function CoverImagesPage() {
                       </td>
                       <td className="py-2 pr-3">
                         {scope === "general" && <Badge tone="muted">general</Badge>}
+                        {scope === "unknown" && (
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone="accent">unverified</Badge>
+                            <span className="text-xs text-amber-800">
+                              too many publishers to check
+                            </span>
+                          </span>
+                        )}
                         {scope === "unused" && (
                           <span className="flex flex-wrap items-center gap-1.5">
                             <Badge tone="danger">never used</Badge>
@@ -239,7 +261,7 @@ export default async function CoverImagesPage() {
       <Card>
         <SectionHeading
           title="Names that will match"
-          subtitle="Name a file after one of these, with an optional trailing number, and it will be used for those records. Anything else becomes a general image."
+          subtitle="Name a file after one of these, with an optional trailing number, and it will be used for those records. A name matching none of them, and not one of the general names below, is never assigned to anything."
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -256,6 +278,7 @@ export default async function CoverImagesPage() {
             {targets.publishers.length > 40 && (
               <p className="mt-1 text-xs text-muted-foreground">
                 and {targets.publishers.length - 40} more
+                {targets.publishersTruncated && ", plus others beyond the number this screen loads"}
               </p>
             )}
           </div>

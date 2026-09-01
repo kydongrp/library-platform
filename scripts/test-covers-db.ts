@@ -143,12 +143,36 @@ void (async () => {
   check("the stray got a cover", fill1.assigned >= 1, JSON.stringify(fill1));
   const filled = await prisma.resource.findUnique({ where: { id: stray.id }, select: { coverImageId: true } });
   check("and it is the publisher image", filled?.coverImageId === publisherImg.id);
-  const fill2 = await backfillCovers(50, () => 0);
-  // Anything still null after the first run had no suitable image; the count of
-  // NEW assignments among our fixtures must be zero.
-  const ours = await prisma.resource.count({ where: { provider: TAG, coverImageId: null } });
-  check("a second run changes nothing of ours", ours === 1, `${ours} of our records still null (the deleted-image one, which has no match)`);
-  check("and reports honestly", fill2.assigned === 0 || fill2.considered > 0, JSON.stringify(fill2));
+  // Snapshot every cover of ours BEFORE the second run, so "no-op" is measured
+  // rather than inferred. The previous version asserted
+  // `fill2.assigned === 0 || fill2.considered > 0`, which is true whenever
+  // considered > 0 no matter what the run did: it would have passed even if the
+  // second pass had reassigned every cover. A test that cannot fail is not a test.
+  const snapshot = new Map(
+    (await prisma.resource.findMany({
+      where: { provider: TAG },
+      select: { id: true, coverImageId: true },
+    })).map((r) => [r.id, r.coverImageId]),
+  );
+
+  await backfillCovers(50, () => 0);
+
+  const after = await prisma.resource.findMany({
+    where: { provider: TAG },
+    select: { id: true, coverImageId: true },
+  });
+  const changed = after.filter((r) => snapshot.get(r.id) !== r.coverImageId);
+  check(
+    "a second run changed NO record of ours",
+    changed.length === 0,
+    changed.map((r) => `${r.id}: ${snapshot.get(r.id)} -> ${r.coverImageId}`).join("; "),
+  );
+  // And prove the check can fail: clear one cover and confirm the run fills it,
+  // so "nothing changed" above means the backfill was idle, not that it is inert.
+  await prisma.resource.update({ where: { id: stray.id }, data: { coverImageId: null } });
+  const fill3 = await backfillCovers(50, () => 0);
+  const refilled = await prisma.resource.findUnique({ where: { id: stray.id }, select: { coverImageId: true } });
+  check("but it DOES fill a cover cleared since", refilled?.coverImageId === publisherImg.id, JSON.stringify(fill3));
 
   console.log("\nThe tally helper:");
   const t = emptyTally();

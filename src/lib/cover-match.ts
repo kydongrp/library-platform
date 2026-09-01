@@ -95,18 +95,20 @@ export type CoverMatchTier = "collection" | "publisher" | "general";
  * code would never pick it: the screen and the behaviour disagreed, and the
  * screen was the one telling staff something untrue.
  */
-export type CoverScope = CoverMatchTier | "unused";
+export type CoverScope = CoverMatchTier | "unused" | "unknown";
 
 /**
  * What a token will match, given the collections and publishers in use.
  *
- * A token that matches neither a live collection nor a live publisher is
- * reported as general: it will only ever be picked by the random fallback, and
- * the screen can say so instead of implying it targets something.
+ * "unused" is a strong claim: it tells staff an image can NEVER be assigned,
+ * and the screen advises renaming the file on the strength of it. So it is only
+ * returned when the publisher list is COMPLETE. When the caller had to truncate
+ * that list, an unmatched token gets "unknown" instead, because the publisher it
+ * names may simply be past the end of the page that was loaded.
  */
 export function describeToken(
   token: string,
-  known: { collections: string[]; publishers: string[] },
+  known: { collections: string[]; publishers: string[]; publishersTruncated?: boolean },
 ): { scope: CoverScope; matches: string | null } {
   // Only an empty token or a reserved word is general, and this must stay in
   // step with the general tier in chooseCover below. If the two ever diverge,
@@ -116,7 +118,7 @@ export function describeToken(
   if (collection) return { scope: "collection", matches: collection };
   const publisher = known.publishers.find((p) => normaliseKey(p) === token);
   if (publisher) return { scope: "publisher", matches: publisher };
-  return { scope: "unused", matches: null };
+  return { scope: known.publishersTruncated ? "unknown" : "unused", matches: null };
 }
 
 export type CoverCandidate = {

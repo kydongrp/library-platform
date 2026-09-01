@@ -59,6 +59,11 @@ model Resource {
   /// every request is a sequential scan plus a top-N sort, on a table sized
   /// for the Vibrant migration rather than for the 62 rows here today.
   @@index([createdAt])
+  /// The covers screen filters Resource on this column on every render, and
+  /// deleting a CoverImage makes Postgres find every referencing row to null
+  /// it. Prisma does not index foreign keys on Postgres, so without this both
+  /// are sequential scans on a table sized for the Vibrant migration.
+  @@index([coverImageId])
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -1207,8 +1212,10 @@ model CoverImage {
   /// As uploaded, kept for display and re-derivation of the token.
   fileName   String     @unique
   /// Folded form of the file name, minus extension and trailing sequence
-  /// number. Stored so assignment never re-parses, and indexed because that is
-  /// the column every match query filters on.
+  /// number. Stored so assignment never re-parses the name. NOT indexed: no
+  /// query filters on it. Matching happens in memory over the whole enabled
+  /// pool (see loadCoverPool), because the pool is a hand-curated handful of
+  /// images, not a table to search.
   token      String
   mimeType   String
   sizeBytes  Int
@@ -1219,6 +1226,4 @@ model CoverImage {
   uploadedBy String?
   createdAt  DateTime   @default(now())
   resources  Resource[]
-
-  @@index([token, enabled])
 }

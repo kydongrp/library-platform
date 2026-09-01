@@ -50,7 +50,7 @@ export function CoverUploadForm({
           className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          PNG, JPEG, WebP or GIF. Up to 12 files and 1.2MB each per upload. Name each file after the
+          PNG, JPEG, WebP or GIF. Up to 12 files per upload, 1.2MB each and 3.2MB in total. Name each file after the
           collection or publisher it serves, with an optional number:{" "}
           <code className="rounded bg-muted px-1">Defence-01.png</code>,{" "}
           <code className="rounded bg-muted px-1">IEEE Xplore 2.jpg</code>, or{" "}
@@ -69,6 +69,11 @@ export function CoverUploadForm({
                 {p.scope === "general" && (
                   <span className="text-amber-700">
                     general: used only when nothing more specific matches
+                  </span>
+                )}
+                {p.scope === "unknown" && (
+                  <span className="text-amber-700">
+                    cannot be checked here: too many publishers to list
                   </span>
                 )}
                 {p.scope === "unused" && (

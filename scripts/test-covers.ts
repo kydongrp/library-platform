@@ -144,6 +144,23 @@ console.log("\nRandomness within a tier, and a picker that misbehaves:");
   check("a fractional index floors", chooseCover({ collection: "Defence" }, four, () => 2.7)?.id === "c");
 }
 
+console.log("\n'unused' is a strong claim, so a truncated publisher list must not make it:");
+{
+  const partial = { collections: ["Defence"], publishers: ["Aaa Press"], publishersTruncated: true };
+  const complete = { collections: ["Defence"], publishers: ["Aaa Press"], publishersTruncated: false };
+  // The same token, the same lists, differing only in whether the caller could
+  // see the whole publisher set.
+  check("over a COMPLETE list, an unmatched token is unused", describeToken("wiley", complete).scope === "unused");
+  check("over a TRUNCATED list, it is unknown, not unused", describeToken("wiley", partial).scope === "unknown", describeToken("wiley", partial).scope);
+  // Truncation must not weaken the verdicts it cannot affect.
+  check("a collection still matches under truncation", describeToken("defence", partial).scope === "collection");
+  check("a listed publisher still matches", describeToken("aaa press", partial).scope === "publisher");
+  check("a reserved word is still general", describeToken("general", partial).scope === "general");
+  // Omitting the flag entirely must behave like a complete list, so existing
+  // callers keep their meaning.
+  check("an absent flag reads as complete", describeToken("wiley", { collections: [], publishers: [] }).scope === "unused");
+}
+
 console.log("\nImage type read from the bytes, never from the upload's own claim:");
 {
   const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -167,6 +184,36 @@ console.log("\nImage type read from the bytes, never from the upload's own claim
   // RIFF that is not WebP (a wav file) must not pass as an image.
   const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]);
   check("RIFF that is not WebP is refused", sniffImageType(wav) === null);
+}
+
+console.log("\nThe import tally must never report a breakdown bigger than its total:");
+{
+  // Mirrors the clamp in src/lib/ingest.ts. The first version lowered `assigned`
+  // alone, so a batch where the database skipped race duplicates produced
+  // "1 cover assigned (2 by publisher, 1 general)": parts exceeding the whole.
+  const clamp = (t: { assigned: number; collection: number; publisher: number; general: number }, imported: number) => {
+    if (t.assigned > imported) {
+      let excess = t.assigned - imported;
+      t.assigned = imported;
+      for (const tier of ["general", "publisher", "collection"] as const) {
+        const take = Math.min(excess, t[tier]);
+        t[tier] -= take;
+        excess -= take;
+        if (excess === 0) break;
+      }
+    }
+    return t;
+  };
+  const a = clamp({ assigned: 3, collection: 1, publisher: 1, general: 1 }, 1);
+  check("total comes down to what was inserted", a.assigned === 1, JSON.stringify(a));
+  check("and the tiers sum to it", a.collection + a.publisher + a.general === a.assigned, JSON.stringify(a));
+  check("the least specific tier is dropped first", a.general === 0 && a.collection === 1, JSON.stringify(a));
+
+  const b = clamp({ assigned: 5, collection: 2, publisher: 3, general: 0 }, 0);
+  check("clamping to zero empties every tier", b.assigned === 0 && b.collection === 0 && b.publisher === 0, JSON.stringify(b));
+
+  const c = clamp({ assigned: 2, collection: 1, publisher: 1, general: 0 }, 9);
+  check("no clamp when nothing was skipped", c.assigned === 2 && c.collection === 1 && c.publisher === 1, JSON.stringify(c));
 }
 
 console.log(

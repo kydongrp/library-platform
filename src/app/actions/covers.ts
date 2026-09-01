@@ -226,7 +226,18 @@ export async function backfillCoverImages(
 
   const tally = await backfillCovers();
   if (tally.considered === 0) {
-    return { ok: true, message: "Every record already has a cover image." };
+    // backfillCovers returns considered: 0 both when nothing needs a cover AND
+    // when the pool is empty, so the reason has to be established here rather
+    // than guessed at. Claiming "every record already has a cover" while the
+    // pool is empty is the opposite of the truth.
+    const poolSize = await prisma.coverImage.count({ where: { enabled: true } });
+    return {
+      ok: true,
+      message:
+        poolSize === 0
+          ? "No images in the pool, so nothing was assigned. Upload one first."
+          : "Every record already has a cover image.",
+    };
   }
   const described = describeTally(tally);
   if (!described) {

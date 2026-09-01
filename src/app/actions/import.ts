@@ -270,7 +270,11 @@ export type BulkImportChunkResult = {
   duplicates: number;
   skipped: number;
   skipReasons: string[];
-  /** Common cover images assigned in this chunk; the client sums them. */
+  /**
+   * Common cover images assigned in this chunk. A number rather than a
+   * sentence so chunks can be summed, though the current client does not
+   * display it; the figure is in the audit row either way.
+   */
   coversAssigned: number;
   error?: string; // set only on a hard failure (permission, bad payload)
 };
