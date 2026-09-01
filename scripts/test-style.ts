@@ -3,9 +3,19 @@
  *
  *   npx tsx scripts/test-style.ts
  *
- * Currently one rule: no em dashes. The character reads as machine-written, and
- * asking for it to be removed by hand has not made it stop coming back, so it is
- * a build failure now instead of a preference.
+ * Two rules.
+ *
+ * NO EM DASHES. The character reads as machine-written, and asking for it to be
+ * removed by hand has not made it stop coming back, so it is a build failure
+ * now instead of a preference.
+ *
+ * NO <Card> WITHOUT PADDING. The Card component deliberately supplies no
+ * padding of its own, so every screen passes one. When a screen forgets, its
+ * content sits flush against the card border and the page looks broken while
+ * every individual class on it is correct, which makes it hard to see in review
+ * and easy to ship. The covers screen shipped that way: seven cards, none of
+ * them padded, on the one page out of a hundred and eighteen usages that did
+ * not follow the convention.
  *
  * An en dash (U+2013) is a different character and is allowed: src/lib/format.ts
  * uses one for the "no value" glyph in tables, and booking-core.ts joins a
@@ -54,6 +64,66 @@ for (const file of files) {
 
 console.log(`Checked ${files.length} tracked files for em dashes.\n`);
 
+/* ---------- Rule 2: a Card must be given padding ---------- */
+
+/**
+ * A card has to say something about its own interior. Three ways to say it:
+ *
+ *   a padding utility          the card pads its content itself (`p-5` here)
+ *   `divide-*`                 a list whose rows carry their own padding
+ *   `overflow-hidden`          full bleed, children run to the border on purpose
+ *
+ * `p-0` counts as padding: it is an explicit "none", which is what a card
+ * wrapping a full-width table wants.
+ *
+ * What this catches is a card that expresses NO interior intent at all, which
+ * is the shape the bug took: `<Card>` bare, or `<Card className="mb-6">` where
+ * the only class is an outside margin. Margins are deliberately not accepted as
+ * intent, because saying where a card sits on the page says nothing about what
+ * happens inside it.
+ */
+const INTERIOR = /\b((p|px|py|pt|pb|pl|pr)-\d|divide-|overflow-hidden)/;
+
+const unpadded: { file: string; line: number; text: string }[] = [];
+
+for (const file of files.filter((f) => f.endsWith(".tsx"))) {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    continue;
+  }
+  if (!text.includes("<Card")) continue;
+  for (const [i, line] of text.split("\n").entries()) {
+    // Opening tags only, and only ones written on a single line. A Card whose
+    // props are spread over several lines is checked by the className search
+    // below instead of being reported as a false positive.
+    const m = line.match(/<Card(\s[^>]*)?>/);
+    if (!m) continue;
+    const props = m[1] ?? "";
+    if (INTERIOR.test(props)) continue;
+    // className={...} is a computed value this cannot read; leave it alone.
+    if (/className=\{/.test(props)) continue;
+    unpadded.push({ file, line: i + 1, text: line.trim() });
+  }
+}
+
+console.log(`Checked ${files.filter((f) => f.endsWith(".tsx")).length} components for cards with no interior layout.\n`);
+
+if (unpadded.length) {
+  for (const o of unpadded.slice(0, 40)) {
+    console.log(`  ${o.file}:${o.line}`);
+    console.log(`    ${o.text.slice(0, 110)}`);
+  }
+  console.log(
+    `\nFAILED: ${unpadded.length} <Card> with no padding class.`,
+  );
+  console.log("Card supplies none of its own, so content sits flush against the border.");
+  console.log("Add the house padding, `p-5`. If the card is meant to run full bleed,");
+  console.log("say so with `divide-y`, `overflow-hidden`, or an explicit `p-0`.");
+  process.exit(1);
+}
+
 if (offenders.length) {
   for (const o of offenders.slice(0, 60)) {
     // Mark the position so the character is findable in an editor.
@@ -73,4 +143,4 @@ if (offenders.length) {
 
 console.log("Exempt, with the reason:");
 for (const e of EXEMPT) console.log(`  ${e.prefix}\n    ${e.why}`);
-console.log("\nCLEAN: no em dashes in tracked files.");
+console.log("\nCLEAN: no em dashes in tracked files, and every card is padded.");

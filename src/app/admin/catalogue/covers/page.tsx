@@ -56,18 +56,18 @@ export default async function CoverImagesPage() {
       </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Card>
+        <Card className="p-5">
           <p className="text-2xl font-semibold tabular-nums">{enabled.length}</p>
           <p className="text-sm text-muted-foreground">
             image{enabled.length === 1 ? "" : "s"} in the pool
             {images.length > enabled.length && ` (${images.length - enabled.length} retired)`}
           </p>
         </Card>
-        <Card>
+        <Card className="p-5">
           <p className="text-2xl font-semibold tabular-nums">{withCover}</p>
           <p className="text-sm text-muted-foreground">records showing a common cover</p>
         </Card>
-        <Card>
+        <Card className="p-5">
           <p className="text-2xl font-semibold tabular-nums">{coverless}</p>
           <p className="text-sm text-muted-foreground">records on the coloured placeholder</p>
         </Card>
@@ -117,13 +117,17 @@ export default async function CoverImagesPage() {
       )}
 
       {editable && (
-        <Card className="mb-6">
+        <Card className="mb-6 p-5">
           <SectionHeading title="Upload images" />
-          <CoverUploadForm collections={targets.collections} publishers={targets.publishers} />
+          <CoverUploadForm
+            collections={targets.collections}
+            publishers={targets.publishers}
+            publishersTruncated={targets.publishersTruncated}
+          />
         </Card>
       )}
 
-      <Card className="mb-6">
+      <Card className="mb-6 p-5">
         <SectionHeading
           title="The pool"
           subtitle="Retiring an image takes it out of future assignment; records already using it keep it."
@@ -242,7 +246,7 @@ export default async function CoverImagesPage() {
       </Card>
 
       {editable && enabled.length > 0 && coverless > 0 && (
-        <Card className="mb-6">
+        <Card className="mb-6 p-5">
           <SectionHeading
             title="Apply to existing records"
             subtitle="Assignment happens at import, so records catalogued before this pool existed have no cover. This fills only records that have none, so it is safe to run more than once."
@@ -258,7 +262,7 @@ export default async function CoverImagesPage() {
         </Card>
       )}
 
-      <Card>
+      <Card className="p-5">
         <SectionHeading
           title="Names that will match"
           subtitle="Name a file after one of these, with an optional trailing number, and it will be used for those records. A name matching none of them, and not one of the general names below, is never assigned to anything."

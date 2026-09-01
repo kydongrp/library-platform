@@ -21,16 +21,29 @@ import { tokenFromFileName, describeToken, GENERAL_TOKENS } from "@/lib/cover-ma
 export function CoverUploadForm({
   collections,
   publishers,
+  publishersTruncated,
 }: {
   collections: string[];
   publishers: string[];
+  /**
+   * True when the publisher list is a page of the set rather than all of it.
+   *
+   * It has to be passed through, because "matches nothing, so it would never be
+   * assigned" is a strong claim that is only sound over a COMPLETE list. The
+   * page itself is careful about this; the preview was not, so on a catalogue
+   * with more publishers than this screen loads it could tell staff to rename a
+   * perfectly good publisher cover to "general", turning a correctly targeted
+   * cover into a whole-pool fallback: exactly the mismatched-cover outcome the
+   * matching rule exists to prevent.
+   */
+  publishersTruncated: boolean;
 }) {
   const [state, action] = useActionState(uploadCoverImages, idleState);
   const [chosen, setChosen] = useState<string[]>([]);
 
   const previews = chosen.map((name) => {
     const token = tokenFromFileName(name);
-    const { scope, matches } = describeToken(token, { collections, publishers });
+    const { scope, matches } = describeToken(token, { collections, publishers, publishersTruncated });
     return { name, token, scope, matches };
   });
 

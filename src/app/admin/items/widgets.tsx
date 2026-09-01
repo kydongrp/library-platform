@@ -108,6 +108,55 @@ export function ItemTypeForm() {
  * Items table with row selection driving the two batch operations. Selection
  * is client state; the chosen ids ride along as a hidden field.
  */
+/**
+ * The bib record's id, shown beside the copy's barcode.
+ *
+ * The two identify different things and staff need both. The barcode is the
+ * physical copy: it is what gets scanned, and what the search box matches. The
+ * bib id is the record every copy of a title shares, and it is what the MARC
+ * 001, the portal API and a catalogue export all key on. Three rows of "The
+ * Pragmatic Programmer" carry three barcodes and one bib id, and that
+ * relationship is invisible without this column.
+ *
+ * Click to copy, because a cuid is twenty-five characters nobody types. The
+ * search box above accepts one, so a copied id goes straight back in to pull up
+ * every copy of that title.
+ *
+ * Truncated in the MIDDLE rather than the end. Cuids begin with a timestamp, so
+ * two records catalogued the same day share their leading characters; a
+ * trailing ellipsis would render them identical on screen.
+ *
+ * A top-level component rather than one nested in the table, so it keeps its
+ * own state instead of being redefined, and therefore remounted, on every
+ * render of the table around it.
+ */
+function BibId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  const short = id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
+  return (
+    <button
+      type="button"
+      title={`${id} (click to copy)`}
+      aria-label={`Copy bib ID ${id}`}
+      onClick={() => {
+        // Any non-secure origin has no clipboard API at all, so the rejection
+        // is handled and simply leaves the label alone. Unhandled, a click that
+        // looked like it worked would throw into the console instead.
+        navigator.clipboard?.writeText(id).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          },
+          () => {},
+        );
+      }}
+      className="rounded font-mono text-xs text-muted-foreground hover:text-foreground hover:underline"
+    >
+      {copied ? "copied" : short}
+    </button>
+  );
+}
+
 export function ItemsTable({
   items,
   collections,
@@ -219,6 +268,7 @@ export function ItemsTable({
                 </th>
               )}
               <th className="px-3 py-2.5 font-medium">Barcode</th>
+              <th className="px-3 py-2.5 font-medium">Bib ID</th>
               <th className="px-3 py-2.5 font-medium">Title</th>
               <th className="px-3 py-2.5 font-medium">Status</th>
               <th className="px-3 py-2.5 font-medium">Collection</th>
@@ -241,6 +291,9 @@ export function ItemsTable({
                   </td>
                 )}
                 <td className="px-3 py-2 font-mono text-xs">{i.barcode}</td>
+                <td className="px-3 py-2">
+                  <BibId id={i.resourceId} />
+                </td>
                 <td className="px-3 py-2">
                   <a href={`/admin/catalogue/${i.resourceId}`} className="hover:underline">{i.title}</a>
                   {i.onLoanTo && (

@@ -38,6 +38,12 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     where.OR = [
       { barcode: { contains: q, mode: "insensitive" } },
       { resource: { title: { contains: q, mode: "insensitive" } } },
+      // Bib id, so the column below is something staff can act on rather than
+      // just read. Matched exactly: a record id is a 25-character cuid that is
+      // pasted, never typed, and `contains` on it would be a substring scan
+      // over every copy in the collection for a value that is either the whole
+      // id or nothing.
+      { resourceId: q },
     ];
   }
   if (sp.status && (COPY_STATUSES as readonly string[]).includes(sp.status)) where.status = sp.status;
@@ -153,7 +159,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
         {paging.pageSize !== ITEMS_PER_PAGE && (
           <input type="hidden" name="pageSize" value={paging.pageSize} />
         )}
-        <input name="q" defaultValue={q} placeholder="Barcode or title…"
+        <input name="q" defaultValue={q} placeholder="Barcode, bib ID, or title…"
           className={`min-w-52 flex-1 ${inputCls}`} />
         <select name="status" defaultValue={sp.status ?? ""} className={inputCls} aria-label="Status">
           <option value="">All statuses</option>
