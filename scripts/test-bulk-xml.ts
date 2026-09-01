@@ -138,6 +138,56 @@ console.log("\nThe records list is chosen, not just the first list found:");
   check("and they are the real records", r.rows[0].title === "Frigate Programmes", r.rows[0].title);
 }
 
+console.log("\nA namespaced supplier file (the Janes shape):");
+{
+  // The field names here are the ones the importer itself reported back from
+  // the real file: jm:id, jm:standardname, taxonomy, taxonomyid. Every element
+  // is namespace-prefixed, which is why nothing matched: an alias table can
+  // never contain a supplier's XML plumbing.
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<jm:standards xmlns:jm="http://janes.com/schema">
+  <jm:standard>
+    <jm:id>64902</jm:id>
+    <jm:standardname>Naval Weapon Systems Interface Standard</jm:standardname>
+    <jm:taxonomy>Naval</jm:taxonomy>
+    <jm:taxonomyid>NAV-14</jm:taxonomyid>
+    <jm:url>https://customer.janes.com/standard/64902</jm:url>
+  </jm:standard>
+  <jm:standard>
+    <jm:id>64903</jm:id>
+    <jm:standardname>Air Platform Avionics Standard</jm:standardname>
+    <jm:taxonomy>Air</jm:taxonomy>
+    <jm:taxonomyid>AIR-02</jm:taxonomyid>
+    <jm:url>https://customer.janes.com/standard/64903</jm:url>
+  </jm:standard>
+</jm:standards>`;
+  const r = parseBulk(xml, "bsp_64902.xml");
+  check("two records", r.rows.length === 2, String(r.rows.length));
+  check("the namespaced title is read", r.rows[0].title === "Naval Weapon Systems Interface Standard",
+    JSON.stringify(r.rows[0].title));
+  check("and the namespaced link", r.rows[0].url === "https://customer.janes.com/standard/64902",
+    String(r.rows[0].url));
+  check("nothing skipped", r.errors.length === 0, JSON.stringify(r.errors));
+}
+
+console.log("\nA file with titles but no link says so, in the same breath:");
+{
+  // What the real file looks like if it carries no access link at all: the
+  // importer must name BOTH gates, or the next attempt fails on the second one.
+  const xml = `<?xml version="1.0"?>
+<jm:standards xmlns:jm="http://janes.com/schema">
+  <jm:standard><jm:id>1</jm:id><jm:taxonomy>Naval</jm:taxonomy></jm:standard>
+  <jm:standard><jm:id>2</jm:id><jm:taxonomy>Air</jm:taxonomy></jm:standard>
+</jm:standards>`;
+  const r = parseBulk(xml, "b.xml");
+  const note = r.errors.join(" ");
+  check("it reports the title gate", note.includes("title"), note);
+  check("and the link gate, in the same message", note.includes("access link"), note);
+  check("and names the fields the file has", note.includes("taxonomy"), note);
+  check("with the prefix stripped, so the name is recognisable",
+    !note.includes("jm:"), note);
+}
+
 console.log("\nA file whose fields are genuinely unknown says what it found:");
 {
   const xml = `<?xml version="1.0"?>

@@ -47,24 +47,26 @@ export type BulkParseResult = {
 type MappedColumn = Exclude<keyof BulkRow, "marc">;
 
 const FIELD_ALIASES: Record<MappedColumn, string[]> = {
+  // Namespace prefixes are stripped before matching (see parseXml), so a
+  // Dublin Core <dc:title> arrives here as "title" and needs no entry of its own.
   title: ["title", "name", "headline", "doctitle", "documenttitle", "articletitle",
           "itemtitle", "recordtitle", "maintitle", "titletext", "fulltitle",
-          "dc:title", "reporttitle", "producttitle"],
+          "reporttitle", "producttitle", "standardname", "resourcename"],
   authors: ["authors", "author", "creator", "creators", "byline", "contributor",
-            "authorname", "authornames", "dc:creator", "personalname", "writtenby"],
+            "authorname", "authornames", "creator", "personalname", "writtenby"],
   url: ["url", "link", "accessurl", "access_url", "proxiedlink", "href", "uri", "weblink",
         "documenturl", "articleurl", "fulltexturl", "htmlurl", "pdfurl", "landingpage",
-        "permalink", "dc:identifier", "doclink", "downloadurl"],
+        "permalink", "identifier", "doclink", "downloadurl"],
   year: ["year", "pubyear", "publicationyear", "published", "date", "pubdate",
-         "publicationdate", "issuedate", "dc:date", "datepublished", "copyrightyear"],
+         "publicationdate", "issuedate", "datepublished", "copyrightyear"],
   venue: ["venue", "publication", "publicationtitle", "journal", "source", "container",
           "series", "subtitle", "journaltitle", "seriestitle", "collection", "parenttitle"],
-  publisher: ["publisher", "imprint", "publishinghouse", "dc:publisher", "publishername",
+  publisher: ["publisher", "imprint", "publishinghouse", "publishername",
               "issuingbody", "producer"],
   isbn: ["isbn", "isbn13", "isbn10", "eisbn", "isbnnumber"],
   type: ["type", "resourcetype", "contenttype", "doctype", "documenttype", "dc:type",
          "materialtype", "recordtype", "contentclass"],
-  abstract: ["abstract", "description", "summary", "synopsis", "notes", "dc:description",
+  abstract: ["abstract", "description", "summary", "synopsis", "notes",
              "shortdescription", "teaser"],
 };
 
@@ -280,11 +282,20 @@ export function parseCsv(text: string): Record<string, string>[] {
 /* ---------- XML ---------- */
 
 function parseXml(text: string): Record<string, unknown>[] {
-  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", trimValues: true });
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "",
+    trimValues: true,
+    // Collapse <jm:standardname> to <standardname>, as the MARCXML reader below
+    // has always done for <marc:record>. Without it a namespaced element can
+    // never match an alias: a supplier's file whose every field was prefixed
+    // reported "no record had a title" against records whose title element was
+    // sitting right there, called jm:standardname. Prefixes are the supplier's
+    // XML plumbing, not part of the field's name.
+    removeNSPrefix: true,
+  });
   const doc = parser.parse(text) as Record<string, unknown>;
-  // Find the first array of objects anywhere in the tree (e.g. records.record[]).
-  const found = findRecordArray(doc);
-  return found;
+  return findRecordArray(doc);
 }
 
 /**
@@ -621,14 +632,24 @@ export function parseBulk(content: string, filename?: string): BulkParseResult {
   // importer has never heard of. Naming the fields the file DOES carry turns a
   // dead end into something the next person can fix, or send on to someone who
   // can add the alias.
-  if (mapped.length > 0 && mapped.every((r) => !r.title) && !isMarc) {
-    const seen = firstRecordFields(content, detected);
-    if (seen.length) {
-      errors.push(
-        `No record had a title. The fields in this file are: ${seen.slice(0, 24).join(", ")}` +
-          `${seen.length > 24 ? ", …" : ""}. A title is read from any of: ` +
-          `${FIELD_ALIASES.title.slice(0, 8).join(", ")}.`,
-      );
+  // Both gates, not just the first one. A row needs a title AND an http(s)
+  // access link, so reporting only the missing title sends someone away to add
+  // one and straight back with "missing/invalid URL". Say everything that is
+  // wrong in one go.
+  if (mapped.length > 0 && !isMarc) {
+    const missing = (["title", "url"] as const).filter((k) => mapped.every((r) => !r[k]));
+    if (missing.length) {
+      const seen = firstRecordFields(content, detected);
+      if (seen.length) {
+        const wanted = missing
+          .map((k) => `a ${k === "url" ? "link" : k} from any of: ${FIELD_ALIASES[k].slice(0, 8).join(", ")}`)
+          .join("; and ");
+        errors.push(
+          `No record had ${missing.map((k) => (k === "url" ? "an access link" : "a title")).join(" or ")}. ` +
+            `The fields in this file are: ${seen.slice(0, 24).join(", ")}${seen.length > 24 ? ", …" : ""}. ` +
+            `This importer reads ${wanted}.`,
+        );
+      }
     }
   }
 
