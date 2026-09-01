@@ -1,9 +1,12 @@
 /**
  * Deep links into the learner portal.
  *
- * The portal is a separate, already-built system that consumes this platform's
- * /api/portal/v1 API. It owns its own routing, so this side cannot know a
- * record's portal URL: it has to be told the shape.
+ * The portal is a separate, already-built system. It owns its own routing, so
+ * this side cannot know a record's portal URL: it has to be told the shape.
+ *
+ * This module outlived the Portal API it was written alongside. That API was
+ * removed on 2 Sep 2026; the public new-acquisitions feed still points its
+ * items at the portal, so the link template stays.
  *
  *   PORTAL_RESOURCE_URL   A template containing {id}, e.g.
  *                           https://portal.klsi.example/resources/{id}

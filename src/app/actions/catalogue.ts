@@ -13,7 +13,6 @@ import type { ActionState } from "@/lib/types";
 import { DIGITAL_TYPES, MATERIAL_DESIGNATIONS, defaultDesignationFor, RESOURCE_LANGUAGES } from "@/lib/constants";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit, diffOf } from "@/lib/audit";
-import { emitEventAfter } from "@/lib/webhooks";
 
 // Server actions are directly invocable endpoints, so every mutation must
 // re-check CATALOGUE edit rights, not rely on the page hiding buttons.
@@ -121,7 +120,6 @@ export async function createResource(
     throw e;
   }
 
-  emitEventAfter("resource.created", { id: resource.id, title: data.title });
   await audit({
     action: "catalogue.create",
     summary: `Created "${data.title}" (${data.type}${copyCount ? `, ${copyCount} copies` : ""})`,
@@ -177,7 +175,6 @@ export async function updateResource(
     throw e;
   }
   if (existing) {
-    emitEventAfter("resource.updated", { id, title: data.title });
     const { epExternal: _ep, ...beforeFields } = existing;
     const { digital: _d, coverColor: _c, ...afterFields } = data;
     await audit({
@@ -208,7 +205,6 @@ export async function deleteResource(formData: FormData): Promise<void> {
   await prisma.reservation.deleteMany({ where: { resourceId: id } });
   await prisma.linkCheck.deleteMany({ where: { resourceId: id } });
   const deleted = await prisma.resource.delete({ where: { id } });
-  emitEventAfter("resource.deleted", { id, title: deleted.title });
   await audit({
     action: "catalogue.delete",
     summary: `Deleted "${deleted.title}" and its copies/history`,

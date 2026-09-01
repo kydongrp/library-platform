@@ -16,7 +16,6 @@ import {
 import type { SourceField } from "@/lib/marc-source";
 import { sftpConfigured, sftpSourceInfo, fetchNewSftpFiles } from "@/lib/sftp";
 import { audit } from "@/lib/audit";
-import { emitEventAfter } from "@/lib/webhooks";
 import type { Prisma } from "@/generated/prisma/client";
 
 // Deterministic cover colour per seed so imports look organised.
@@ -384,11 +383,6 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
     if (trigger === "cron")
       await audit({ actor: { name: "cron" }, action: "batch.sftpFetch", summary: `Scheduled SFTP fetch: ${message.slice(0, 200)}`, entity: "BatchRun" });
     if (resourcesImported > 0) {
-      emitEventAfter("resources.imported", {
-        count: resourcesImported,
-        source: "sftp",
-        provider: source.provider,
-      });
       revalidatePath("/admin/catalogue");
     }
     revalidatePath("/admin/batch");

@@ -11,7 +11,6 @@ import { coverColorFor, importResourceRowsCore } from "@/lib/ingest";
 import { loadCoverPool, assignFromPool } from "@/lib/cover-images";
 import type { CoverCandidate } from "@/lib/cover-match";
 import { audit } from "@/lib/audit";
-import { emitEventAfter } from "@/lib/webhooks";
 import { draftRecord, type ArticleDraft } from "@/lib/ai-draft";
 
 type DedupKey = Pick<ScholarlyRecord, "url" | "oaUrl" | "title" | "authors">;
@@ -131,7 +130,6 @@ export async function importScholarly(
 
   if (imported > 0) {
     await audit({ action: "import.livefetch", summary: `LiveFetch import: ${imported} record${imported === 1 ? "" : "s"} into ${category}`, entity: "Resource", detail: { imported, duplicates, skipped } });
-    emitEventAfter("resources.imported", { count: imported, source: "livefetch", category });
   }
   revalidatePath("/admin/catalogue");
 
@@ -215,7 +213,6 @@ export async function addManualArticle(
   }
 
   await audit({ action: "import.manual", summary: `Manually added "${title}" (${provider})`, entity: "Resource", detail: { url, provider } });
-  emitEventAfter("resource.created", { title, provider, accessUrl: url });
   revalidatePath("/admin/catalogue");
   return { ok: true, message: `Added "${title}" (${provider}).` };
 }
@@ -331,7 +328,6 @@ export async function importResourceRows(
     revalidatePath("/admin/catalogue");
   }
   if (r.imported > 0) {
-    emitEventAfter("resources.imported", { count: r.imported, source: "bulk", provider });
   }
   const { coverTally, marcTally, ...rest } = r;
   return {

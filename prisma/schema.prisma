@@ -1045,6 +1045,12 @@ model SerialIssue {
 
 /// A credential for the read-only Portal API (/api/portal/v1). The full key
 /// is shown once at creation; only its SHA-256 hash is stored.
+/// RETAINED AFTER THE PORTAL API WAS REMOVED (2 Sep 2026).
+/// Nothing reads or writes these three tables any more: the keyed Portal API,
+/// its admin screen and the webhook machinery were all deleted. The models stay
+/// because the deploy runs `prisma db push`, and dropping the definitions would
+/// make it want to DROP the tables. Losing production data is not an acceptable
+/// side effect of deleting a screen. Drop them deliberately, or not at all.
 model ApiClient {
   id         String    @id @default(cuid())
   name       String // e.g. "Learner Portal (prod)"

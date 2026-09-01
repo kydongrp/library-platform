@@ -5,7 +5,6 @@ import { prisma } from "@/lib/db";
 import type { ActionState } from "@/lib/types";
 import { getCurrentAdmin, canEdit } from "@/lib/admin-session";
 import { audit } from "@/lib/audit";
-import { emitEventAfter } from "@/lib/webhooks";
 import { DEFAULT_TAG_DEFS, parseSubfields, type Subfield } from "@/lib/marc-tags";
 import { cleanControlValue } from "@/lib/marc-source";
 
@@ -140,7 +139,6 @@ export async function saveMarcField(
     });
   }
 
-  emitEventAfter("resource.updated", { id: resourceId, title: resource.title });
   revalidatePath(`/admin/catalogue/${resourceId}`);
   return { ok: true, message: `Field ${tag} saved.` };
 }
@@ -448,8 +446,6 @@ export async function mergeBibs(
     entityId: winnerId,
     detail: { winnerId, loserId, moved: result.moved },
   });
-  emitEventAfter("resource.updated", { id: winnerId, title: result.winnerTitle });
-  emitEventAfter("resource.deleted", { id: loserId, title: result.loserTitle, mergedInto: winnerId });
 
   revalidatePath("/admin/catalogue");
   revalidatePath(`/admin/catalogue/${winnerId}`);
