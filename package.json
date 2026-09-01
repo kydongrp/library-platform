@@ -35,8 +35,6 @@
     "test:feed": "tsx scripts/test-feed.ts",
     "test:ssrf": "tsx scripts/test-ssrf.ts",
     "test:fetch:live": "tsx scripts/test-page-fetch-live.ts",
-    "test:intake": "tsx scripts/test-intake.ts",
-    "test:metadata": "tsx scripts/test-metadata.ts",
     "test:paging": "tsx scripts/test-paging.ts",
     "test:flexi:nl": "tsx scripts/test-flexi-nl.ts",
     "test:holds": "tsx scripts/test-hold-queue.ts",
