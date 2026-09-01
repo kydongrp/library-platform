@@ -9,18 +9,42 @@ export function BookCover({
   color,
   type,
   size = "md",
+  imageId,
 }: {
   title: string;
   author: string;
   color: string;
   type?: string;
   size?: "sm" | "md" | "lg";
+  /**
+   * A common cover image from the pool, if one was assigned. Absent, the
+   * coloured placeholder below is what a record has always had.
+   */
+  imageId?: string | null;
 }) {
   const dims = {
     sm: "h-24 w-16 text-[9px] p-2",
     md: "h-44 w-30 text-xs p-3",
     lg: "h-64 w-44 text-sm p-4",
   }[size];
+
+  if (imageId) {
+    // A plain <img>, not next/image: these are small database-served bytes
+    // behind an authenticated route, so the optimiser would add a second fetch
+    // and a cache layer for no gain. The title is the alt text because that is
+    // what the image stands in for, and a house cover carries no other meaning.
+    return (
+      <div className={`relative ${dims} shrink-0 overflow-hidden rounded-md shadow-md bg-stone-100`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/api/covers/${imageId}`}
+          alt={`Cover: ${title}`}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
 
   return (
     <div

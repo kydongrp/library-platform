@@ -153,7 +153,7 @@ export default async function CataloguePage({
                 href={`/admin/catalogue/${r.id}`}
                 className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/50"
               >
-                <BookCover title={r.title} author={r.author} color={r.coverColor} size="sm" />
+                <BookCover title={r.title} author={r.author} color={r.coverColor} imageId={r.coverImageId} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{r.title}</p>
                   <p className="truncate text-sm text-muted-foreground">{r.author}</p>

@@ -8,6 +8,8 @@ import { providerFor, type ScholarlyRecord } from "@/lib/scholarly";
 import { RESOURCE_TYPES, defaultDesignationFor, UNCATEGORISED } from "@/lib/constants";
 import type { BulkRow } from "@/lib/bulk-import";
 import { coverColorFor, importResourceRowsCore } from "@/lib/ingest";
+import { loadCoverPool, assignFromPool } from "@/lib/cover-images";
+import type { CoverCandidate } from "@/lib/cover-match";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
 import { draftRecord, type ArticleDraft } from "@/lib/ai-draft";
@@ -40,7 +42,11 @@ async function alreadyImported(record: DedupKey): Promise<boolean> {
   return !!existing;
 }
 
-async function importOne(record: ScholarlyRecord, category: string): Promise<"imported" | "duplicate" | "skipped"> {
+async function importOne(
+  record: ScholarlyRecord,
+  category: string,
+  coverPool: CoverCandidate[],
+): Promise<"imported" | "duplicate" | "skipped"> {
   // LiveFetch records come from third-party APIs via a client form field, so
   // never persist a non-http(s) link as the access URL.
   const oaUrl = record.oaUrl && /^https?:\/\//i.test(record.oaUrl) ? record.oaUrl : null;
@@ -57,6 +63,18 @@ async function importOne(record: ScholarlyRecord, category: string): Promise<"im
       publishedYear: record.year,
       description: record.abstract,
       coverColor: coverColorFor(record.venue ?? record.publisher ?? record.title),
+      // The collection tier cannot fire here in practice: every import path
+      // lands records as Uncategorised on purpose (see importScholarly and
+      // importResourceRowsCore), because whoever loads a batch is rarely
+      // whoever decides its subject. So an imported record gets a
+      // publisher-matched cover or a general one. Collection-matched covers
+      // arrive once staff classify, via the backfill on the covers screen.
+      // The category is still passed rather than hard-coded, so this starts
+      // working by itself the day an import path does supply one.
+      coverImageId: assignFromPool(
+        { collection: category, publisher: record.publisher },
+        coverPool,
+      ).coverImageId,
       digital: true,
       // Prefer the (validated) open-access full text when one exists.
       digitalUrl: oaUrl ?? record.url,
@@ -93,6 +111,10 @@ export async function importScholarly(
   // catalogue, which can filter for exactly the unclassified records.
   const category = UNCATEGORISED;
 
+  // Once per run: the pool cannot change mid-loop, and a per-record query
+  // would issue one for every row of a large paste.
+  const coverPool = await loadCoverPool();
+
   let imported = 0;
   let duplicates = 0;
   let skipped = 0;
@@ -101,7 +123,7 @@ export async function importScholarly(
       skipped++;
       continue;
     }
-    const result = await importOne(record, category);
+    const result = await importOne(record, category, coverPool);
     if (result === "imported") imported++;
     else if (result === "duplicate") duplicates++;
     else skipped++;
@@ -248,6 +270,8 @@ export type BulkImportChunkResult = {
   duplicates: number;
   skipped: number;
   skipReasons: string[];
+  /** Common cover images assigned in this chunk; the client sums them. */
+  coversAssigned: number;
   error?: string; // set only on a hard failure (permission, bad payload)
 };
 
@@ -267,7 +291,7 @@ export async function importResourceRows(
   rows: BulkRow[],
   opts: BulkImportOptions,
 ): Promise<BulkImportChunkResult> {
-  const zero = { ok: false, imported: 0, duplicates: 0, skipped: 0, skipReasons: [] as string[] };
+  const zero = { ok: false, imported: 0, duplicates: 0, skipped: 0, skipReasons: [] as string[], coversAssigned: 0 };
 
   const admin = await getCurrentAdmin();
   if (!canEdit(admin, "CATALOGUE"))
@@ -284,9 +308,10 @@ export async function importResourceRows(
     defaultType: opts.defaultType,
   });
   if (r.imported > 0) {
-    await audit({ action: "import.bulk", summary: `Bulk import chunk: ${r.imported} added (${provider})`, entity: "Resource", detail: { imported: r.imported, duplicates: r.duplicates, skipped: r.skipped } });
+    await audit({ action: "import.bulk", summary: `Bulk import chunk: ${r.imported} added (${provider})`, entity: "Resource", detail: { imported: r.imported, duplicates: r.duplicates, skipped: r.skipped, covers: r.coverTally } });
     emitEventAfter("resources.imported", { count: r.imported, source: "bulk", provider });
     revalidatePath("/admin/catalogue");
   }
-  return { ok: true, ...r };
+  const { coverTally, ...rest } = r;
+  return { ok: true, ...rest, coversAssigned: coverTally.assigned };
 }

@@ -67,7 +67,7 @@ export default async function ResourceDetailPage({
       </Link>
 
       <div className="mb-6 mt-3 flex flex-wrap items-start gap-5">
-        <BookCover title={resource.title} author={resource.author} color={resource.coverColor} type={resource.type} size="lg" />
+        <BookCover title={resource.title} author={resource.author} color={resource.coverColor} type={resource.type} imageId={resource.coverImageId} size="lg" />
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-3xl font-semibold">{resource.title}</h1>
           {resource.subtitle && <p className="text-lg text-muted-foreground">{resource.subtitle}</p>}

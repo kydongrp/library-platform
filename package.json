@@ -44,7 +44,9 @@
     "test:marc:bin": "tsx scripts/test-marc-binary.ts",
     "test:mail:db": "tsx --env-file=.env.development.local scripts/test-mail.ts",
     "db:harden": "tsx --env-file=.env scripts/db-harden.ts",
-    "db:harden:test": "tsx --env-file=.env.test scripts/db-harden.ts"
+    "db:harden:test": "tsx --env-file=.env.test scripts/db-harden.ts",
+    "test:covers": "tsx scripts/test-covers.ts",
+    "test:covers:db": "tsx --env-file=.env.test scripts/test-covers-db.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

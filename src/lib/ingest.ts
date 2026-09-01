@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { parseBulk, type BulkRow } from "@/lib/bulk-import";
 import { RESOURCE_TYPES, UNCATEGORISED, defaultDesignationFor } from "@/lib/constants";
+import {
+  loadCoverPool, assignFromPool, emptyTally, countAssignment, describeTally,
+  type CoverTally,
+} from "@/lib/cover-images";
 import { sftpConfigured, sftpSourceInfo, fetchNewSftpFiles } from "@/lib/sftp";
 import { audit } from "@/lib/audit";
 import { emitEventAfter } from "@/lib/webhooks";
@@ -32,6 +36,12 @@ export type ImportRowsResult = {
   duplicates: number;
   skipped: number;
   skipReasons: string[];
+  /**
+   * Common cover images assigned to the new records, as counts rather than a
+   * sentence: the bulk path imports in chunks, and numbers add up across them
+   * where a formatted string would not.
+   */
+  coverTally: CoverTally;
 };
 
 const DEDUP_BATCH = 1000; // URLs per existence query
@@ -69,7 +79,9 @@ export async function importResourceRowsCore(
     valid.push(row);
   });
 
-  if (valid.length === 0) return { imported: 0, duplicates: 0, skipped, skipReasons };
+  if (valid.length === 0) {
+    return { imported: 0, duplicates: 0, skipped, skipReasons, coverTally: emptyTally() };
+  }
 
   // Dedup on access URL, using batched existence queries.
   const urls = Array.from(new Set(valid.map((r) => r.url)));
@@ -90,6 +102,11 @@ export async function importResourceRowsCore(
     });
   }
 
+  // One query for the whole batch. A per-row lookup would issue thousands of
+  // queries on a 50,000-row import for a value that cannot change mid-run.
+  const coverPool = await loadCoverPool();
+  const coverTally = emptyTally();
+
   let duplicates = 0;
   const toCreate: Prisma.ResourceCreateManyInput[] = [];
   for (const row of valid) {
@@ -100,6 +117,11 @@ export async function importResourceRowsCore(
     seen.add(row.url); // collapse repeats within this batch too
     const type =
       row.type && (RESOURCE_TYPES as readonly string[]).includes(row.type) ? row.type : defaultType;
+    const cover = assignFromPool(
+      { collection: UNCATEGORISED, publisher: row.publisher ?? null },
+      coverPool,
+    );
+    countAssignment(coverTally, cover);
     toCreate.push({
       title: String(row.title).trim(),
       subtitle: row.venue ?? null,
@@ -117,6 +139,12 @@ export async function importResourceRowsCore(
       publishedYear: typeof row.year === "number" ? row.year : null,
       description: row.abstract ?? null,
       coverColor: coverColorFor(provider + row.title),
+      // A common cover if the pool has a suitable one, else null and the
+      // coloured placeholder stands. These rows land Uncategorised (see just
+      // above), as do LiveFetch's, so at import time a cover is matched on
+      // PUBLISHER or falls back to a general image. Collection-matched covers
+      // arrive when staff classify, via the backfill on the covers screen.
+      coverImageId: cover.coverImageId,
       digital: true,
       digitalUrl: row.url,
       provider,
@@ -135,7 +163,14 @@ export async function importResourceRowsCore(
   // Anything the DB skipped (a race inserted it first) is a duplicate, not new.
   duplicates += toCreate.length - imported;
 
-  return { imported, duplicates, skipped, skipReasons };
+  // Clamped to what was actually inserted. A cover was chosen for every row
+  // PREPARED, but a row the database skipped as a race duplicate never got
+  // written, so the unclamped figure could claim more covers than there are
+  // new records. Clamping can only understate, which is the safe direction for
+  // a number staff read as a result.
+  if (coverTally.assigned > imported) coverTally.assigned = imported;
+
+  return { imported, duplicates, skipped, skipReasons, coverTally };
 }
 
 /* ---------- Scheduled SFTP re-fetch ---------- */
@@ -220,6 +255,7 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
     }
 
     let resourcesImported = 0;
+    const sftpCovers = emptyTally();
     let duplicates = 0;
     let skipped = 0;
     let filesImported = 0;
@@ -231,6 +267,10 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
           defaultType,
         });
         resourcesImported += res.imported;
+        sftpCovers.assigned += res.coverTally.assigned;
+        sftpCovers.collection += res.coverTally.collection;
+        sftpCovers.publisher += res.coverTally.publisher;
+        sftpCovers.general += res.coverTally.general;
         duplicates += res.duplicates;
         skipped += res.skipped;
         filesImported++;
@@ -258,10 +298,14 @@ export async function runSftpFetch(trigger: "cron" | "manual"): Promise<SftpRunS
     const queued = totalNew - files.length - oversize.length;
     const capped = queued > 0 ? ` (${queued} more queued for next run)` : "";
     const over = oversize.length ? ` · ${oversize.length} too large` : "";
+    // Reported so an unattended nightly run says what it did to cover art,
+    // rather than staff noticing covers appear and wondering why.
+    const coversDescribed = describeTally(sftpCovers);
+    const covers = coversDescribed ? ` · ${coversDescribed}` : "";
     const message =
       files.length === 0 && oversize.length === 0
         ? `No new files in ${source.host}:${source.remoteDir}.`
-        : `${filesImported}/${files.length} file(s) from ${source.host} · ${resourcesImported} imported · ${duplicates} dup · ${skipped} skipped${over}${capped}`;
+        : `${filesImported}/${files.length} file(s) from ${source.host} · ${resourcesImported} imported · ${duplicates} dup · ${skipped} skipped${over}${capped}${covers}`;
 
     await prisma.batchRun.create({ data: { process: "SFTP_FETCH", summary: message, ranBy } });
     // The manual trigger audits with the admin's session; cron has no session.

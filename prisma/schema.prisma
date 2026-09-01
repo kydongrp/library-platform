@@ -29,6 +29,10 @@ model Resource {
   language              String                 @default("English")
   description           String?
   coverColor            String                 @default("#4F46E5") // used to render a placeholder cover
+  /// Optional common cover image, assigned automatically at import when the
+  /// pool has a match (see src/lib/cover-match.ts). Null keeps coverColor.
+  coverImageId          String?
+  coverImage            CoverImage?            @relation(fields: [coverImageId], references: [id], onDelete: SetNull)
   digital               Boolean                @default(false) // digital titles grant instant access, no physical copy
   digitalUrl            String?                @unique // direct access link; unique so concurrent imports can't double-insert the same link-out (NULLs are exempt)
   provider              String? // external subscription source, e.g. "IEEE Xplore". Null = local collection.
@@ -55,7 +59,6 @@ model Resource {
   /// every request is a sequential scan plus a top-N sort, on a table sized
   /// for the Vibrant migration rather than for the 62 rows here today.
   @@index([createdAt])
-
 }
 
 /// A physical (or digital seat) holding of a Resource that can be loaned out.
@@ -1189,4 +1192,33 @@ model MarcChangeLog {
   runBy        String
   ranAt        DateTime @default(now())
   sample       Json     @default("[]")
+}
+
+/// A reusable "common" cover image for records that have no cover art of their
+/// own. The FILE NAME is the matching key: `defence-01.png` serves the Defence
+/// collection, `ieee-xplore-2.jpg` that publisher, `general-1.png` anything.
+/// See src/lib/cover-match.ts for the selection rule.
+///
+/// Bytes live in the database rather than an object store so the image inherits
+/// the platform's Singapore residency position and needs no second service or
+/// credential. Covers are small; the upload path caps each one.
+model CoverImage {
+  id         String     @id @default(cuid())
+  /// As uploaded, kept for display and re-derivation of the token.
+  fileName   String     @unique
+  /// Folded form of the file name, minus extension and trailing sequence
+  /// number. Stored so assignment never re-parses, and indexed because that is
+  /// the column every match query filters on.
+  token      String
+  mimeType   String
+  sizeBytes  Int
+  bytes      Bytes
+  /// Staff can retire an image without deleting it, so records already
+  /// pointing at it keep their cover.
+  enabled    Boolean    @default(true)
+  uploadedBy String?
+  createdAt  DateTime   @default(now())
+  resources  Resource[]
+
+  @@index([token, enabled])
 }
