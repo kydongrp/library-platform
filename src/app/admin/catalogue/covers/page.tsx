@@ -7,7 +7,7 @@ import { setCoverImageEnabled, deleteCoverImage, backfillCoverImages } from "@/a
 import { knownMatchTargets } from "@/lib/cover-images";
 import { describeToken, GENERAL_TOKENS } from "@/lib/cover-match";
 import { formatDate } from "@/lib/format";
-import { CoverUploadForm } from "./widgets";
+import { CoverUploadForm, CoverThumb } from "./widgets";
 
 export const dynamic = "force-dynamic";
 
@@ -156,13 +156,7 @@ export default async function CoverImagesPage() {
                   return (
                     <tr key={img.id} className="border-b border-border/60 last:border-0">
                       <td className="py-2 pr-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`/api/covers/${img.id}`}
-                          alt={`Cover image ${img.fileName}`}
-                          className="h-14 w-10 rounded object-cover ring-1 ring-border"
-                          loading="lazy"
-                        />
+                        <CoverThumb id={img.id} fileName={img.fileName} />
                       </td>
                       <td className="py-2 pr-3">
                         <p className="font-medium">{img.fileName}</p>

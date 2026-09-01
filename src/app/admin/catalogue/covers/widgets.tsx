@@ -1,10 +1,161 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { idleState } from "@/lib/types";
 import { uploadCoverImages } from "@/app/actions/covers";
 import { SubmitButton } from "@/components/forms";
 import { tokenFromFileName, describeToken, GENERAL_TOKENS } from "@/lib/cover-match";
+
+const ZOOMS = [1, 2, 4] as const;
+
+/**
+ * A cover thumbnail that opens full size, and zooms.
+ *
+ * The list shows every image at 40 by 56 pixels, which is enough to tell one
+ * apart from another and not enough to check one. Whether the type is legible,
+ * whether a supplier's artwork is the right way up, whether a scan is clean:
+ * none of that is answerable at thumbnail size, and the alternative was
+ * downloading the file to look at it.
+ *
+ * A native <dialog> rather than a hand-rolled overlay, so the Escape key, focus
+ * trapping and the inert backdrop all come from the browser rather than from
+ * code that has to be kept correct. Zoom is stepped rather than continuous:
+ * these are cover images, so fit, double and quadruple answer the question,
+ * and a slider would be a fiddlier control for no more information. Above fit,
+ * the frame scrolls, which is how you pan.
+ */
+export function CoverThumb({ id, fileName }: { id: string; fileName: string }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
+  const [zoom, setZoom] = useState<number>(1);
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  const src = `/api/covers/${id}`;
+
+  // showModal cannot be set declaratively, so the element is driven from state
+  // rather than the other way round. Closing is mirrored back because the
+  // browser can close a dialog without going through this component: Escape,
+  // and the backdrop click below.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    if (!open && el.open) el.close();
+  }, [open]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setZoom(1);
+          setOpen(true);
+        }}
+        title={`${fileName} (click to view full size)`}
+        aria-label={`View ${fileName} full size`}
+        className="block rounded ring-1 ring-border transition hover:ring-2 hover:ring-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={`Cover image ${fileName}`}
+          className="h-14 w-10 rounded object-cover"
+          loading="lazy"
+        />
+      </button>
+
+      <dialog
+        ref={ref}
+        onClose={() => setOpen(false)}
+        onClick={(e) => {
+          // The dialog element fills the viewport, so a click landing on the
+          // element itself rather than on its content is a backdrop click.
+          if (e.target === ref.current) setOpen(false);
+        }}
+        // m-auto is not decoration. A modal <dialog> is centred by the user
+        // agent's own `margin: auto`, and Tailwind's preflight resets margin to
+        // 0 on every element, so without this the dialog opens pinned to the
+        // top left corner of the viewport.
+        className="m-auto max-h-[92vh] max-w-[92vw] rounded-xl border border-border bg-card p-0 text-foreground backdrop:bg-black/55"
+      >
+        {/*
+          Rendered only while open, and this is not a micro-optimisation. A
+          closed <dialog> is still in the document, and a browser fetches an
+          <img> inside one exactly as it would anywhere else. With the contents
+          always mounted, opening the pool screen requested every cover TWICE,
+          the thumbnail and the full-size copy behind a dialog nobody had
+          opened: measured at 12 requests for 6 images, so 60 for a pool of 30.
+        */}
+        {open && (
+        <>
+        <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-2.5">
+          <div className="min-w-0">
+            <p className="truncate font-medium">{fileName}</p>
+            <p className="text-xs text-muted-foreground">
+              {dims ? `${dims.w} by ${dims.h} pixels` : "Loading…"}
+              {zoom > 1 && ` · shown at ${zoom}x, scroll to pan`}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {ZOOMS.map((z) => (
+              <button
+                key={z}
+                type="button"
+                onClick={() => setZoom(z)}
+                aria-pressed={zoom === z}
+                className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                  zoom === z
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card hover:bg-muted"
+                }`}
+              >
+                {z === 1 ? "Fit" : `${z}x`}
+              </button>
+            ))}
+            <a
+              href={src}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium hover:bg-muted"
+            >
+              Open file
+            </a>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium hover:bg-muted"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[76vh] overflow-auto bg-muted/40 p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={`Cover image ${fileName}, full size`}
+            onLoad={(e) =>
+              setDims({
+                w: e.currentTarget.naturalWidth,
+                h: e.currentTarget.naturalHeight,
+              })
+            }
+            onClick={() => setZoom((z) => ZOOMS[(ZOOMS.indexOf(z as 1 | 2 | 4) + 1) % ZOOMS.length])}
+            style={
+              zoom === 1
+                ? { maxHeight: "68vh", width: "auto" }
+                : { height: `${68 * zoom}vh`, maxWidth: "none", width: "auto" }
+            }
+            className="mx-auto block cursor-zoom-in rounded shadow-sm"
+          />
+        </div>
+        </>
+        )}
+      </dialog>
+    </>
+  );
+}
 
 /**
  * Upload form for the common-cover pool.
