@@ -36,7 +36,7 @@ jobs:
 
       # 24.x is what the Vercel project builds on, so a green run here means the
       # same thing it will mean at deploy time.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
